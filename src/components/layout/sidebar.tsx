@@ -11,8 +11,9 @@ import {
   LogOut,
   Menu,
   X,
+  Terminal,
 } from "lucide-react";
-import { signOut } from "next-auth/react";
+import { signOut, useSession } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import { useState } from "react";
 
@@ -23,9 +24,15 @@ const navigation = [
   { name: "Paramètres", href: "/settings", icon: Settings },
 ];
 
+const adminNavigation = [
+  { name: "Console Admin", href: "/console", icon: Terminal },
+];
+
 export function Sidebar() {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const { data: session } = useSession();
+  const isAdmin = session?.user?.role === "ADMIN";
 
   const handleSignOut = () => {
     signOut({ callbackUrl: "/login" });
@@ -100,6 +107,32 @@ export function Sidebar() {
                 </Link>
               );
             })}
+
+            {/* Console Admin (visible uniquement pour les admins) */}
+            {isAdmin && (
+              <>
+                <div className="my-2 border-t" />
+                {adminNavigation.map((item) => {
+                  const isActive = pathname.startsWith(item.href);
+                  return (
+                    <Link
+                      key={item.name}
+                      href={item.href}
+                      onClick={() => setMobileOpen(false)}
+                      className={cn(
+                        "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
+                        isActive
+                          ? "bg-primary text-primary-foreground"
+                          : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                      )}
+                    >
+                      <item.icon className="h-5 w-5" />
+                      {item.name}
+                    </Link>
+                  );
+                })}
+              </>
+            )}
           </nav>
 
           {/* Logout */}

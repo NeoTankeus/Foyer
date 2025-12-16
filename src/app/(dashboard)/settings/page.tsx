@@ -1,16 +1,10 @@
 import { auth } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
+import { getUserSettings, getAllCategories } from "@/lib/db";
 import { SettingsClient } from "@/components/settings/settings-client";
 
-async function getSettingsData(userId: string) {
-  const [settings, categories] = await Promise.all([
-    prisma.userSettings.findUnique({
-      where: { userId },
-    }),
-    prisma.chargeCategory.findMany({
-      orderBy: { name: "asc" },
-    }),
-  ]);
+function getSettingsData(userId: string) {
+  const settings = getUserSettings(userId);
+  const categories = getAllCategories();
 
   return { settings, categories };
 }
@@ -19,7 +13,7 @@ export default async function SettingsPage() {
   const session = await auth();
   if (!session?.user?.id) return null;
 
-  const data = await getSettingsData(session.user.id);
+  const data = getSettingsData(session.user.id);
 
   return (
     <div className="space-y-6">

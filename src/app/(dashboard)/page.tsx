@@ -1,5 +1,5 @@
 import { auth } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
+import { getChargesByUser, getStockByUser, getAllCategories, getUserSettings } from "@/lib/db";
 import { startOfMonth, endOfMonth, subMonths, format } from "date-fns";
 import { DashboardStats } from "@/components/charges/dashboard-stats";
 import { MonthlyChart } from "@/components/charts/monthly-chart";
@@ -8,107 +8,81 @@ import { CumulativeChart } from "@/components/charts/cumulative-chart";
 import { StockAlerts } from "@/components/stock/stock-alerts";
 import { calculateVariation } from "@/lib/utils";
 
-async function getDashboardData(userId: string) {
+function getDashboardData(userId: string) {
   const now = new Date();
   const currentMonthStart = startOfMonth(now);
   const currentMonthEnd = endOfMonth(now);
   const previousMonthStart = startOfMonth(subMonths(now, 1));
   const previousMonthEnd = endOfMonth(subMonths(now, 1));
 
+  const allCharges = getChargesByUser(userId);
+  const categories = getAllCategories();
+  const settings = getUserSettings(userId);
+  const stockItems = getStockByUser(userId);
+
   // Charges du mois courant
-  const currentMonthCharges = await prisma.charge.aggregate({
-    where: {
-      userId,
-      date: { gte: currentMonthStart, lte: currentMonthEnd },
-    },
-    _sum: { amount: true },
+  const currentMonthCharges = allCharges.filter((c) => {
+    const d = new Date(c.date);
+    return d >= currentMonthStart && d <= currentMonthEnd;
   });
+  const currentTotal = currentMonthCharges.reduce((sum, c) => sum + c.amount, 0);
 
   // Charges du mois précédent
-  const previousMonthCharges = await prisma.charge.aggregate({
-    where: {
-      userId,
-      date: { gte: previousMonthStart, lte: previousMonthEnd },
-    },
-    _sum: { amount: true },
+  const previousMonthCharges = allCharges.filter((c) => {
+    const d = new Date(c.date);
+    return d >= previousMonthStart && d <= previousMonthEnd;
   });
+  const previousTotal = previousMonthCharges.reduce((sum, c) => sum + c.amount, 0);
 
   // Top 5 catégories du mois courant
-  const topCategories = await prisma.charge.groupBy({
-    by: ["categoryId"],
-    where: {
-      userId,
-      date: { gte: currentMonthStart, lte: currentMonthEnd },
-    },
-    _sum: { amount: true },
-    orderBy: { _sum: { amount: "desc" } },
-    take: 5,
+  const categoryTotals = new Map<string, number>();
+  currentMonthCharges.forEach((c) => {
+    categoryTotals.set(c.categoryId, (categoryTotals.get(c.categoryId) || 0) + c.amount);
   });
 
-  const categories = await prisma.chargeCategory.findMany({
-    where: { id: { in: topCategories.map((c) => c.categoryId) } },
-  });
+  const topCategoriesWithDetails = Array.from(categoryTotals.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([categoryId, total]) => {
+      const cat = categories.find((c) => c.id === categoryId);
+      return {
+        categoryId,
+        categoryName: cat?.name || "Inconnu",
+        categoryColor: cat?.color || "#6366f1",
+        total,
+        percentage: currentTotal > 0 ? (total / currentTotal) * 100 : 0,
+      };
+    });
 
-  const currentTotal = currentMonthCharges._sum.amount || 0;
-  const topCategoriesWithDetails = topCategories.map((tc) => {
-    const cat = categories.find((c) => c.id === tc.categoryId);
-    return {
-      categoryId: tc.categoryId,
-      categoryName: cat?.name || "Inconnu",
-      categoryColor: cat?.color || "#6366f1",
-      total: tc._sum.amount || 0,
-      percentage: currentTotal > 0 ? ((tc._sum.amount || 0) / currentTotal) * 100 : 0,
-    };
-  });
-
-  // Charges récurrentes à venir (ce mois)
-  const upcomingRecurring = await prisma.charge.findMany({
-    where: {
-      userId,
-      isRecurring: true,
-    },
-    include: { category: true },
-    orderBy: { date: "asc" },
-    take: 5,
-  });
-
-  // Settings utilisateur
-  const settings = await prisma.userSettings.findUnique({
-    where: { userId },
-  });
+  // Charges récurrentes
+  const upcomingRecurring = allCharges
+    .filter((c) => c.isRecurring)
+    .slice(0, 5)
+    .map((c) => ({ ...c, category: c.category }));
 
   // Données pour graphiques - 12 derniers mois
   const monthlyData = [];
   for (let i = 11; i >= 0; i--) {
     const monthStart = startOfMonth(subMonths(now, i));
     const monthEnd = endOfMonth(subMonths(now, i));
-    const charges = await prisma.charge.aggregate({
-      where: {
-        userId,
-        date: { gte: monthStart, lte: monthEnd },
-      },
-      _sum: { amount: true },
+    const monthCharges = allCharges.filter((c) => {
+      const d = new Date(c.date);
+      return d >= monthStart && d <= monthEnd;
     });
     monthlyData.push({
       month: format(monthStart, "MMM yy"),
-      total: charges._sum.amount || 0,
+      total: monthCharges.reduce((sum, c) => sum + c.amount, 0),
     });
   }
 
   // Données cumulées du mois courant
-  const dailyCharges = await prisma.charge.findMany({
-    where: {
-      userId,
-      date: { gte: currentMonthStart, lte: currentMonthEnd },
-    },
-    orderBy: { date: "asc" },
-  });
-
   const dailyMap = new Map<string, number>();
-  dailyCharges.forEach((charge) => {
-    const dateKey = format(charge.date, "dd/MM");
-    dailyMap.set(dateKey, (dailyMap.get(dateKey) || 0) + charge.amount);
-  });
+  currentMonthCharges
+    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+    .forEach((charge) => {
+      const dateKey = format(new Date(charge.date), "dd/MM");
+      dailyMap.set(dateKey, (dailyMap.get(dateKey) || 0) + charge.amount);
+    });
 
   let cumulative = 0;
   const cumulativeData = Array.from(dailyMap.entries()).map(([date, daily]) => {
@@ -117,28 +91,23 @@ async function getDashboardData(userId: string) {
   });
 
   // Alertes stock
-  const stockAlerts = await prisma.stockItem.findMany({
-    where: {
-      userId,
-      alertThreshold: { not: null },
-      quantity: { lte: prisma.stockItem.fields.alertThreshold },
-    },
-    take: 5,
-  });
+  const stockAlerts = stockItems
+    .filter((item) => item.alertThreshold !== null && item.quantity <= item.alertThreshold)
+    .slice(0, 5)
+    .map((item) => ({
+      item,
+      currentQuantity: item.quantity,
+      threshold: item.alertThreshold!,
+    }));
 
   return {
     stats: {
       currentMonthTotal: currentTotal,
-      previousMonthTotal: previousMonthCharges._sum.amount || 0,
-      variation: calculateVariation(
-        currentTotal,
-        previousMonthCharges._sum.amount || 0
-      ),
+      previousMonthTotal: previousTotal,
+      variation: calculateVariation(currentTotal, previousTotal),
       topCategories: topCategoriesWithDetails,
       upcomingRecurring,
-      budgetAlert: settings?.monthlyBudget
-        ? currentTotal > settings.monthlyBudget
-        : false,
+      budgetAlert: settings?.monthlyBudget ? currentTotal > settings.monthlyBudget : false,
       monthlyBudget: settings?.monthlyBudget || null,
     },
     monthlyData,
@@ -148,11 +117,7 @@ async function getDashboardData(userId: string) {
       color: c.categoryColor,
     })),
     cumulativeData,
-    stockAlerts: stockAlerts.map((item) => ({
-      item,
-      currentQuantity: item.quantity,
-      threshold: item.alertThreshold!,
-    })),
+    stockAlerts,
     settings,
   };
 }
@@ -161,19 +126,17 @@ export default async function DashboardPage() {
   const session = await auth();
   if (!session?.user?.id) return null;
 
-  const data = await getDashboardData(session.user.id);
+  const data = getDashboardData(session.user.id);
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold">Dashboard</h1>
-        <p className="text-muted-foreground">Vue d'ensemble de votre activité</p>
+        <p className="text-muted-foreground">Vue d&apos;ensemble de votre activité</p>
       </div>
 
-      {/* Stats cards */}
       <DashboardStats stats={data.stats} currency={data.settings?.currency || "EUR"} />
 
-      {/* Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <MonthlyChart data={data.monthlyData} />
         <CategoryPieChart data={data.categoryData} />

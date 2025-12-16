@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
-import { chargeSchema, chargeFilterSchema } from "@/lib/validations";
+import { getChargesByUser, createCharge } from "@/lib/db";
+import { chargeSchema } from "@/lib/validations";
 
-// GET - Récupérer toutes les charges avec filtres
 export async function GET(request: NextRequest) {
   try {
     const session = await auth();
@@ -12,38 +11,33 @@ export async function GET(request: NextRequest) {
     }
 
     const searchParams = request.nextUrl.searchParams;
-    const filters = chargeFilterSchema.parse({
-      startDate: searchParams.get("startDate") || undefined,
-      endDate: searchParams.get("endDate") || undefined,
-      categoryId: searchParams.get("categoryId") || undefined,
-      supplier: searchParams.get("supplier") || undefined,
-    });
+    const startDate = searchParams.get("startDate");
+    const endDate = searchParams.get("endDate");
+    const categoryId = searchParams.get("categoryId");
+    const supplier = searchParams.get("supplier");
 
-    const where = {
-      userId: session.user.id,
-      ...(filters.startDate && { date: { gte: filters.startDate } }),
-      ...(filters.endDate && { date: { lte: filters.endDate } }),
-      ...(filters.categoryId && { categoryId: filters.categoryId }),
-      ...(filters.supplier && { supplier: { contains: filters.supplier } }),
-    };
+    let charges = getChargesByUser(session.user.id);
 
-    const charges = await prisma.charge.findMany({
-      where,
-      include: { category: true },
-      orderBy: { date: "desc" },
-    });
+    if (startDate) {
+      charges = charges.filter((c) => new Date(c.date) >= new Date(startDate));
+    }
+    if (endDate) {
+      charges = charges.filter((c) => new Date(c.date) <= new Date(endDate));
+    }
+    if (categoryId) {
+      charges = charges.filter((c) => c.categoryId === categoryId);
+    }
+    if (supplier) {
+      charges = charges.filter((c) => c.supplier?.toLowerCase().includes(supplier.toLowerCase()));
+    }
 
     return NextResponse.json(charges);
   } catch (error) {
     console.error("Error fetching charges:", error);
-    return NextResponse.json(
-      { error: "Erreur lors de la récupération des charges" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Erreur lors de la récupération des charges" }, { status: 500 });
   }
 }
 
-// POST - Créer une nouvelle charge
 export async function POST(request: NextRequest) {
   try {
     const session = await auth();
@@ -51,7 +45,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
     }
 
-    // Vérifier le rôle
     if (session.user.role === "TECH") {
       return NextResponse.json({ error: "Accès en lecture seule" }, { status: 403 });
     }
@@ -59,34 +52,21 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const validatedData = chargeSchema.parse(body);
 
-    const charge = await prisma.charge.create({
-      data: {
-        ...validatedData,
-        userId: session.user.id,
-      },
-      include: { category: true },
-    });
-
-    // Journal d'audit
-    await prisma.auditLog.create({
-      data: {
-        userId: session.user.id,
-        action: "CREATE",
-        entity: "charge",
-        entityId: charge.id,
-        details: JSON.stringify({ amount: charge.amount, categoryId: charge.categoryId }),
-      },
+    const charge = createCharge({
+      userId: session.user.id,
+      date: validatedData.date.toISOString(),
+      amount: validatedData.amount,
+      categoryId: validatedData.categoryId,
+      supplier: validatedData.supplier || null,
+      paymentMethod: validatedData.paymentMethod || null,
+      isRecurring: validatedData.isRecurring || false,
+      recurrence: validatedData.recurrence || null,
+      note: validatedData.note || null,
     });
 
     return NextResponse.json(charge, { status: 201 });
   } catch (error) {
     console.error("Error creating charge:", error);
-    if (error instanceof Error && error.name === "ZodError") {
-      return NextResponse.json({ error: "Données invalides" }, { status: 400 });
-    }
-    return NextResponse.json(
-      { error: "Erreur lors de la création de la charge" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Erreur lors de la création de la charge" }, { status: 500 });
   }
 }

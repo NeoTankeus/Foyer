@@ -1,23 +1,13 @@
 import { Suspense } from "react";
 import { auth } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
+import { getStockByUser, getStockCategories, getUserSettings } from "@/lib/db";
 import { StockClient } from "@/components/stock/stock-client";
 import { Loader2 } from "lucide-react";
 
-async function getStockData(userId: string) {
-  const [items, categories, settings] = await Promise.all([
-    prisma.stockItem.findMany({
-      where: { userId },
-      include: { category: true },
-      orderBy: { name: "asc" },
-    }),
-    prisma.stockCategory.findMany({
-      orderBy: { name: "asc" },
-    }),
-    prisma.userSettings.findUnique({
-      where: { userId },
-    }),
-  ]);
+function getStockData(userId: string) {
+  const items = getStockByUser(userId);
+  const categories = getStockCategories();
+  const settings = getUserSettings(userId);
 
   return { items, categories, settings };
 }
@@ -34,7 +24,7 @@ export default async function StockPage() {
   const session = await auth();
   if (!session?.user?.id) return null;
 
-  const data = await getStockData(session.user.id);
+  const data = getStockData(session.user.id);
 
   return (
     <div className="space-y-6">

@@ -1,23 +1,13 @@
 import { Suspense } from "react";
 import { auth } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
+import { getChargesByUser, getAllCategories, getUserSettings } from "@/lib/db";
 import { ChargesClient } from "@/components/charges/charges-client";
 import { Loader2 } from "lucide-react";
 
-async function getChargesData(userId: string) {
-  const [charges, categories, settings] = await Promise.all([
-    prisma.charge.findMany({
-      where: { userId },
-      include: { category: true },
-      orderBy: { date: "desc" },
-    }),
-    prisma.chargeCategory.findMany({
-      orderBy: { name: "asc" },
-    }),
-    prisma.userSettings.findUnique({
-      where: { userId },
-    }),
-  ]);
+function getChargesData(userId: string) {
+  const charges = getChargesByUser(userId);
+  const categories = getAllCategories();
+  const settings = getUserSettings(userId);
 
   return { charges, categories, settings };
 }
@@ -34,7 +24,7 @@ export default async function ChargesPage() {
   const session = await auth();
   if (!session?.user?.id) return null;
 
-  const data = await getChargesData(session.user.id);
+  const data = getChargesData(session.user.id);
 
   return (
     <div className="space-y-6">
