@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
@@ -10,9 +10,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { BarChart3, Lock } from "lucide-react";
+import { BarChart3, Lock, Loader2 } from "lucide-react";
 
-export default function LoginPage() {
+function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const callbackUrl = searchParams.get("callbackUrl") || "/";
@@ -39,7 +39,7 @@ export default function LoginPage() {
       });
 
       if (result?.error) {
-        setError("Email ou mot de passe incorrect");
+        setError("Identifiant ou mot de passe incorrect");
         return;
       }
 
@@ -52,6 +52,52 @@ export default function LoginPage() {
     }
   };
 
+  return (
+    <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+      {error && (
+        <div className="p-3 text-sm text-destructive bg-destructive/10 rounded-md flex items-center gap-2">
+          <Lock className="h-4 w-4" />
+          {error}
+        </div>
+      )}
+
+      <div className="space-y-2">
+        <Label htmlFor="email">Identifiant</Label>
+        <Input
+          id="email"
+          type="text"
+          placeholder="admin"
+          {...register("email")}
+          disabled={isLoading}
+        />
+        {errors.email && (
+          <p className="text-xs text-destructive">{errors.email.message}</p>
+        )}
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="password">Mot de passe</Label>
+        <Input
+          id="password"
+          type="password"
+          placeholder="admin123"
+          {...register("password")}
+          disabled={isLoading}
+        />
+        {errors.password && (
+          <p className="text-xs text-destructive">{errors.password.message}</p>
+        )}
+      </div>
+
+      <Button type="submit" className="w-full" disabled={isLoading}>
+        {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+        Se connecter
+      </Button>
+    </form>
+  );
+}
+
+export default function LoginPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100 px-4">
       <Card className="w-full max-w-md">
@@ -67,50 +113,13 @@ export default function LoginPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-            {error && (
-              <div className="p-3 text-sm text-destructive bg-destructive/10 rounded-md flex items-center gap-2">
-                <Lock className="h-4 w-4" />
-                {error}
-              </div>
-            )}
-
-            <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
-              <Input
-                id="email"
-                type="email"
-                placeholder="vous@entreprise.com"
-                {...register("email")}
-                disabled={isLoading}
-              />
-              {errors.email && (
-                <p className="text-xs text-destructive">{errors.email.message}</p>
-              )}
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="password">Mot de passe</Label>
-              <Input
-                id="password"
-                type="password"
-                placeholder="••••••••"
-                {...register("password")}
-                disabled={isLoading}
-              />
-              {errors.password && (
-                <p className="text-xs text-destructive">{errors.password.message}</p>
-              )}
-            </div>
-
-            <Button type="submit" className="w-full" loading={isLoading}>
-              Se connecter
-            </Button>
-          </form>
+          <Suspense fallback={<div className="flex justify-center py-4"><Loader2 className="h-6 w-6 animate-spin" /></div>}>
+            <LoginForm />
+          </Suspense>
 
           <div className="mt-6 text-center text-sm text-muted-foreground">
-            <p>Compte de démonstration :</p>
-            <p className="font-mono text-xs mt-1">admin@demo.com / admin123</p>
+            <p>Identifiants :</p>
+            <p className="font-mono text-xs mt-1">admin / admin123</p>
           </div>
         </CardContent>
       </Card>
