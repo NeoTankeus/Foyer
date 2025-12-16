@@ -5,8 +5,8 @@ import { z } from "zod";
 // ===========================================
 
 export const loginSchema = z.object({
-  email: z.string().email("Email invalide"),
-  password: z.string().min(6, "Mot de passe: 6 caractères minimum"),
+  email: z.string().min(1, "Identifiant requis"),
+  password: z.string().min(1, "Mot de passe requis"),
 });
 
 export const registerSchema = loginSchema.extend({
