@@ -1,0 +1,184 @@
+// Schéma Prisma pour Business Dashboard
+// Supporte SQLite (dev) et PostgreSQL (prod)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ===========================================
+// AUTHENTIFICATION & UTILISATEURS
+// ===========================================
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  password      String    // Hash bcrypt
+  name          String?
+  role          Role      @default(ADMIN)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Relations
+  charges       Charge[]
+  stockItems    StockItem[]
+  stockMovements StockMovement[]
+  settings      UserSettings?
+  auditLogs     AuditLog[]
+
+  @@map("users")
+}
+
+enum Role {
+  ADMIN     // Accès complet
+  TECH      // Lecture seule
+}
+
+model UserSettings {
+  id            String   @id @default(cuid())
+  userId        String   @unique
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  currency      String   @default("EUR")
+  locale        String   @default("fr-FR")
+  monthlyBudget Float?   // Budget mensuel optionnel
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@map("user_settings")
+}
+
+// ===========================================
+// MODULE CHARGES
+// ===========================================
+
+model Charge {
+  id            String    @id @default(cuid())
+  userId        String
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  date          DateTime
+  amount        Float
+  categoryId    String
+  category      ChargeCategory @relation(fields: [categoryId], references: [id])
+  supplier      String?   // Fournisseur
+  paymentMethod String?   // Mode de paiement
+  isRecurring   Boolean   @default(false)
+  recurrence    String?   // monthly, quarterly, yearly
+  note          String?
+  attachmentUrl String?   // URL ou chemin du fichier
+
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([userId, date])
+  @@index([categoryId])
+  @@map("charges")
+}
+
+model ChargeCategory {
+  id        String   @id @default(cuid())
+  name      String
+  color     String   @default("#6366f1") // Couleur pour les graphiques
+  icon      String?  // Nom d'icône Lucide
+  isDefault Boolean  @default(false) // Catégories système
+
+  charges   Charge[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([name])
+  @@map("charge_categories")
+}
+
+// ===========================================
+// MODULE STOCK
+// ===========================================
+
+model StockItem {
+  id            String    @id @default(cuid())
+  userId        String
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  name          String
+  sku           String?   // Référence/SKU
+  categoryId    String?
+  category      StockCategory? @relation(fields: [categoryId], references: [id])
+  quantity      Int       @default(0) // Calculé via mouvements
+  alertThreshold Int?     // Seuil d'alerte
+  purchasePrice Float?    // Prix d'achat unitaire
+  location      String?   // Emplacement
+  note          String?
+
+  movements     StockMovement[]
+
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([userId])
+  @@index([categoryId])
+  @@map("stock_items")
+}
+
+model StockCategory {
+  id        String      @id @default(cuid())
+  name      String      @unique
+
+  items     StockItem[]
+
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  @@map("stock_categories")
+}
+
+model StockMovement {
+  id          String    @id @default(cuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  itemId      String
+  item        StockItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  type        MovementType
+  quantity    Int
+  date        DateTime  @default(now())
+  comment     String?
+
+  createdAt   DateTime  @default(now())
+
+  @@index([itemId, date])
+  @@map("stock_movements")
+}
+
+enum MovementType {
+  IN    // Entrée de stock
+  OUT   // Sortie de stock
+}
+
+// ===========================================
+// JOURNAL D'AUDIT
+// ===========================================
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  action      String   // CREATE, UPDATE, DELETE
+  entity      String   // charge, stock_item, stock_movement
+  entityId    String
+  details     String?  // JSON avec les détails de la modification
+
+  createdAt   DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([entity, entityId])
+  @@map("audit_logs")
+}
