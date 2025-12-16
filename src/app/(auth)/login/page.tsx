@@ -66,7 +66,7 @@ function LoginForm() {
         <Input
           id="email"
           type="text"
-          placeholder="admin"
+          placeholder="Votre identifiant"
           {...register("email")}
           disabled={isLoading}
         />
@@ -80,7 +80,7 @@ function LoginForm() {
         <Input
           id="password"
           type="password"
-          placeholder="admin123"
+          placeholder="••••••••"
           {...register("password")}
           disabled={isLoading}
         />
@@ -117,10 +117,6 @@ export default function LoginPage() {
             <LoginForm />
           </Suspense>
 
-          <div className="mt-6 text-center text-sm text-muted-foreground">
-            <p>Identifiants :</p>
-            <p className="font-mono text-xs mt-1">admin / admin123</p>
-          </div>
         </CardContent>
       </Card>
     </div>
