@@ -1,0 +1,66 @@
+{
+  "users": [
+    {
+      "id": "admin001",
+      "email": "admin",
+      "password": "$2a$12$k6azS/iWeMzPjtt5bz4Pkej6GvRqqrbIm5FXgEAVhd2hm4QmXRI4m",
+      "name": "Administrateur",
+      "role": "ADMIN",
+      "createdAt": "2025-12-16T20:23:59.683Z"
+    }
+  ],
+  "categories": [
+    {
+      "id": "cat1",
+      "name": "Loyer",
+      "color": "#ef4444"
+    },
+    {
+      "id": "cat2",
+      "name": "Électricité",
+      "color": "#f59e0b"
+    },
+    {
+      "id": "cat3",
+      "name": "Internet",
+      "color": "#06b6d4"
+    },
+    {
+      "id": "cat4",
+      "name": "Salaires",
+      "color": "#8b5cf6"
+    },
+    {
+      "id": "cat5",
+      "name": "Fournitures",
+      "color": "#10b981"
+    }
+  ],
+  "charges": [],
+  "stockItems": [],
+  "stockMovements": [],
+  "stockCategories": [
+    {
+      "id": "scat1",
+      "name": "Électronique",
+      "color": "#3b82f6"
+    },
+    {
+      "id": "scat2",
+      "name": "Mobilier",
+      "color": "#a855f7"
+    },
+    {
+      "id": "scat3",
+      "name": "Consommables",
+      "color": "#22c55e"
+    }
+  ],
+  "settings": [
+    {
+      "userId": "admin001",
+      "currency": "EUR",
+      "monthlyBudget": null
+    }
+  ]
+}
