@@ -1,35 +1,38 @@
-import { auth } from "@/lib/auth";
 import { NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
 
-export default auth((req) => {
-  const { nextUrl } = req;
-  const isLoggedIn = !!req.auth;
+export function middleware(request: NextRequest) {
+  const { pathname } = request.nextUrl;
 
-  const isAuthPage = nextUrl.pathname.startsWith("/login");
-  const isApiRoute = nextUrl.pathname.startsWith("/api");
-  const isPublicRoute = nextUrl.pathname === "/favicon.ico" ||
-                        nextUrl.pathname.startsWith("/_next") ||
-                        nextUrl.pathname.startsWith("/manifest");
+  // Get the session token from cookies
+  const sessionToken = request.cookies.get("authjs.session-token")?.value ||
+                       request.cookies.get("__Secure-authjs.session-token")?.value;
 
-  // Allow API routes and public assets
-  if (isApiRoute || isPublicRoute) {
+  const isLoggedIn = !!sessionToken;
+  const isAuthPage = pathname === "/login";
+  const isApiRoute = pathname.startsWith("/api");
+
+  // Allow API routes
+  if (isApiRoute) {
     return NextResponse.next();
   }
 
   // Redirect logged-in users away from login page
   if (isAuthPage && isLoggedIn) {
-    return NextResponse.redirect(new URL("/", nextUrl));
+    return NextResponse.redirect(new URL("/", request.url));
   }
 
   // Redirect non-logged-in users to login page
   if (!isAuthPage && !isLoggedIn) {
-    const callbackUrl = encodeURIComponent(nextUrl.pathname);
-    return NextResponse.redirect(new URL(`/login?callbackUrl=${callbackUrl}`, nextUrl));
+    const callbackUrl = encodeURIComponent(pathname);
+    return NextResponse.redirect(new URL(`/login?callbackUrl=${callbackUrl}`, request.url));
   }
 
   return NextResponse.next();
-});
+}
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|manifest.json|icons/).*)"],
+  matcher: [
+    "/((?!_next/static|_next/image|favicon.ico|manifest.json|icons|.*\\.png$|.*\\.ico$).*)",
+  ],
 };
