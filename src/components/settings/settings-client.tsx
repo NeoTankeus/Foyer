@@ -256,11 +256,8 @@ export function SettingsClient({ settings, categories, isReadOnly }: SettingsCli
                       style={{ backgroundColor: category.color }}
                     />
                     <span className="font-medium">{category.name}</span>
-                    {category.isDefault && (
-                      <span className="text-xs text-muted-foreground">(Système)</span>
-                    )}
                   </div>
-                  {!isReadOnly && !category.isDefault && (
+                  {!isReadOnly && (
                     <Button
                       variant="ghost"
                       size="icon"

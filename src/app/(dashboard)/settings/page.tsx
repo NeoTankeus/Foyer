@@ -23,7 +23,7 @@ export default async function SettingsPage() {
       </div>
 
       <SettingsClient
-        settings={data.settings}
+        settings={data.settings ?? null}
         categories={data.categories}
         isReadOnly={session.user.role === "TECH"}
       />

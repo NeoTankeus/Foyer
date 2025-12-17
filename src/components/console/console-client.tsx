@@ -38,7 +38,7 @@ interface User {
   email: string;
   name: string | null;
   role: string;
-  createdAt: Date;
+  createdAt: string;
 }
 
 interface ConsoleClientProps {

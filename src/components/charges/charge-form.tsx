@@ -46,9 +46,9 @@ export function ChargeForm({ charge, categories, onSaved, onCancel }: ChargeForm
       supplier: charge?.supplier || "",
       paymentMethod: charge?.paymentMethod || "",
       isRecurring: charge?.isRecurring || false,
-      recurrence: charge?.recurrence || undefined,
+      recurrence: (charge?.recurrence as "monthly" | "quarterly" | "yearly" | null) || undefined,
       note: charge?.note || "",
-      attachmentUrl: charge?.attachmentUrl || "",
+      attachmentUrl: "",
     },
   });
 

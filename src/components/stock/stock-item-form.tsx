@@ -44,7 +44,7 @@ export function StockItemForm({ item, categories, onSaved, onCancel }: StockItem
       alertThreshold: item?.alertThreshold || undefined,
       purchasePrice: item?.purchasePrice || undefined,
       location: item?.location || "",
-      note: item?.note || "",
+      note: "",
     },
   });
 

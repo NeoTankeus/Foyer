@@ -1,16 +1,21 @@
-import { Charge, ChargeCategory, StockItem, StockCategory, StockMovement, User, UserSettings, AuditLog } from "@prisma/client";
+import type { Category, Charge, StockItem, StockMovement, User, Settings } from "@/lib/db";
 
-// Extensions des types Prisma avec relations
+// Alias pour compatibilité
+export type ChargeCategory = Category;
+export type StockCategory = Category;
+export type UserSettings = Settings;
+
+// Extensions des types avec relations
 export type ChargeWithCategory = Charge & {
-  category: ChargeCategory;
+  category: Category;
 };
 
 export type StockItemWithCategory = StockItem & {
-  category: StockCategory | null;
+  category: Category | null;
 };
 
 export type StockItemWithMovements = StockItem & {
-  category: StockCategory | null;
+  category: Category | null;
   movements: StockMovement[];
 };
 
@@ -18,8 +23,8 @@ export type StockMovementWithItem = StockMovement & {
   item: StockItem;
 };
 
-export type UserWithSettings = User & {
-  settings: UserSettings | null;
+export type UserWithSettings = Omit<User, "password"> & {
+  settings: Settings | null;
 };
 
 // Types pour les statistiques du dashboard
@@ -61,7 +66,7 @@ export interface DailyChartData {
 
 // Types pour les alertes stock
 export interface StockAlert {
-  item: StockItem;
+  item: StockItemWithCategory;
   currentQuantity: number;
   threshold: number;
 }
@@ -106,5 +111,5 @@ export const CURRENCIES = [
   { value: "CHF", label: "Franc suisse", symbol: "CHF" },
 ] as const;
 
-// Re-export des types Prisma pour faciliter les imports
-export type { Charge, ChargeCategory, StockItem, StockCategory, StockMovement, User, UserSettings, AuditLog };
+// Re-export des types pour faciliter les imports
+export type { Charge, Category, StockItem, StockMovement, User, Settings };

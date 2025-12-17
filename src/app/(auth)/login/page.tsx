@@ -117,6 +117,10 @@ export default function LoginPage() {
             <LoginForm />
           </Suspense>
 
+          <div className="mt-6 text-center text-sm text-muted-foreground">
+            <p>Compte de démonstration :</p>
+            <p className="font-mono text-xs mt-1">admin / admin123</p>
+          </div>
         </CardContent>
       </Card>
     </div>
