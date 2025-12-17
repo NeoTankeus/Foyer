@@ -3,6 +3,8 @@ import { auth } from "@/lib/auth";
 import { getAllCategories, createCategory } from "@/lib/db";
 import { chargeCategorySchema } from "@/lib/validations";
 
+export const runtime = "nodejs";
+
 export async function GET() {
   try {
     const session = await auth();

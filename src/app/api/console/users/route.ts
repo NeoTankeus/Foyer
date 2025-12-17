@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { getAllUsers, createUser, findUserByEmail } from "@/lib/db";
 
+export const runtime = "nodejs";
+
 export async function GET() {
   try {
     const session = await auth();
@@ -26,8 +28,8 @@ export async function POST(request: NextRequest) {
 
     const { email, name, password, role } = await request.json();
 
-    if (!email || !password || password.length < 6) {
-      return NextResponse.json({ error: "Email et mot de passe (6+ caractères) requis" }, { status: 400 });
+    if (!email || !password) {
+      return NextResponse.json({ error: "Identifiant et mot de passe requis" }, { status: 400 });
     }
 
     const existing = findUserByEmail(email);

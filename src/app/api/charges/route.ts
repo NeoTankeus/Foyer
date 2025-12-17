@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
-import { getChargesByUser, createCharge } from "@/lib/db";
+import { getChargesByUser, createCharge, getAllCategories } from "@/lib/db";
 import { chargeSchema } from "@/lib/validations";
+
+export const runtime = "nodejs";
 
 export async function GET(request: NextRequest) {
   try {
@@ -64,7 +66,11 @@ export async function POST(request: NextRequest) {
       note: validatedData.note || null,
     });
 
-    return NextResponse.json(charge, { status: 201 });
+    // Get category for response
+    const categories = getAllCategories();
+    const category = categories.find(c => c.id === charge.categoryId);
+
+    return NextResponse.json({ ...charge, category }, { status: 201 });
   } catch (error) {
     console.error("Error creating charge:", error);
     return NextResponse.json({ error: "Erreur lors de la création de la charge" }, { status: 500 });

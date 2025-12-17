@@ -3,6 +3,8 @@ import { auth } from "@/lib/auth";
 import { getUserSettings, updateUserSettings } from "@/lib/db";
 import { userSettingsSchema } from "@/lib/validations";
 
+export const runtime = "nodejs";
+
 export async function GET() {
   try {
     const session = await auth();

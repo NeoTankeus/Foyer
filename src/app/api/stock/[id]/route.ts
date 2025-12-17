@@ -3,6 +3,8 @@ import { auth } from "@/lib/auth";
 import { getStockByUser, updateStockItem, deleteStockItem } from "@/lib/db";
 import { stockItemSchema } from "@/lib/validations";
 
+export const runtime = "nodejs";
+
 export async function GET(
   request: NextRequest,
   { params }: { params: { id: string } }

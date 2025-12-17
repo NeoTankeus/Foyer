@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
-import { getChargesByUser, updateCharge, deleteCharge } from "@/lib/db";
+import { getChargesByUser, updateCharge, deleteCharge, getAllCategories } from "@/lib/db";
 import { chargeSchema } from "@/lib/validations";
+
+export const runtime = "nodejs";
 
 export async function GET(
   request: NextRequest,
@@ -62,7 +64,11 @@ export async function PUT(
       note: validatedData.note || null,
     });
 
-    return NextResponse.json(charge);
+    // Get category for response
+    const categories = getAllCategories();
+    const category = categories.find(c => c.id === charge?.categoryId);
+
+    return NextResponse.json({ ...charge, category });
   } catch (error) {
     console.error("Error updating charge:", error);
     return NextResponse.json({ error: "Erreur lors de la modification de la charge" }, { status: 500 });

@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { findUserById, updateUserPassword } from "@/lib/db";
 
+export const runtime = "nodejs";
+
 export async function POST(request: NextRequest) {
   try {
     const session = await auth();
@@ -12,8 +14,8 @@ export async function POST(request: NextRequest) {
 
     const { userId, newPassword } = await request.json();
 
-    if (!userId || !newPassword || newPassword.length < 6) {
-      return NextResponse.json({ error: "ID utilisateur et mot de passe (6+ caractères) requis" }, { status: 400 });
+    if (!userId || !newPassword) {
+      return NextResponse.json({ error: "ID utilisateur et mot de passe requis" }, { status: 400 });
     }
 
     const user = findUserById(userId);

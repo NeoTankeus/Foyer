@@ -3,6 +3,8 @@ import { auth } from "@/lib/auth";
 import { getStockByUser, addStockMovement } from "@/lib/db";
 import { stockMovementSchema } from "@/lib/validations";
 
+export const runtime = "nodejs";
+
 export async function POST(request: NextRequest) {
   try {
     const session = await auth();
