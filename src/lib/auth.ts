@@ -1,7 +1,6 @@
 import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import { findUserByEmail, verifyPassword } from "./db";
-import { loginSchema } from "./validations";
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   providers: [
@@ -12,12 +11,14 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         password: { label: "Mot de passe", type: "password" },
       },
       async authorize(credentials) {
-        const parsed = loginSchema.safeParse(credentials);
-        if (!parsed.success) return null;
+        if (!credentials?.email || !credentials?.password) {
+          return null;
+        }
 
-        const { email, password } = parsed.data;
+        const email = credentials.email as string;
+        const password = credentials.password as string;
+
         const user = findUserByEmail(email);
-
         if (!user) return null;
         if (!verifyPassword(user, password)) return null;
 
@@ -32,7 +33,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   ],
   callbacks: {
     async jwt({ token, user }) {
-      if (user && user.id) {
+      if (user) {
         token.id = user.id;
         token.role = (user as { role: string }).role;
       }
@@ -54,6 +55,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     maxAge: 30 * 24 * 60 * 60,
   },
   trustHost: true,
+  debug: false,
 });
 
 export async function getServerSession() {
