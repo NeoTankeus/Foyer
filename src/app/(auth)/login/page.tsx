@@ -116,11 +116,6 @@ export default function LoginPage() {
           <Suspense fallback={<div className="flex justify-center py-4"><Loader2 className="h-6 w-6 animate-spin" /></div>}>
             <LoginForm />
           </Suspense>
-
-          <div className="mt-6 text-center text-sm text-muted-foreground">
-            <p>Compte de démonstration :</p>
-            <p className="font-mono text-xs mt-1">admin / admin123</p>
-          </div>
         </CardContent>
       </Card>
     </div>
