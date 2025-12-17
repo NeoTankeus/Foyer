@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import {
   BarChart3,
@@ -13,7 +13,6 @@ import {
   X,
   Terminal,
 } from "lucide-react";
-import { signOut, useSession } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import { useState } from "react";
 
@@ -28,14 +27,24 @@ const adminNavigation = [
   { name: "Console Admin", href: "/console", icon: Terminal },
 ];
 
-export function Sidebar() {
-  const pathname = usePathname();
-  const [mobileOpen, setMobileOpen] = useState(false);
-  const { data: session } = useSession();
-  const isAdmin = session?.user?.role === "ADMIN";
+interface SidebarProps {
+  userRole?: string;
+}
 
-  const handleSignOut = () => {
-    signOut({ callbackUrl: "/login" });
+export function Sidebar({ userRole }: SidebarProps) {
+  const pathname = usePathname();
+  const router = useRouter();
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const isAdmin = userRole === "ADMIN";
+
+  const handleSignOut = async () => {
+    try {
+      await fetch("/api/auth/logout", { method: "POST" });
+      router.push("/login");
+      router.refresh();
+    } catch (error) {
+      console.error("Logout error:", error);
+    }
   };
 
   return (
