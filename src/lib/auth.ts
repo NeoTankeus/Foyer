@@ -1,15 +1,23 @@
 import { cookies } from "next/headers";
 import { findUserByEmail, verifyPassword, findUserById } from "./db";
 
-const SESSION_COOKIE = "session_token";
+const SESSION_COOKIE = "app_session";
 const SESSION_MAX_AGE = 30 * 24 * 60 * 60; // 30 days
 
-function generateSessionToken(): string {
-  return Math.random().toString(36).substring(2) + Date.now().toString(36) + Math.random().toString(36).substring(2);
+// Simple encoding for session data (userId)
+function encodeSession(userId: string): string {
+  const data = JSON.stringify({ userId, exp: Date.now() + SESSION_MAX_AGE * 1000 });
+  return Buffer.from(data).toString("base64");
 }
 
-// In-memory session store (simple for demo)
-const sessions = new Map<string, { userId: string; expiresAt: number }>();
+function decodeSession(token: string): { userId: string; exp: number } | null {
+  try {
+    const data = Buffer.from(token, "base64").toString("utf-8");
+    return JSON.parse(data);
+  } catch {
+    return null;
+  }
+}
 
 export async function signIn(email: string, password: string): Promise<{ success: boolean; error?: string }> {
   const user = findUserByEmail(email);
@@ -22,15 +30,12 @@ export async function signIn(email: string, password: string): Promise<{ success
     return { success: false, error: "Identifiant ou mot de passe incorrect" };
   }
 
-  const token = generateSessionToken();
-  const expiresAt = Date.now() + SESSION_MAX_AGE * 1000;
-
-  sessions.set(token, { userId: user.id, expiresAt });
+  const token = encodeSession(user.id);
 
   const cookieStore = await cookies();
   cookieStore.set(SESSION_COOKIE, token, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
+    secure: false, // Allow HTTP for development
     sameSite: "lax",
     maxAge: SESSION_MAX_AGE,
     path: "/",
@@ -41,12 +46,6 @@ export async function signIn(email: string, password: string): Promise<{ success
 
 export async function signOut(): Promise<void> {
   const cookieStore = await cookies();
-  const token = cookieStore.get(SESSION_COOKIE)?.value;
-
-  if (token) {
-    sessions.delete(token);
-  }
-
   cookieStore.delete(SESSION_COOKIE);
 }
 
@@ -58,21 +57,19 @@ export async function getSession(): Promise<{ user: { id: string; email: string;
     return null;
   }
 
-  const session = sessions.get(token);
+  const session = decodeSession(token);
 
   if (!session) {
     return null;
   }
 
-  if (session.expiresAt < Date.now()) {
-    sessions.delete(token);
+  if (session.exp < Date.now()) {
     return null;
   }
 
   const user = findUserById(session.userId);
 
   if (!user) {
-    sessions.delete(token);
     return null;
   }
 
