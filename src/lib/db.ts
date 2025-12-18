@@ -1,8 +1,11 @@
-import { readFileSync, writeFileSync, existsSync } from "fs";
-import { join } from "path";
 import { hashSync, compareSync } from "bcryptjs";
 
-const DB_PATH = join(process.cwd(), "data.json");
+// ========================================
+// DATABASE EN MÉMOIRE POUR VERCEL
+// ========================================
+// Vercel a un système de fichiers en LECTURE SEULE
+// On utilise une variable globale pour persister les données
+// entre les requêtes (mais reset au cold start)
 
 export interface User {
   id: string;
@@ -70,27 +73,34 @@ interface Database {
   settings: Settings[];
 }
 
+// Global pour persister entre les requêtes sur Vercel
+declare global {
+  // eslint-disable-next-line no-var
+  var __db: Database | undefined;
+}
+
 function generateId(): string {
   return Math.random().toString(36).substring(2, 15) + Date.now().toString(36);
 }
 
-function getDefaultData(): Database {
-  const adminId = generateId();
+function createDefaultData(): Database {
+  const adminId = "admin001";
+
   const categories: Category[] = [
-    { id: generateId(), name: "Loyer", color: "#ef4444" },
-    { id: generateId(), name: "Électricité", color: "#f59e0b" },
-    { id: generateId(), name: "Internet", color: "#06b6d4" },
-    { id: generateId(), name: "Salaires", color: "#8b5cf6" },
-    { id: generateId(), name: "Fournitures", color: "#10b981" },
-    { id: generateId(), name: "Transport", color: "#ec4899" },
-    { id: generateId(), name: "Marketing", color: "#6366f1" },
-    { id: generateId(), name: "Divers", color: "#64748b" },
+    { id: "cat001", name: "Loyer", color: "#ef4444" },
+    { id: "cat002", name: "Électricité", color: "#f59e0b" },
+    { id: "cat003", name: "Internet", color: "#06b6d4" },
+    { id: "cat004", name: "Salaires", color: "#8b5cf6" },
+    { id: "cat005", name: "Fournitures", color: "#10b981" },
+    { id: "cat006", name: "Transport", color: "#ec4899" },
+    { id: "cat007", name: "Marketing", color: "#6366f1" },
+    { id: "cat008", name: "Divers", color: "#64748b" },
   ];
 
   const stockCategories: Category[] = [
-    { id: generateId(), name: "Électronique", color: "#3b82f6" },
-    { id: generateId(), name: "Mobilier", color: "#a855f7" },
-    { id: generateId(), name: "Consommables", color: "#22c55e" },
+    { id: "scat001", name: "Électronique", color: "#3b82f6" },
+    { id: "scat002", name: "Mobilier", color: "#a855f7" },
+    { id: "scat003", name: "Consommables", color: "#22c55e" },
   ];
 
   // Créer des charges de démo pour les 6 derniers mois
@@ -99,9 +109,10 @@ function getDefaultData(): Database {
 
   for (let month = 0; month < 6; month++) {
     const monthDate = new Date(now.getFullYear(), now.getMonth() - month, 1);
+    const monthPrefix = `ch${month}`;
 
     charges.push({
-      id: generateId(),
+      id: `${monthPrefix}001`,
       userId: adminId,
       date: new Date(monthDate.getFullYear(), monthDate.getMonth(), 5).toISOString(),
       amount: 2500,
@@ -114,10 +125,10 @@ function getDefaultData(): Database {
     });
 
     charges.push({
-      id: generateId(),
+      id: `${monthPrefix}002`,
       userId: adminId,
       date: new Date(monthDate.getFullYear(), monthDate.getMonth(), 15).toISOString(),
-      amount: 180 + Math.random() * 50,
+      amount: Math.round((180 + Math.random() * 50) * 100) / 100,
       categoryId: categories[1].id,
       supplier: "EDF",
       paymentMethod: "direct_debit",
@@ -127,10 +138,10 @@ function getDefaultData(): Database {
     });
 
     charges.push({
-      id: generateId(),
+      id: `${monthPrefix}003`,
       userId: adminId,
       date: new Date(monthDate.getFullYear(), monthDate.getMonth(), 10).toISOString(),
-      amount: 8500 + Math.random() * 1500,
+      amount: Math.round((8500 + Math.random() * 1500) * 100) / 100,
       categoryId: categories[3].id,
       supplier: null,
       paymentMethod: "transfer",
@@ -138,32 +149,16 @@ function getDefaultData(): Database {
       recurrence: "monthly",
       note: "Salaires équipe",
     });
-
-    // Charges aléatoires
-    for (let i = 0; i < 3; i++) {
-      charges.push({
-        id: generateId(),
-        userId: adminId,
-        date: new Date(monthDate.getFullYear(), monthDate.getMonth(), Math.floor(Math.random() * 28) + 1).toISOString(),
-        amount: Math.round((50 + Math.random() * 400) * 100) / 100,
-        categoryId: categories[Math.floor(Math.random() * categories.length)].id,
-        supplier: ["Amazon", "Bureau Vallée", "SNCF"][Math.floor(Math.random() * 3)],
-        paymentMethod: "card",
-        isRecurring: false,
-        recurrence: null,
-        note: null,
-      });
-    }
   }
 
   // Stock items
   const stockItems: StockItem[] = [
-    { id: generateId(), userId: adminId, name: "MacBook Pro 14\"", sku: "APPLE-MBP14", categoryId: stockCategories[0].id, quantity: 5, alertThreshold: 2, purchasePrice: 2499, location: "Bureau A" },
-    { id: generateId(), userId: adminId, name: "Écran Dell 27\"", sku: "DELL-MON27", categoryId: stockCategories[0].id, quantity: 8, alertThreshold: 3, purchasePrice: 399, location: "Bureau A" },
-    { id: generateId(), userId: adminId, name: "Souris Magic Mouse", sku: "APPLE-MS", categoryId: stockCategories[0].id, quantity: 2, alertThreshold: 5, purchasePrice: 99, location: "Stock" },
-    { id: generateId(), userId: adminId, name: "Bureau réglable", sku: "DESK-001", categoryId: stockCategories[1].id, quantity: 4, alertThreshold: 2, purchasePrice: 549, location: "Entrepôt" },
-    { id: generateId(), userId: adminId, name: "Ramettes papier A4", sku: "PAPER-A4", categoryId: stockCategories[2].id, quantity: 25, alertThreshold: 10, purchasePrice: 4.99, location: "Salle copies" },
-    { id: generateId(), userId: adminId, name: "Cartouches encre", sku: "INK-HP", categoryId: stockCategories[2].id, quantity: 3, alertThreshold: 5, purchasePrice: 35, location: "Salle copies" },
+    { id: "stock001", userId: adminId, name: "MacBook Pro 14\"", sku: "APPLE-MBP14", categoryId: stockCategories[0].id, quantity: 5, alertThreshold: 2, purchasePrice: 2499, location: "Bureau A" },
+    { id: "stock002", userId: adminId, name: "Écran Dell 27\"", sku: "DELL-MON27", categoryId: stockCategories[0].id, quantity: 8, alertThreshold: 3, purchasePrice: 399, location: "Bureau A" },
+    { id: "stock003", userId: adminId, name: "Souris Magic Mouse", sku: "APPLE-MS", categoryId: stockCategories[0].id, quantity: 2, alertThreshold: 5, purchasePrice: 99, location: "Stock" },
+    { id: "stock004", userId: adminId, name: "Bureau réglable", sku: "DESK-001", categoryId: stockCategories[1].id, quantity: 4, alertThreshold: 2, purchasePrice: 549, location: "Entrepôt" },
+    { id: "stock005", userId: adminId, name: "Ramettes papier A4", sku: "PAPER-A4", categoryId: stockCategories[2].id, quantity: 25, alertThreshold: 10, purchasePrice: 4.99, location: "Salle copies" },
+    { id: "stock006", userId: adminId, name: "Cartouches encre", sku: "INK-HP", categoryId: stockCategories[2].id, quantity: 3, alertThreshold: 5, purchasePrice: 35, location: "Salle copies" },
   ];
 
   return {
@@ -171,7 +166,7 @@ function getDefaultData(): Database {
       {
         id: adminId,
         email: "admin",
-        password: hashSync("admin123", 12),
+        password: hashSync("admin123", 10),  // Mot de passe: admin123
         name: "Administrateur",
         role: "ADMIN",
         createdAt: new Date().toISOString(),
@@ -188,43 +183,36 @@ function getDefaultData(): Database {
   };
 }
 
-function loadDb(): Database {
-  if (!existsSync(DB_PATH)) {
-    const data = getDefaultData();
-    saveDb(data);
-    return data;
+// Obtenir la base de données (crée si n'existe pas)
+function getDb(): Database {
+  if (!global.__db) {
+    console.log("[DB] Initialisation de la base de données en mémoire");
+    global.__db = createDefaultData();
   }
-  try {
-    return JSON.parse(readFileSync(DB_PATH, "utf-8"));
-  } catch {
-    const data = getDefaultData();
-    saveDb(data);
-    return data;
-  }
+  return global.__db;
 }
 
-function saveDb(data: Database) {
-  writeFileSync(DB_PATH, JSON.stringify(data, null, 2));
-}
+// ========================================
+// USER OPERATIONS
+// ========================================
 
-// User operations
 export function findUserByEmail(email: string): User | undefined {
-  const db = loadDb();
+  const db = getDb();
   return db.users.find((u) => u.email === email);
 }
 
 export function findUserById(id: string): User | undefined {
-  const db = loadDb();
+  const db = getDb();
   return db.users.find((u) => u.id === id);
 }
 
 export function getAllUsers(): Omit<User, "password">[] {
-  const db = loadDb();
+  const db = getDb();
   return db.users.map(({ password, ...user }) => user);
 }
 
 export function createUser(email: string, password: string, name: string | null, role: "ADMIN" | "TECH"): User {
-  const db = loadDb();
+  const db = getDb();
   const user: User = {
     id: generateId(),
     email,
@@ -235,124 +223,160 @@ export function createUser(email: string, password: string, name: string | null,
   };
   db.users.push(user);
   db.settings.push({ userId: user.id, currency: "EUR", monthlyBudget: null });
-  saveDb(db);
   return user;
 }
 
 export function updateUserPassword(userId: string, newPassword: string) {
-  const db = loadDb();
+  const db = getDb();
   const user = db.users.find((u) => u.id === userId);
   if (user) {
     user.password = hashSync(newPassword, 12);
-    saveDb(db);
   }
 }
 
 export function deleteUser(userId: string) {
-  const db = loadDb();
+  const db = getDb();
   db.users = db.users.filter((u) => u.id !== userId);
   db.charges = db.charges.filter((c) => c.userId !== userId);
   db.stockItems = db.stockItems.filter((i) => i.userId !== userId);
   db.settings = db.settings.filter((s) => s.userId !== userId);
-  saveDb(db);
 }
 
 export function verifyPassword(user: User, password: string): boolean {
   return compareSync(password, user.password);
 }
 
-// Categories
+// ========================================
+// CATEGORIES
+// ========================================
+
 export function getAllCategories(): Category[] {
-  return loadDb().categories;
+  return getDb().categories;
 }
 
 export function createCategory(name: string, color: string): Category {
-  const db = loadDb();
+  const db = getDb();
   const category: Category = { id: generateId(), name, color };
   db.categories.push(category);
-  saveDb(db);
   return category;
 }
 
-export function deleteCategory(id: string) {
-  const db = loadDb();
-  db.categories = db.categories.filter((c) => c.id !== id);
-  saveDb(db);
+export function updateCategory(id: string, data: Partial<Category>): Category | null {
+  const db = getDb();
+  const idx = db.categories.findIndex((c) => c.id === id);
+  if (idx !== -1) {
+    db.categories[idx] = { ...db.categories[idx], ...data };
+    return db.categories[idx];
+  }
+  return null;
 }
 
-// Charges
+export function deleteCategory(id: string) {
+  const db = getDb();
+  db.categories = db.categories.filter((c) => c.id !== id);
+}
+
+// ========================================
+// CHARGES
+// ========================================
+
 export function getChargesByUser(userId: string): (Charge & { category: Category })[] {
-  const db = loadDb();
+  const db = getDb();
   return db.charges
     .filter((c) => c.userId === userId)
-    .map((c) => ({ ...c, category: db.categories.find((cat) => cat.id === c.categoryId)! }))
+    .map((c) => ({
+      ...c,
+      category: db.categories.find((cat) => cat.id === c.categoryId) || { id: "", name: "Inconnu", color: "#999" }
+    }))
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 }
 
+export function getChargeById(id: string): Charge | undefined {
+  const db = getDb();
+  return db.charges.find((c) => c.id === id);
+}
+
 export function createCharge(data: Omit<Charge, "id">): Charge {
-  const db = loadDb();
+  const db = getDb();
   const charge: Charge = { id: generateId(), ...data };
   db.charges.push(charge);
-  saveDb(db);
+  console.log(`[DB] Charge créée: ${charge.id}`);
   return charge;
 }
 
-export function updateCharge(id: string, data: Partial<Charge>) {
-  const db = loadDb();
+export function updateCharge(id: string, data: Partial<Charge>): Charge | null {
+  const db = getDb();
   const idx = db.charges.findIndex((c) => c.id === id);
   if (idx !== -1) {
     db.charges[idx] = { ...db.charges[idx], ...data };
-    saveDb(db);
+    console.log(`[DB] Charge mise à jour: ${id}`);
     return db.charges[idx];
   }
   return null;
 }
 
-export function deleteCharge(id: string) {
-  const db = loadDb();
+export function deleteCharge(id: string): boolean {
+  const db = getDb();
+  const initialLength = db.charges.length;
   db.charges = db.charges.filter((c) => c.id !== id);
-  saveDb(db);
+  const deleted = db.charges.length < initialLength;
+  console.log(`[DB] Charge supprimée: ${id}, succès: ${deleted}`);
+  return deleted;
 }
 
-// Stock
+// ========================================
+// STOCK
+// ========================================
+
 export function getStockByUser(userId: string): (StockItem & { category: Category | null })[] {
-  const db = loadDb();
+  const db = getDb();
   return db.stockItems
     .filter((i) => i.userId === userId)
-    .map((i) => ({ ...i, category: db.stockCategories.find((c) => c.id === i.categoryId) || null }));
+    .map((i) => ({
+      ...i,
+      category: db.stockCategories.find((c) => c.id === i.categoryId) || null
+    }));
 }
 
 export function getStockCategories(): Category[] {
-  return loadDb().stockCategories;
+  return getDb().stockCategories;
+}
+
+export function getStockItemById(id: string): StockItem | undefined {
+  const db = getDb();
+  return db.stockItems.find((i) => i.id === id);
 }
 
 export function createStockItem(data: Omit<StockItem, "id">): StockItem {
-  const db = loadDb();
+  const db = getDb();
   const item: StockItem = { id: generateId(), ...data };
   db.stockItems.push(item);
-  saveDb(db);
+  console.log(`[DB] Stock item créé: ${item.id}`);
   return item;
 }
 
-export function updateStockItem(id: string, data: Partial<StockItem>) {
-  const db = loadDb();
+export function updateStockItem(id: string, data: Partial<StockItem>): StockItem | null {
+  const db = getDb();
   const idx = db.stockItems.findIndex((i) => i.id === id);
   if (idx !== -1) {
     db.stockItems[idx] = { ...db.stockItems[idx], ...data };
-    saveDb(db);
+    console.log(`[DB] Stock item mis à jour: ${id}`);
     return db.stockItems[idx];
   }
   return null;
 }
 
-export function deleteStockItem(id: string) {
-  const db = loadDb();
+export function deleteStockItem(id: string): boolean {
+  const db = getDb();
+  const initialLength = db.stockItems.length;
   db.stockItems = db.stockItems.filter((i) => i.id !== id);
-  saveDb(db);
+  const deleted = db.stockItems.length < initialLength;
+  console.log(`[DB] Stock item supprimé: ${id}, succès: ${deleted}`);
+  return deleted;
 }
 
-export function addStockMovement(itemId: string, userId: string, type: "IN" | "OUT", quantity: number, comment: string | null) {
-  const db = loadDb();
+export function addStockMovement(itemId: string, userId: string, type: "IN" | "OUT", quantity: number, comment: string | null): StockItem | null {
+  const db = getDb();
   const item = db.stockItems.find((i) => i.id === itemId);
   if (!item) return null;
 
@@ -372,22 +396,56 @@ export function addStockMovement(itemId: string, userId: string, type: "IN" | "O
     comment,
   });
 
-  saveDb(db);
   return item;
 }
 
-// Settings
+export function createStockCategory(name: string, color: string): Category {
+  const db = getDb();
+  const category: Category = { id: generateId(), name, color };
+  db.stockCategories.push(category);
+  return category;
+}
+
+export function deleteStockCategory(id: string) {
+  const db = getDb();
+  db.stockCategories = db.stockCategories.filter((c) => c.id !== id);
+}
+
+// ========================================
+// SETTINGS
+// ========================================
+
 export function getUserSettings(userId: string): Settings | undefined {
-  return loadDb().settings.find((s) => s.userId === userId);
+  return getDb().settings.find((s) => s.userId === userId);
 }
 
 export function updateUserSettings(userId: string, data: Partial<Settings>) {
-  const db = loadDb();
+  const db = getDb();
   const idx = db.settings.findIndex((s) => s.userId === userId);
   if (idx !== -1) {
     db.settings[idx] = { ...db.settings[idx], ...data };
   } else {
     db.settings.push({ userId, currency: "EUR", monthlyBudget: null, ...data });
   }
-  saveDb(db);
+}
+
+// ========================================
+// DEBUG & RESET
+// ========================================
+
+export function resetDatabase() {
+  console.log("[DB] Reset de la base de données");
+  global.__db = createDefaultData();
+}
+
+export function getDatabaseStats() {
+  const db = getDb();
+  return {
+    users: db.users.length,
+    categories: db.categories.length,
+    charges: db.charges.length,
+    stockItems: db.stockItems.length,
+    stockCategories: db.stockCategories.length,
+    settings: db.settings.length,
+  };
 }
