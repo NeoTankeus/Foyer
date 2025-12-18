@@ -11,7 +11,7 @@ export async function GET() {
       return NextResponse.json({ error: "Non autorisé" }, { status: 403 });
     }
 
-    const users = getAllUsers();
+    const users = await getAllUsers();
     return NextResponse.json(users);
   } catch (error) {
     console.error("Error fetching users:", error);
@@ -32,12 +32,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Identifiant et mot de passe requis" }, { status: 400 });
     }
 
-    const existing = findUserByEmail(email);
+    const existing = await findUserByEmail(email);
     if (existing) {
       return NextResponse.json({ error: "Cet identifiant existe déjà" }, { status: 400 });
     }
 
-    const user = createUser(email, password, name || null, role === "TECH" ? "TECH" : "ADMIN");
+    const user = await createUser(email, password, name || null, role === "TECH" ? "TECH" : "ADMIN");
     const { password: _, ...userWithoutPassword } = user;
 
     return NextResponse.json(userWithoutPassword, { status: 201 });

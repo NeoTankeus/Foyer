@@ -23,13 +23,13 @@ export async function DELETE(
       return NextResponse.json({ error: "Impossible de supprimer votre propre compte" }, { status: 400 });
     }
 
-    const user = findUserById(id);
+    const user = await findUserById(id);
 
     if (!user) {
       return NextResponse.json({ error: "Utilisateur non trouve" }, { status: 404 });
     }
 
-    deleteUser(id);
+    await deleteUser(id);
 
     return NextResponse.json({ success: true });
   } catch (error) {

@@ -11,13 +11,11 @@ function encodeSession(userId: string): string {
 
 function decodeSession(token: string): { userId: string; exp: number } | null {
   try {
-    // Handle URL-encoded tokens
     const decodedToken = decodeURIComponent(token);
     const data = Buffer.from(decodedToken, "base64").toString("utf-8");
     return JSON.parse(data);
   } catch {
     try {
-      // Try without URL decoding
       const data = Buffer.from(token, "base64").toString("utf-8");
       return JSON.parse(data);
     } catch {
@@ -28,7 +26,7 @@ function decodeSession(token: string): { userId: string; exp: number } | null {
 
 export async function signIn(email: string, password: string): Promise<{ success: boolean; error?: string }> {
   try {
-    const user = findUserByEmail(email);
+    const user = await findUserByEmail(email);
 
     if (!user) {
       return { success: false, error: "Identifiant ou mot de passe incorrect" };
@@ -71,26 +69,22 @@ export async function getSession(): Promise<{ user: { id: string; email: string;
     const token = cookieStore.get(SESSION_COOKIE)?.value;
 
     if (!token) {
-      console.log("No session token found");
       return null;
     }
 
     const session = decodeSession(token);
 
     if (!session) {
-      console.log("Could not decode session");
       return null;
     }
 
     if (session.exp < Date.now()) {
-      console.log("Session expired");
       return null;
     }
 
-    const user = findUserById(session.userId);
+    const user = await findUserById(session.userId);
 
     if (!user) {
-      console.log("User not found:", session.userId);
       return null;
     }
 

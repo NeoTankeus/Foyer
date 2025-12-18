@@ -12,11 +12,11 @@ export async function GET() {
       return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
     }
 
-    let settings = getUserSettings(session.user.id);
+    let settings = await getUserSettings(session.user.id);
 
     if (!settings) {
-      updateUserSettings(session.user.id, { currency: "EUR" });
-      settings = getUserSettings(session.user.id);
+      await updateUserSettings(session.user.id, { currency: "EUR" });
+      settings = await getUserSettings(session.user.id);
     }
 
     return NextResponse.json(settings);
@@ -40,12 +40,12 @@ export async function PUT(request: NextRequest) {
     const body = await request.json();
     const validatedData = userSettingsSchema.parse(body);
 
-    updateUserSettings(session.user.id, {
+    await updateUserSettings(session.user.id, {
       currency: validatedData.currency,
       monthlyBudget: validatedData.monthlyBudget || null,
     });
 
-    const settings = getUserSettings(session.user.id);
+    const settings = await getUserSettings(session.user.id);
 
     return NextResponse.json(settings);
   } catch (error) {

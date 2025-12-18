@@ -18,7 +18,7 @@ export async function GET(
     }
 
     const { id } = await context.params;
-    const items = getStockByUser(session.user.id);
+    const items = await getStockByUser(session.user.id);
     const item = items.find((i) => i.id === id);
 
     if (!item) {
@@ -47,7 +47,7 @@ export async function PUT(
     }
 
     const { id } = await context.params;
-    const items = getStockByUser(session.user.id);
+    const items = await getStockByUser(session.user.id);
     const existingItem = items.find((i) => i.id === id);
 
     if (!existingItem) {
@@ -57,7 +57,7 @@ export async function PUT(
     const body = await request.json();
     const validatedData = stockItemSchema.parse(body);
 
-    const item = updateStockItem(id, {
+    const item = await updateStockItem(id, {
       name: validatedData.name,
       sku: validatedData.sku || null,
       categoryId: validatedData.categoryId || null,
@@ -88,14 +88,14 @@ export async function DELETE(
     }
 
     const { id } = await context.params;
-    const items = getStockByUser(session.user.id);
+    const items = await getStockByUser(session.user.id);
     const existingItem = items.find((i) => i.id === id);
 
     if (!existingItem) {
       return NextResponse.json({ error: "Article non trouve" }, { status: 404 });
     }
 
-    deleteStockItem(id);
+    await deleteStockItem(id);
 
     return NextResponse.json({ success: true });
   } catch (error) {

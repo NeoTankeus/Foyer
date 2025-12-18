@@ -12,7 +12,7 @@ export async function GET() {
       return NextResponse.json({ error: "Non autorise" }, { status: 401 });
     }
 
-    const categories = getAllCategories();
+    const categories = await getAllCategories();
     return NextResponse.json(categories);
   } catch (error) {
     console.error("Error fetching categories:", error);
@@ -41,12 +41,13 @@ export async function POST(request: NextRequest) {
 
     const validatedData = result.data;
 
-    const existing = getAllCategories().find((c) => c.name.toLowerCase() === validatedData.name.toLowerCase());
+    const allCategories = await getAllCategories();
+    const existing = allCategories.find((c) => c.name.toLowerCase() === validatedData.name.toLowerCase());
     if (existing) {
       return NextResponse.json({ error: "Cette categorie existe deja" }, { status: 400 });
     }
 
-    const category = createCategory(validatedData.name, validatedData.color);
+    const category = await createCategory(validatedData.name, validatedData.color);
     return NextResponse.json(category, { status: 201 });
   } catch (error) {
     console.error("Error creating category:", error);

@@ -21,13 +21,14 @@ export async function DELETE(
     }
 
     const { id } = await context.params;
-    const category = getAllCategories().find((c) => c.id === id);
+    const categories = await getAllCategories();
+    const category = categories.find((c) => c.id === id);
 
     if (!category) {
       return NextResponse.json({ error: "Categorie non trouvee" }, { status: 404 });
     }
 
-    const charges = getChargesByUser(session.user.id);
+    const charges = await getChargesByUser(session.user.id);
     const chargesUsingCategory = charges.filter((c) => c.categoryId === id);
 
     if (chargesUsingCategory.length > 0) {
@@ -37,7 +38,7 @@ export async function DELETE(
       );
     }
 
-    deleteCategory(id);
+    await deleteCategory(id);
 
     return NextResponse.json({ success: true });
   } catch (error) {

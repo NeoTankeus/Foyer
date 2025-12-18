@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
     const categoryId = searchParams.get("categoryId");
     const alertsOnly = searchParams.get("alertsOnly") === "true";
 
-    let items = getStockByUser(session.user.id);
+    let items = await getStockByUser(session.user.id);
 
     if (categoryId) {
       items = items.filter((i) => i.categoryId === categoryId);
@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
 
     const validatedData = result.data;
 
-    const item = createStockItem({
+    const item = await createStockItem({
       userId: session.user.id,
       name: validatedData.name,
       sku: validatedData.sku,
@@ -66,7 +66,7 @@ export async function POST(request: NextRequest) {
     });
 
     // Get category for response
-    const categories = getStockCategories();
+    const categories = await getStockCategories();
     const category = categories.find(c => c.id === item.categoryId) || null;
 
     return NextResponse.json({ ...item, category }, { status: 201 });

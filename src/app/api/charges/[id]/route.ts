@@ -18,7 +18,7 @@ export async function GET(
     }
 
     const { id } = await context.params;
-    const charges = getChargesByUser(session.user.id);
+    const charges = await getChargesByUser(session.user.id);
     const charge = charges.find((c) => c.id === id);
 
     if (!charge) {
@@ -54,7 +54,7 @@ export async function PUT(
       return NextResponse.json({ error: "ID manquant" }, { status: 400 });
     }
 
-    const charges = getChargesByUser(session.user.id);
+    const charges = await getChargesByUser(session.user.id);
     const existingCharge = charges.find((c) => c.id === id);
 
     if (!existingCharge) {
@@ -71,7 +71,7 @@ export async function PUT(
 
     const validatedData = result.data;
 
-    const charge = updateCharge(id, {
+    const charge = await updateCharge(id, {
       date: validatedData.date.toISOString(),
       amount: validatedData.amount,
       categoryId: validatedData.categoryId,
@@ -82,7 +82,7 @@ export async function PUT(
       note: validatedData.note,
     });
 
-    const categories = getAllCategories();
+    const categories = await getAllCategories();
     const category = categories.find(c => c.id === charge?.categoryId);
 
     return NextResponse.json({ ...charge, category });
@@ -114,14 +114,14 @@ export async function DELETE(
       return NextResponse.json({ error: "ID manquant" }, { status: 400 });
     }
 
-    const charges = getChargesByUser(session.user.id);
+    const charges = await getChargesByUser(session.user.id);
     const existingCharge = charges.find((c) => c.id === id);
 
     if (!existingCharge) {
       return NextResponse.json({ error: "Charge non trouvee" }, { status: 404 });
     }
 
-    deleteCharge(id);
+    await deleteCharge(id);
 
     return NextResponse.json({ success: true });
   } catch (error) {

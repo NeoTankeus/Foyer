@@ -18,7 +18,7 @@ export async function GET(request: NextRequest) {
     const categoryId = searchParams.get("categoryId");
     const supplier = searchParams.get("supplier");
 
-    let charges = getChargesByUser(session.user.id);
+    let charges = await getChargesByUser(session.user.id);
 
     if (startDate) {
       charges = charges.filter((c) => new Date(c.date) >= new Date(startDate));
@@ -62,7 +62,7 @@ export async function POST(request: NextRequest) {
 
     const validatedData = result.data;
 
-    const charge = createCharge({
+    const charge = await createCharge({
       userId: session.user.id,
       date: validatedData.date.toISOString(),
       amount: validatedData.amount,
@@ -74,7 +74,7 @@ export async function POST(request: NextRequest) {
       note: validatedData.note,
     });
 
-    const categories = getAllCategories();
+    const categories = await getAllCategories();
     const category = categories.find(c => c.id === charge.categoryId);
 
     return NextResponse.json({ ...charge, category }, { status: 201 });
