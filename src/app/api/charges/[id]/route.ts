@@ -5,55 +5,59 @@ import { chargeSchema } from "@/lib/validations";
 
 export const runtime = "nodejs";
 
+type RouteContext = { params: Promise<{ id: string }> };
+
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: RouteContext
 ) {
   try {
     const session = await auth();
     if (!session?.user?.id) {
-      return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
+      return NextResponse.json({ error: "Non autorise" }, { status: 401 });
     }
 
+    const { id } = await context.params;
     const charges = getChargesByUser(session.user.id);
-    const charge = charges.find((c) => c.id === params.id);
+    const charge = charges.find((c) => c.id === id);
 
     if (!charge) {
-      return NextResponse.json({ error: "Charge non trouvée" }, { status: 404 });
+      return NextResponse.json({ error: "Charge non trouvee" }, { status: 404 });
     }
 
     return NextResponse.json(charge);
   } catch (error) {
     console.error("Error fetching charge:", error);
-    return NextResponse.json({ error: "Erreur lors de la récupération de la charge" }, { status: 500 });
+    return NextResponse.json({ error: "Erreur lors de la recuperation de la charge" }, { status: 500 });
   }
 }
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: RouteContext
 ) {
   try {
     const session = await auth();
     if (!session?.user?.id) {
-      return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
+      return NextResponse.json({ error: "Non autorise" }, { status: 401 });
     }
 
     if (session.user.role === "TECH") {
-      return NextResponse.json({ error: "Accès en lecture seule" }, { status: 403 });
+      return NextResponse.json({ error: "Acces en lecture seule" }, { status: 403 });
     }
 
+    const { id } = await context.params;
     const charges = getChargesByUser(session.user.id);
-    const existingCharge = charges.find((c) => c.id === params.id);
+    const existingCharge = charges.find((c) => c.id === id);
 
     if (!existingCharge) {
-      return NextResponse.json({ error: "Charge non trouvée" }, { status: 404 });
+      return NextResponse.json({ error: "Charge non trouvee" }, { status: 404 });
     }
 
     const body = await request.json();
     const validatedData = chargeSchema.parse(body);
 
-    const charge = updateCharge(params.id, {
+    const charge = updateCharge(id, {
       date: validatedData.date.toISOString(),
       amount: validatedData.amount,
       categoryId: validatedData.categoryId,
@@ -64,7 +68,6 @@ export async function PUT(
       note: validatedData.note || null,
     });
 
-    // Get category for response
     const categories = getAllCategories();
     const category = categories.find(c => c.id === charge?.categoryId);
 
@@ -77,26 +80,27 @@ export async function PUT(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: RouteContext
 ) {
   try {
     const session = await auth();
     if (!session?.user?.id) {
-      return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
+      return NextResponse.json({ error: "Non autorise" }, { status: 401 });
     }
 
     if (session.user.role === "TECH") {
-      return NextResponse.json({ error: "Accès en lecture seule" }, { status: 403 });
+      return NextResponse.json({ error: "Acces en lecture seule" }, { status: 403 });
     }
 
+    const { id } = await context.params;
     const charges = getChargesByUser(session.user.id);
-    const existingCharge = charges.find((c) => c.id === params.id);
+    const existingCharge = charges.find((c) => c.id === id);
 
     if (!existingCharge) {
-      return NextResponse.json({ error: "Charge non trouvée" }, { status: 404 });
+      return NextResponse.json({ error: "Charge non trouvee" }, { status: 404 });
     }
 
-    deleteCharge(params.id);
+    deleteCharge(id);
 
     return NextResponse.json({ success: true });
   } catch (error) {

@@ -3,28 +3,195 @@
     {
       "id": "admin001",
       "email": "admin",
-      "password": "$2a$10$NTu8MUEQJv//yjYU5s7Ol.JG7.7QZ0HPBm5e54k8nM7Rc5Z5894vy",
+      "password": "$2a$12$E71ti8TD2OrTyVax1m2lXe1YKdHGLCPWx/CJRpRsIXhHKYStkUyFu",
       "name": "Administrateur",
       "role": "ADMIN",
-      "createdAt": "2025-12-16T20:23:59.683Z"
+      "createdAt": "2025-01-01T00:00:00.000Z"
     }
   ],
   "categories": [
     { "id": "cat1", "name": "Loyer", "color": "#ef4444" },
-    { "id": "cat2", "name": "Électricité", "color": "#f59e0b" },
+    { "id": "cat2", "name": "Electricite", "color": "#f59e0b" },
     { "id": "cat3", "name": "Internet", "color": "#06b6d4" },
     { "id": "cat4", "name": "Salaires", "color": "#8b5cf6" },
-    { "id": "cat5", "name": "Fournitures", "color": "#10b981" }
+    { "id": "cat5", "name": "Fournitures", "color": "#10b981" },
+    { "id": "cat6", "name": "Transport", "color": "#ec4899" },
+    { "id": "cat7", "name": "Marketing", "color": "#6366f1" },
+    { "id": "cat8", "name": "Divers", "color": "#64748b" }
   ],
-  "charges": [],
-  "stockItems": [],
+  "charges": [
+    {
+      "id": "charge1",
+      "userId": "admin001",
+      "date": "2025-12-05T00:00:00.000Z",
+      "amount": 2500,
+      "categoryId": "cat1",
+      "supplier": "SCI Immobilier",
+      "paymentMethod": "transfer",
+      "isRecurring": true,
+      "recurrence": "monthly",
+      "note": "Loyer bureaux"
+    },
+    {
+      "id": "charge2",
+      "userId": "admin001",
+      "date": "2025-12-15T00:00:00.000Z",
+      "amount": 195.50,
+      "categoryId": "cat2",
+      "supplier": "EDF",
+      "paymentMethod": "direct_debit",
+      "isRecurring": true,
+      "recurrence": "monthly",
+      "note": null
+    },
+    {
+      "id": "charge3",
+      "userId": "admin001",
+      "date": "2025-12-10T00:00:00.000Z",
+      "amount": 8500,
+      "categoryId": "cat4",
+      "supplier": null,
+      "paymentMethod": "transfer",
+      "isRecurring": true,
+      "recurrence": "monthly",
+      "note": "Salaires equipe"
+    },
+    {
+      "id": "charge4",
+      "userId": "admin001",
+      "date": "2025-11-05T00:00:00.000Z",
+      "amount": 2500,
+      "categoryId": "cat1",
+      "supplier": "SCI Immobilier",
+      "paymentMethod": "transfer",
+      "isRecurring": true,
+      "recurrence": "monthly",
+      "note": "Loyer bureaux"
+    },
+    {
+      "id": "charge5",
+      "userId": "admin001",
+      "date": "2025-11-15T00:00:00.000Z",
+      "amount": 210.30,
+      "categoryId": "cat2",
+      "supplier": "EDF",
+      "paymentMethod": "direct_debit",
+      "isRecurring": true,
+      "recurrence": "monthly",
+      "note": null
+    },
+    {
+      "id": "charge6",
+      "userId": "admin001",
+      "date": "2025-11-10T00:00:00.000Z",
+      "amount": 9200,
+      "categoryId": "cat4",
+      "supplier": null,
+      "paymentMethod": "transfer",
+      "isRecurring": true,
+      "recurrence": "monthly",
+      "note": "Salaires equipe"
+    },
+    {
+      "id": "charge7",
+      "userId": "admin001",
+      "date": "2025-12-08T00:00:00.000Z",
+      "amount": 350.00,
+      "categoryId": "cat5",
+      "supplier": "Bureau Vallee",
+      "paymentMethod": "card",
+      "isRecurring": false,
+      "recurrence": null,
+      "note": "Fournitures bureau"
+    },
+    {
+      "id": "charge8",
+      "userId": "admin001",
+      "date": "2025-12-12T00:00:00.000Z",
+      "amount": 89.90,
+      "categoryId": "cat3",
+      "supplier": "Orange",
+      "paymentMethod": "direct_debit",
+      "isRecurring": true,
+      "recurrence": "monthly",
+      "note": "Abonnement fibre"
+    }
+  ],
+  "stockItems": [
+    {
+      "id": "stock1",
+      "userId": "admin001",
+      "name": "MacBook Pro 14",
+      "sku": "APPLE-MBP14",
+      "categoryId": "scat1",
+      "quantity": 5,
+      "alertThreshold": 2,
+      "purchasePrice": 2499,
+      "location": "Bureau A"
+    },
+    {
+      "id": "stock2",
+      "userId": "admin001",
+      "name": "Ecran Dell 27",
+      "sku": "DELL-MON27",
+      "categoryId": "scat1",
+      "quantity": 8,
+      "alertThreshold": 3,
+      "purchasePrice": 399,
+      "location": "Bureau A"
+    },
+    {
+      "id": "stock3",
+      "userId": "admin001",
+      "name": "Souris Magic Mouse",
+      "sku": "APPLE-MS",
+      "categoryId": "scat1",
+      "quantity": 2,
+      "alertThreshold": 5,
+      "purchasePrice": 99,
+      "location": "Stock"
+    },
+    {
+      "id": "stock4",
+      "userId": "admin001",
+      "name": "Bureau reglable",
+      "sku": "DESK-001",
+      "categoryId": "scat2",
+      "quantity": 4,
+      "alertThreshold": 2,
+      "purchasePrice": 549,
+      "location": "Entrepot"
+    },
+    {
+      "id": "stock5",
+      "userId": "admin001",
+      "name": "Ramettes papier A4",
+      "sku": "PAPER-A4",
+      "categoryId": "scat3",
+      "quantity": 25,
+      "alertThreshold": 10,
+      "purchasePrice": 4.99,
+      "location": "Salle copies"
+    },
+    {
+      "id": "stock6",
+      "userId": "admin001",
+      "name": "Cartouches encre",
+      "sku": "INK-HP",
+      "categoryId": "scat3",
+      "quantity": 3,
+      "alertThreshold": 5,
+      "purchasePrice": 35,
+      "location": "Salle copies"
+    }
+  ],
   "stockMovements": [],
   "stockCategories": [
-    { "id": "scat1", "name": "Électronique", "color": "#3b82f6" },
+    { "id": "scat1", "name": "Electronique", "color": "#3b82f6" },
     { "id": "scat2", "name": "Mobilier", "color": "#a855f7" },
     { "id": "scat3", "name": "Consommables", "color": "#22c55e" }
   ],
   "settings": [
-    { "userId": "admin001", "currency": "EUR", "monthlyBudget": null }
+    { "userId": "admin001", "currency": "EUR", "monthlyBudget": 15000 }
   ]
 }

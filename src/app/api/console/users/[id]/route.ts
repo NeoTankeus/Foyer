@@ -4,28 +4,32 @@ import { findUserById, deleteUser } from "@/lib/db";
 
 export const runtime = "nodejs";
 
+type RouteContext = { params: Promise<{ id: string }> };
+
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: RouteContext
 ) {
   try {
     const session = await auth();
 
     if (!session?.user?.id || session.user.role !== "ADMIN") {
-      return NextResponse.json({ error: "Non autorisé" }, { status: 403 });
+      return NextResponse.json({ error: "Non autorise" }, { status: 403 });
     }
 
-    if (params.id === session.user.id) {
+    const { id } = await context.params;
+
+    if (id === session.user.id) {
       return NextResponse.json({ error: "Impossible de supprimer votre propre compte" }, { status: 400 });
     }
 
-    const user = findUserById(params.id);
+    const user = findUserById(id);
 
     if (!user) {
-      return NextResponse.json({ error: "Utilisateur non trouvé" }, { status: 404 });
+      return NextResponse.json({ error: "Utilisateur non trouve" }, { status: 404 });
     }
 
-    deleteUser(params.id);
+    deleteUser(id);
 
     return NextResponse.json({ success: true });
   } catch (error) {
