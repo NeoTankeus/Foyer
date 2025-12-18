@@ -38,15 +38,22 @@ export async function PUT(
 ) {
   try {
     const session = await auth();
+
     if (!session?.user?.id) {
-      return NextResponse.json({ error: "Non autorise" }, { status: 401 });
+      return NextResponse.json({ error: "Session expiree - reconnectez-vous" }, { status: 401 });
     }
 
     if (session.user.role === "TECH") {
       return NextResponse.json({ error: "Acces en lecture seule" }, { status: 403 });
     }
 
-    const { id } = await context.params;
+    const params = await context.params;
+    const id = params.id;
+
+    if (!id) {
+      return NextResponse.json({ error: "ID manquant" }, { status: 400 });
+    }
+
     const charges = getChargesByUser(session.user.id);
     const existingCharge = charges.find((c) => c.id === id);
 
@@ -55,17 +62,24 @@ export async function PUT(
     }
 
     const body = await request.json();
-    const validatedData = chargeSchema.parse(body);
+    const result = chargeSchema.safeParse(body);
+
+    if (!result.success) {
+      const errorMsg = result.error.errors.map(e => e.message).join(", ");
+      return NextResponse.json({ error: errorMsg }, { status: 400 });
+    }
+
+    const validatedData = result.data;
 
     const charge = updateCharge(id, {
       date: validatedData.date.toISOString(),
       amount: validatedData.amount,
       categoryId: validatedData.categoryId,
-      supplier: validatedData.supplier || null,
-      paymentMethod: validatedData.paymentMethod || null,
+      supplier: validatedData.supplier,
+      paymentMethod: validatedData.paymentMethod,
       isRecurring: validatedData.isRecurring || false,
       recurrence: validatedData.recurrence || null,
-      note: validatedData.note || null,
+      note: validatedData.note,
     });
 
     const categories = getAllCategories();
@@ -73,8 +87,8 @@ export async function PUT(
 
     return NextResponse.json({ ...charge, category });
   } catch (error) {
-    console.error("Error updating charge:", error);
-    return NextResponse.json({ error: "Erreur lors de la modification de la charge" }, { status: 500 });
+    console.error("PUT charge error:", error);
+    return NextResponse.json({ error: "Erreur serveur" }, { status: 500 });
   }
 }
 
@@ -84,15 +98,22 @@ export async function DELETE(
 ) {
   try {
     const session = await auth();
+
     if (!session?.user?.id) {
-      return NextResponse.json({ error: "Non autorise" }, { status: 401 });
+      return NextResponse.json({ error: "Session expiree - reconnectez-vous" }, { status: 401 });
     }
 
     if (session.user.role === "TECH") {
       return NextResponse.json({ error: "Acces en lecture seule" }, { status: 403 });
     }
 
-    const { id } = await context.params;
+    const params = await context.params;
+    const id = params.id;
+
+    if (!id) {
+      return NextResponse.json({ error: "ID manquant" }, { status: 400 });
+    }
+
     const charges = getChargesByUser(session.user.id);
     const existingCharge = charges.find((c) => c.id === id);
 
@@ -104,7 +125,7 @@ export async function DELETE(
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error("Error deleting charge:", error);
-    return NextResponse.json({ error: "Erreur lors de la suppression de la charge" }, { status: 500 });
+    console.error("DELETE charge error:", error);
+    return NextResponse.json({ error: "Erreur serveur" }, { status: 500 });
   }
 }
