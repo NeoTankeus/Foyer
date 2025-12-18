@@ -9,7 +9,7 @@ export async function GET(request: NextRequest) {
   try {
     const session = await auth();
     if (!session?.user?.id) {
-      return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
+      return NextResponse.json({ error: "Non autorise" }, { status: 401 });
     }
 
     const searchParams = request.nextUrl.searchParams;
@@ -36,7 +36,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(charges);
   } catch (error) {
     console.error("Error fetching charges:", error);
-    return NextResponse.json({ error: "Erreur lors de la récupération des charges" }, { status: 500 });
+    return NextResponse.json({ error: "Erreur serveur" }, { status: 500 });
   }
 }
 
@@ -44,35 +44,42 @@ export async function POST(request: NextRequest) {
   try {
     const session = await auth();
     if (!session?.user?.id) {
-      return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
+      return NextResponse.json({ error: "Non autorise - reconnectez-vous" }, { status: 401 });
     }
 
     if (session.user.role === "TECH") {
-      return NextResponse.json({ error: "Accès en lecture seule" }, { status: 403 });
+      return NextResponse.json({ error: "Acces en lecture seule" }, { status: 403 });
     }
 
     const body = await request.json();
-    const validatedData = chargeSchema.parse(body);
+    const result = chargeSchema.safeParse(body);
+
+    if (!result.success) {
+      const errorMsg = result.error.errors.map(e => e.message).join(", ");
+      console.error("Validation error:", errorMsg);
+      return NextResponse.json({ error: errorMsg }, { status: 400 });
+    }
+
+    const validatedData = result.data;
 
     const charge = createCharge({
       userId: session.user.id,
       date: validatedData.date.toISOString(),
       amount: validatedData.amount,
       categoryId: validatedData.categoryId,
-      supplier: validatedData.supplier || null,
-      paymentMethod: validatedData.paymentMethod || null,
+      supplier: validatedData.supplier,
+      paymentMethod: validatedData.paymentMethod,
       isRecurring: validatedData.isRecurring || false,
       recurrence: validatedData.recurrence || null,
-      note: validatedData.note || null,
+      note: validatedData.note,
     });
 
-    // Get category for response
     const categories = getAllCategories();
     const category = categories.find(c => c.id === charge.categoryId);
 
     return NextResponse.json({ ...charge, category }, { status: 201 });
   } catch (error) {
     console.error("Error creating charge:", error);
-    return NextResponse.json({ error: "Erreur lors de la création de la charge" }, { status: 500 });
+    return NextResponse.json({ error: "Erreur serveur" }, { status: 500 });
   }
 }

@@ -9,15 +9,14 @@ export async function GET() {
   try {
     const session = await auth();
     if (!session?.user?.id) {
-      return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
+      return NextResponse.json({ error: "Non autorise" }, { status: 401 });
     }
 
     const categories = getAllCategories();
-
     return NextResponse.json(categories);
   } catch (error) {
     console.error("Error fetching categories:", error);
-    return NextResponse.json({ error: "Erreur lors de la récupération des catégories" }, { status: 500 });
+    return NextResponse.json({ error: "Erreur serveur" }, { status: 500 });
   }
 }
 
@@ -25,26 +24,32 @@ export async function POST(request: NextRequest) {
   try {
     const session = await auth();
     if (!session?.user?.id) {
-      return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
+      return NextResponse.json({ error: "Non autorise" }, { status: 401 });
     }
 
     if (session.user.role === "TECH") {
-      return NextResponse.json({ error: "Accès en lecture seule" }, { status: 403 });
+      return NextResponse.json({ error: "Acces en lecture seule" }, { status: 403 });
     }
 
     const body = await request.json();
-    const validatedData = chargeCategorySchema.parse(body);
+    const result = chargeCategorySchema.safeParse(body);
 
-    const existing = getAllCategories().find((c) => c.name === validatedData.name);
+    if (!result.success) {
+      const errorMsg = result.error.errors.map(e => e.message).join(", ");
+      return NextResponse.json({ error: errorMsg }, { status: 400 });
+    }
+
+    const validatedData = result.data;
+
+    const existing = getAllCategories().find((c) => c.name.toLowerCase() === validatedData.name.toLowerCase());
     if (existing) {
-      return NextResponse.json({ error: "Cette catégorie existe déjà" }, { status: 400 });
+      return NextResponse.json({ error: "Cette categorie existe deja" }, { status: 400 });
     }
 
     const category = createCategory(validatedData.name, validatedData.color);
-
     return NextResponse.json(category, { status: 201 });
   } catch (error) {
     console.error("Error creating category:", error);
-    return NextResponse.json({ error: "Erreur lors de la création de la catégorie" }, { status: 500 });
+    return NextResponse.json({ error: "Erreur serveur" }, { status: 500 });
   }
 }

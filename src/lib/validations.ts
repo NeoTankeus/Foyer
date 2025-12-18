@@ -24,12 +24,12 @@ export const chargeSchema = z.object({
   date: z.coerce.date(),
   amount: z.coerce.number().positive("Le montant doit être positif"),
   categoryId: z.string().min(1, "Catégorie requise"),
-  supplier: z.string().optional().nullable(),
-  paymentMethod: z.string().optional().nullable(),
+  supplier: z.string().optional().nullable().transform(v => v || null),
+  paymentMethod: z.string().optional().nullable().transform(v => v || null),
   isRecurring: z.boolean().default(false),
   recurrence: z.enum(["monthly", "quarterly", "yearly"]).optional().nullable(),
-  note: z.string().optional().nullable(),
-  attachmentUrl: z.string().url().optional().nullable(),
+  note: z.string().optional().nullable().transform(v => v || null),
+  attachmentUrl: z.string().optional().nullable().transform(v => v || null),
 });
 
 export const chargeFilterSchema = z.object({
@@ -60,13 +60,13 @@ export type ChargeCategoryInput = z.infer<typeof chargeCategorySchema>;
 
 export const stockItemSchema = z.object({
   name: z.string().min(1, "Nom requis").max(100),
-  sku: z.string().optional().nullable(),
-  categoryId: z.string().optional().nullable(),
+  sku: z.string().optional().nullable().transform(v => v || null),
+  categoryId: z.string().optional().nullable().transform(v => v || null),
   quantity: z.coerce.number().int().min(0).default(0),
   alertThreshold: z.coerce.number().int().min(0).optional().nullable(),
   purchasePrice: z.coerce.number().min(0).optional().nullable(),
-  location: z.string().optional().nullable(),
-  note: z.string().optional().nullable(),
+  location: z.string().optional().nullable().transform(v => v || null),
+  note: z.string().optional().nullable().transform(v => v || null),
 });
 
 export const stockMovementSchema = z.object({
