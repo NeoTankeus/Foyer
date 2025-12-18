@@ -79,13 +79,19 @@ export function ChargesClient({
     setIsDeleting(id);
 
     try {
-      const response = await fetch(`/api/charges/${id}`, { method: "DELETE" });
-      if (!response.ok) throw new Error();
+      const response = await fetch(`/api/charges/${id}`, {
+        method: "DELETE",
+        credentials: "include"
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || "Erreur");
+      }
 
       setCharges(charges.filter((c) => c.id !== id));
       toast({ title: "Charge supprimée" });
-    } catch {
-      toast({ title: "Erreur", description: "Impossible de supprimer", variant: "destructive" });
+    } catch (err) {
+      toast({ title: "Erreur", description: err instanceof Error ? err.message : "Impossible de supprimer", variant: "destructive" });
     } finally {
       setIsDeleting(null);
     }

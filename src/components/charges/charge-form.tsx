@@ -66,10 +66,12 @@ export function ChargeForm({ charge, categories, onSaved, onCancel }: ChargeForm
         method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
+        credentials: "include"
       });
 
       if (!response.ok) {
-        throw new Error("Erreur lors de la sauvegarde");
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.error || "Erreur lors de la sauvegarde");
       }
 
       const savedCharge = await response.json();

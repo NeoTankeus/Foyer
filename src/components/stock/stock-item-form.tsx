@@ -60,6 +60,7 @@ export function StockItemForm({ item, categories, onSaved, onCancel }: StockItem
       const response = await fetch(url, {
         method,
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify(data),
       });
 

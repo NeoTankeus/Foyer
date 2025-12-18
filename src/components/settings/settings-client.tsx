@@ -49,6 +49,7 @@ export function SettingsClient({ settings, categories, isReadOnly }: SettingsCli
       const response = await fetch("/api/settings", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({
           currency,
           monthlyBudget: monthlyBudget ? parseFloat(monthlyBudget) : null,
@@ -78,6 +79,7 @@ export function SettingsClient({ settings, categories, isReadOnly }: SettingsCli
       const response = await fetch("/api/categories", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({
           name: newCategoryName.trim(),
           color: newCategoryColor,
@@ -110,6 +112,7 @@ export function SettingsClient({ settings, categories, isReadOnly }: SettingsCli
     try {
       const response = await fetch(`/api/categories/${id}`, {
         method: "DELETE",
+        credentials: "include"
       });
 
       if (!response.ok) {

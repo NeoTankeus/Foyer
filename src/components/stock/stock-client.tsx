@@ -85,7 +85,7 @@ export function StockClient({
     setIsDeleting(id);
 
     try {
-      const response = await fetch(`/api/stock/${id}`, { method: "DELETE" });
+      const response = await fetch(`/api/stock/${id}`, { method: "DELETE", credentials: "include" });
       if (!response.ok) throw new Error();
 
       setItems(items.filter((i) => i.id !== id));

@@ -59,6 +59,7 @@ export function StockMovementForm({
       const response = await fetch("/api/stock/movements", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify(data),
       });
 

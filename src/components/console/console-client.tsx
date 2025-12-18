@@ -76,6 +76,7 @@ export function ConsoleClient({ users: initialUsers }: ConsoleClientProps) {
       const response = await fetch("/api/console/reset-password", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ userId: resetUserId, newPassword }),
       });
 
@@ -110,6 +111,7 @@ export function ConsoleClient({ users: initialUsers }: ConsoleClientProps) {
       const response = await fetch("/api/console/users", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({
           email: newUserEmail,
           name: newUserName || null,
@@ -149,9 +151,13 @@ export function ConsoleClient({ users: initialUsers }: ConsoleClientProps) {
     try {
       const response = await fetch(`/api/console/users/${userId}`, {
         method: "DELETE",
+        credentials: "include"
       });
 
-      if (!response.ok) throw new Error();
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.error || "Erreur");
+      }
 
       setUsers(users.filter((u) => u.id !== userId));
       toast({ title: "Utilisateur supprimé" });
