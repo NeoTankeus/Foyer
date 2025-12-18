@@ -69,20 +69,22 @@ export function ChargeForm({ charge, categories, onSaved, onCancel }: ChargeForm
         credentials: "include"
       });
 
+      const result = await response.json().catch(() => ({ error: "Erreur reseau" }));
+
       if (!response.ok) {
-        const err = await response.json().catch(() => ({}));
-        throw new Error(err.error || "Erreur lors de la sauvegarde");
+        if (response.status === 401) {
+          toast({ title: "Session expiree", description: "Reconnectez-vous", variant: "destructive" });
+          setTimeout(() => window.location.href = "/login", 1500);
+          return;
+        }
+        throw new Error(result.error || "Erreur lors de la sauvegarde");
       }
 
-      const savedCharge = await response.json();
-      toast({ title: charge ? "Charge modifiée" : "Charge ajoutée" });
-      onSaved(savedCharge);
+      toast({ title: charge ? "Charge modifiee" : "Charge ajoutee" });
+      onSaved(result);
     } catch (error) {
-      toast({
-        title: "Erreur",
-        description: "Impossible de sauvegarder la charge",
-        variant: "destructive",
-      });
+      const message = error instanceof Error ? error.message : "Impossible de sauvegarder";
+      toast({ title: "Erreur", description: message, variant: "destructive" });
     } finally {
       setIsLoading(false);
     }

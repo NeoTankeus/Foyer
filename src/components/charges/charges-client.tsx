@@ -81,17 +81,27 @@ export function ChargesClient({
     try {
       const response = await fetch(`/api/charges/${id}`, {
         method: "DELETE",
+        headers: { "Content-Type": "application/json" },
         credentials: "include"
       });
+
+      const data = await response.json().catch(() => ({ error: "Erreur reseau" }));
+
       if (!response.ok) {
-        const data = await response.json().catch(() => ({}));
-        throw new Error(data.error || "Erreur");
+        if (response.status === 401) {
+          toast({ title: "Session expiree", description: "Vous allez etre redirige...", variant: "destructive" });
+          setTimeout(() => window.location.href = "/login", 1500);
+          return;
+        }
+        throw new Error(data.error || "Erreur de suppression");
       }
 
       setCharges(charges.filter((c) => c.id !== id));
-      toast({ title: "Charge supprimée" });
+      toast({ title: "Charge supprimee" });
+      router.refresh();
     } catch (err) {
-      toast({ title: "Erreur", description: err instanceof Error ? err.message : "Impossible de supprimer", variant: "destructive" });
+      const message = err instanceof Error ? err.message : "Impossible de supprimer";
+      toast({ title: "Erreur", description: message, variant: "destructive" });
     } finally {
       setIsDeleting(null);
     }
