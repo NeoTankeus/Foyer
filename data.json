@@ -55,66 +55,6 @@
       "isRecurring": true,
       "recurrence": "monthly",
       "note": "Salaires equipe"
-    },
-    {
-      "id": "charge4",
-      "userId": "admin001",
-      "date": "2025-11-05T00:00:00.000Z",
-      "amount": 2500,
-      "categoryId": "cat1",
-      "supplier": "SCI Immobilier",
-      "paymentMethod": "transfer",
-      "isRecurring": true,
-      "recurrence": "monthly",
-      "note": "Loyer bureaux"
-    },
-    {
-      "id": "charge5",
-      "userId": "admin001",
-      "date": "2025-11-15T00:00:00.000Z",
-      "amount": 210.30,
-      "categoryId": "cat2",
-      "supplier": "EDF",
-      "paymentMethod": "direct_debit",
-      "isRecurring": true,
-      "recurrence": "monthly",
-      "note": null
-    },
-    {
-      "id": "charge6",
-      "userId": "admin001",
-      "date": "2025-11-10T00:00:00.000Z",
-      "amount": 9200,
-      "categoryId": "cat4",
-      "supplier": null,
-      "paymentMethod": "transfer",
-      "isRecurring": true,
-      "recurrence": "monthly",
-      "note": "Salaires equipe"
-    },
-    {
-      "id": "charge7",
-      "userId": "admin001",
-      "date": "2025-12-08T00:00:00.000Z",
-      "amount": 350.00,
-      "categoryId": "cat5",
-      "supplier": "Bureau Vallee",
-      "paymentMethod": "card",
-      "isRecurring": false,
-      "recurrence": null,
-      "note": "Fournitures bureau"
-    },
-    {
-      "id": "charge8",
-      "userId": "admin001",
-      "date": "2025-12-12T00:00:00.000Z",
-      "amount": 89.90,
-      "categoryId": "cat3",
-      "supplier": "Orange",
-      "paymentMethod": "direct_debit",
-      "isRecurring": true,
-      "recurrence": "monthly",
-      "note": "Abonnement fibre"
     }
   ],
   "stockItems": [
@@ -139,50 +79,6 @@
       "alertThreshold": 3,
       "purchasePrice": 399,
       "location": "Bureau A"
-    },
-    {
-      "id": "stock3",
-      "userId": "admin001",
-      "name": "Souris Magic Mouse",
-      "sku": "APPLE-MS",
-      "categoryId": "scat1",
-      "quantity": 2,
-      "alertThreshold": 5,
-      "purchasePrice": 99,
-      "location": "Stock"
-    },
-    {
-      "id": "stock4",
-      "userId": "admin001",
-      "name": "Bureau reglable",
-      "sku": "DESK-001",
-      "categoryId": "scat2",
-      "quantity": 4,
-      "alertThreshold": 2,
-      "purchasePrice": 549,
-      "location": "Entrepot"
-    },
-    {
-      "id": "stock5",
-      "userId": "admin001",
-      "name": "Ramettes papier A4",
-      "sku": "PAPER-A4",
-      "categoryId": "scat3",
-      "quantity": 25,
-      "alertThreshold": 10,
-      "purchasePrice": 4.99,
-      "location": "Salle copies"
-    },
-    {
-      "id": "stock6",
-      "userId": "admin001",
-      "name": "Cartouches encre",
-      "sku": "INK-HP",
-      "categoryId": "scat3",
-      "quantity": 3,
-      "alertThreshold": 5,
-      "purchasePrice": 35,
-      "location": "Salle copies"
     }
   ],
   "stockMovements": [],
