@@ -43,13 +43,14 @@ interface ChargesClientProps {
 
 export function ChargesClient({
   initialCharges,
-  categories,
+  categories: initialCategories,
   currency,
   isReadOnly,
 }: ChargesClientProps) {
   const router = useRouter();
   const { toast } = useToast();
   const [charges, setCharges] = useState(initialCharges);
+  const [categories, setCategories] = useState(initialCategories);
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<string>("");
   const [isAddOpen, setIsAddOpen] = useState(false);
@@ -96,9 +97,9 @@ export function ChargesClient({
         throw new Error(data.error || "Erreur de suppression");
       }
 
-      setCharges(charges.filter((c) => c.id !== id));
-      toast({ title: "Charge supprimee" });
-      router.refresh();
+      // Mise à jour immédiate de l'état local
+      setCharges(prev => prev.filter((c) => c.id !== id));
+      toast({ title: "Charge supprimée" });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Impossible de supprimer";
       toast({ title: "Erreur", description: message, variant: "destructive" });
@@ -133,15 +134,21 @@ export function ChargesClient({
   };
 
   // Callback après ajout/modification
-  const handleSaved = (charge: ChargeWithCategory) => {
+  const handleSaved = (charge: ChargeWithCategory, newCategory?: ChargeCategory) => {
+    // Ajouter la nouvelle catégorie si elle existe
+    if (newCategory && !categories.find(c => c.id === newCategory.id)) {
+      setCategories(prev => [...prev, newCategory]);
+    }
+
     if (editingCharge) {
-      setCharges(charges.map((c) => (c.id === charge.id ? charge : c)));
+      // Mise à jour immédiate de l'état local
+      setCharges(prev => prev.map((c) => (c.id === charge.id ? charge : c)));
       setEditingCharge(null);
     } else {
-      setCharges([charge, ...charges]);
+      // Ajout immédiat à l'état local
+      setCharges(prev => [charge, ...prev]);
       setIsAddOpen(false);
     }
-    router.refresh();
   };
 
   return (
