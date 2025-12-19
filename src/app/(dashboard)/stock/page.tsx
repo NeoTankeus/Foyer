@@ -4,10 +4,10 @@ import { getStockByUser, getStockCategories, getUserSettings } from "@/lib/db";
 import { StockClient } from "@/components/stock/stock-client";
 import { Loader2 } from "lucide-react";
 
-function getStockData(userId: string) {
-  const items = getStockByUser(userId);
-  const categories = getStockCategories();
-  const settings = getUserSettings(userId);
+async function getStockData(userId: string) {
+  const items = await getStockByUser(userId);
+  const categories = await getStockCategories();
+  const settings = await getUserSettings(userId);
 
   return { items, categories, settings };
 }
@@ -24,7 +24,7 @@ export default async function StockPage() {
   const session = await auth();
   if (!session?.user?.id) return null;
 
-  const data = getStockData(session.user.id);
+  const data = await getStockData(session.user.id);
 
   return (
     <div className="space-y-6">

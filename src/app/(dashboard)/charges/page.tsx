@@ -4,10 +4,10 @@ import { getChargesByUser, getAllCategories, getUserSettings } from "@/lib/db";
 import { ChargesClient } from "@/components/charges/charges-client";
 import { Loader2 } from "lucide-react";
 
-function getChargesData(userId: string) {
-  const charges = getChargesByUser(userId);
-  const categories = getAllCategories();
-  const settings = getUserSettings(userId);
+async function getChargesData(userId: string) {
+  const charges = await getChargesByUser(userId);
+  const categories = await getAllCategories();
+  const settings = await getUserSettings(userId);
 
   return { charges, categories, settings };
 }
@@ -24,7 +24,7 @@ export default async function ChargesPage() {
   const session = await auth();
   if (!session?.user?.id) return null;
 
-  const data = getChargesData(session.user.id);
+  const data = await getChargesData(session.user.id);
 
   return (
     <div className="space-y-6">

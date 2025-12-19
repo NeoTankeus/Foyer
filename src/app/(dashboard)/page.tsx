@@ -8,17 +8,18 @@ import { CumulativeChart } from "@/components/charts/cumulative-chart";
 import { StockAlerts } from "@/components/stock/stock-alerts";
 import { calculateVariation } from "@/lib/utils";
 
-function getDashboardData(userId: string) {
+async function getDashboardData(userId: string) {
   const now = new Date();
   const currentMonthStart = startOfMonth(now);
   const currentMonthEnd = endOfMonth(now);
   const previousMonthStart = startOfMonth(subMonths(now, 1));
   const previousMonthEnd = endOfMonth(subMonths(now, 1));
 
-  const allCharges = getChargesByUser(userId);
-  const categories = getAllCategories();
-  const settings = getUserSettings(userId);
-  const stockItems = getStockByUser(userId);
+  // AWAIT all async database calls
+  const allCharges = await getChargesByUser(userId);
+  const categories = await getAllCategories();
+  const settings = await getUserSettings(userId);
+  const stockItems = await getStockByUser(userId);
 
   // Charges du mois courant
   const currentMonthCharges = allCharges.filter((c) => {
@@ -126,7 +127,7 @@ export default async function DashboardPage() {
   const session = await auth();
   if (!session?.user?.id) return null;
 
-  const data = getDashboardData(session.user.id);
+  const data = await getDashboardData(session.user.id);
 
   return (
     <div className="space-y-6">

@@ -10,7 +10,7 @@ export default async function ConsolePage() {
     redirect("/");
   }
 
-  const users = getAllUsers();
+  const users = await getAllUsers();
 
   return (
     <div className="space-y-6">

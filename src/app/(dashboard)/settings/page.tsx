@@ -2,9 +2,9 @@ import { auth } from "@/lib/auth";
 import { getUserSettings, getAllCategories } from "@/lib/db";
 import { SettingsClient } from "@/components/settings/settings-client";
 
-function getSettingsData(userId: string) {
-  const settings = getUserSettings(userId);
-  const categories = getAllCategories();
+async function getSettingsData(userId: string) {
+  const settings = await getUserSettings(userId);
+  const categories = await getAllCategories();
 
   return { settings, categories };
 }
@@ -13,7 +13,7 @@ export default async function SettingsPage() {
   const session = await auth();
   if (!session?.user?.id) return null;
 
-  const data = getSettingsData(session.user.id);
+  const data = await getSettingsData(session.user.id);
 
   return (
     <div className="space-y-6">
