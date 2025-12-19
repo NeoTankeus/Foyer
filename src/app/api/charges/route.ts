@@ -75,7 +75,7 @@ export async function POST(request: NextRequest) {
     });
 
     const categories = await getAllCategories();
-    const category = categories.find(c => c.id === charge.categoryId);
+    const category = categories.find(c => c.id === charge.categoryId) || { id: charge.categoryId, name: "Catégorie", color: "#6366f1" };
 
     return NextResponse.json({ ...charge, category }, { status: 201 });
   } catch (error) {

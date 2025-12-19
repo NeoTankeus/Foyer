@@ -83,7 +83,7 @@ export async function PUT(
     });
 
     const categories = await getAllCategories();
-    const category = categories.find(c => c.id === charge?.categoryId);
+    const category = categories.find(c => c.id === charge?.categoryId) || { id: charge?.categoryId || "", name: "Catégorie", color: "#6366f1" };
 
     return NextResponse.json({ ...charge, category });
   } catch (error) {
