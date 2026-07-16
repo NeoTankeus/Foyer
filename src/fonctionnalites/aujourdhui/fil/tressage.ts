@@ -142,7 +142,9 @@ export function tresser(entree: EntreeTressage): SortieTressage {
       const base = voieDeBase.get(membreId)
       if (!cles || base === undefined) return
 
-      cles.push({ h: Math.max(hDebut - TRANSITION_HEURES, heureDebut), x: base })
+      if (hDebut - TRANSITION_HEURES > heureDebut) {
+        cles.push({ h: hDebut - TRANSITION_HEURES, x: base })
+      }
       // Le tressage : une oscillation autour du centre, en opposition de phase
       // selon le rang du membre — les fils se croisent.
       let signe = rang % 2 === 0 ? 1 : -1
@@ -151,7 +153,11 @@ export function tresser(entree: EntreeTressage): SortieTressage {
         signe = -signe
       }
       cles.push({ h: hFin, x: centre + signe * AMPLITUDE_TRESSE })
-      cles.push({ h: Math.min(hFin + TRANSITION_HEURES, heureFin), x: base })
+      // Retour à la voie de base seulement s'il reste de la place avant la fin
+      // de journée ; sinon le fil reste dans la tresse jusqu'en bas.
+      if (hFin + TRANSITION_HEURES < heureFin) {
+        cles.push({ h: hFin + TRANSITION_HEURES, x: base })
+      }
     })
 
     perles.push({
@@ -165,9 +171,15 @@ export function tresser(entree: EntreeTressage): SortieTressage {
 
   // Courbes de Bézier verticales entre images clés.
   const chemins: CheminFil[] = membres.map((membre) => {
-    const cles = (images.get(membre.id) ?? [])
-      .slice()
-      .sort((a, b) => a.h - b.h)
+    // Tri stable puis déduplication : à heure égale, la dernière image clé
+    // ajoutée (celle de l'événement) l'emporte sur la voie de base.
+    const triees = (images.get(membre.id) ?? []).slice().sort((a, b) => a.h - b.h)
+    const cles: ImageCle[] = []
+    for (const cle of triees) {
+      const derniere = cles[cles.length - 1]
+      if (derniere && Math.abs(derniere.h - cle.h) < 1e-6) cles[cles.length - 1] = cle
+      else cles.push(cle)
+    }
     let d = ''
     cles.forEach((cle, index) => {
       const y = yPourHeure(cle.h)
