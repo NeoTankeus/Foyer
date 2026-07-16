@@ -1,0 +1,120 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ————— Tokens FOYER (§3.1 du brief) ————— */
+
+:root {
+  /* Fonds — blanc chaud, pas blanc clinique */
+  --fond: #fcfcfa;
+  --fond-eleve: #ffffff;
+  --fond-sourd: #f3f3f0;
+
+  /* Neutres (échelle iOS) */
+  --encre: #0e0e10;
+  --encre-2: #48484a;
+  --encre-3: #8e8e93;
+  --trait: #e4e4e0;
+
+  /* Couleurs de membre — LE système chromatique */
+  --ambre: #e09b3d;
+  --sauge: #6e9b7a;
+  --ardoise: #5b7fa6;
+  --prune: #8b6b9e;
+  --corail: #e0705e;
+  --or: #c9a961;
+
+  /* Sémantique — avec parcimonie */
+  --urgent: #d9483b;
+  --fait: #34a853;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --fond: #0e0e10;
+    --fond-eleve: #1a1a1d;
+    --fond-sourd: #161618;
+    --encre: #f5f5f3;
+    --encre-2: #b5b5ba;
+    --encre-3: #7c7c82;
+    --trait: #2a2a2e;
+  }
+}
+
+/* ————— Base ————— */
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--fond);
+  color: var(--encre);
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'SF Pro Display', Inter, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  overscroll-behavior-y: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Chiffres alignés partout où on compte */
+.chiffres {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Safe areas iOS, gérées partout */
+.safe-haut {
+  padding-top: env(safe-area-inset-top);
+}
+.safe-bas {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* Translucidité — réservée à la tab bar, aux en-têtes collants, aux feuilles */
+.verre {
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+}
+.verre-clair {
+  background: color-mix(in srgb, var(--fond) 72%, transparent);
+}
+
+/* Focus clavier visible (Definition of Done §10) */
+:focus-visible {
+  outline: 2px solid var(--ardoise);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Tracé d'entrée du Fil */
+@keyframes tracer-fil {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+/* La forme organique de Gastif — elle respire lentement (4 s) */
+@keyframes respiration {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.06);
+  }
+}
+.gastif-respire {
+  animation: respiration 4s ease-in-out infinite;
+  transform-origin: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gastif-respire {
+    animation: none;
+  }
+  * {
+    animation-duration: 120ms !important;
+    transition-duration: 120ms !important;
+  }
+}

@@ -1,0 +1,193 @@
+// Courses : ajout en moins de 3 secondes, tri par rayon, temps réel, mode magasin.
+import { useEffect, useRef, useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
+import { utiliserSession } from '@/etat/session'
+import {
+  ajouterArticle,
+  basculerArticle,
+  historiqueLibelles,
+  supprimerArticlesCoches,
+  utiliserListeCourses,
+  utiliserRealtimeCourses,
+} from '@/lib/requetes'
+import { devinerRayon, indexRayon } from './rayons'
+import type { LigneArticle } from '@/lib/basedonnees.types'
+import { Coche } from '@/design/composants/Coche'
+import { Bouton } from '@/design/composants/Bouton'
+import { EtatVide } from '@/design/composants/EtatVide'
+import { ModeMagasin } from './ModeMagasin'
+import { demarrerDictee, dicteePossible } from './dictee'
+
+export function EcranCourses() {
+  const { membre } = utiliserSession()
+  const clientRequetes = useQueryClient()
+  const courses = utiliserListeCourses()
+  const realtime = utiliserRealtimeCourses()
+  const [saisie, setSaisie] = useState('')
+  const [suggestions, setSuggestions] = useState<string[]>([])
+  const [magasinOuvert, setMagasinOuvert] = useState(false)
+  const [dicteeEnCours, setDicteeEnCours] = useState(false)
+  const champRef = useRef<HTMLInputElement>(null)
+
+  // Plusieurs personnes cochent en même temps : temps réel obligatoire.
+  useEffect(() => realtime.demarrer(), []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    void historiqueLibelles().then(setSuggestions)
+  }, [courses.data])
+
+  const liste = courses.data?.liste ?? null
+  const articles = courses.data?.articles ?? []
+  const aFaire = articles
+    .filter((a) => !a.coche)
+    .sort((a, b) => indexRayon(a.rayon) - indexRayon(b.rayon) || a.libelle.localeCompare(b.libelle))
+  const coches = articles.filter((a) => a.coche)
+
+  const rafraichir = () => clientRequetes.invalidateQueries({ queryKey: ['courses'] })
+
+  const ajouter = (libelle: string) => {
+    const propre = libelle.trim()
+    if (!propre || !liste || !membre) return
+    void ajouterArticle(liste.id, membre.id, propre, devinerRayon(propre)).then(rafraichir)
+    setSaisie('')
+    champRef.current?.focus()
+  }
+
+  const basculer = (article: LigneArticle) => {
+    if (!membre) return
+    void basculerArticle(article, membre.id).then(rafraichir)
+  }
+
+  const dicter = () => {
+    setDicteeEnCours(true)
+    demarrerDictee(
+      (texte) => {
+        // « des piles et du lait » → deux articles
+        texte
+          .split(/\s+et\s+|,/)
+          .map((morceau) => morceau.replace(/^(des?|du|de la|de l')\s+/i, '').trim())
+          .filter(Boolean)
+          .forEach(ajouter)
+        setDicteeEnCours(false)
+      },
+      () => setDicteeEnCours(false),
+    )
+  }
+
+  const grouperParRayon = (lignes: LigneArticle[]) => {
+    const groupes = new Map<string, LigneArticle[]>()
+    for (const article of lignes) {
+      const existant = groupes.get(article.rayon) ?? []
+      existant.push(article)
+      groupes.set(article.rayon, existant)
+    }
+    return [...groupes.entries()]
+  }
+
+  return (
+    <div>
+      <div className="flex items-center justify-between px-1 pb-2">
+        <h2 className="text-titre-3 text-encre">Courses</h2>
+        {aFaire.length > 0 && (
+          <Bouton variante="discret" onClick={() => setMagasinOuvert(true)}>
+            Mode magasin
+          </Bouton>
+        )}
+      </div>
+
+      {/* Le champ toujours accessible — plus rapide qu'un Post-it */}
+      <form
+        className="mb-3 flex gap-2"
+        onSubmit={(e) => {
+          e.preventDefault()
+          ajouter(saisie)
+        }}
+      >
+        <input
+          ref={champRef}
+          value={saisie}
+          onChange={(e) => setSaisie(e.target.value)}
+          placeholder="Ajouter…"
+          aria-label="Ajouter un article"
+          list="historique-courses"
+          enterKeyHint="done"
+          className="min-h-sur-tactile flex-1 rounded-md border border-trait bg-fond-eleve px-3
+            text-corps text-encre placeholder:text-encre-3"
+        />
+        <datalist id="historique-courses">
+          {suggestions.map((libelle) => (
+            <option key={libelle} value={libelle} />
+          ))}
+        </datalist>
+        {dicteePossible() && (
+          <Bouton
+            variante={dicteeEnCours ? 'urgent' : 'discret'}
+            onClick={dicter}
+            etiquette="Dicter un article"
+          >
+            {dicteeEnCours ? '●' : '🎙'}
+          </Bouton>
+        )}
+      </form>
+
+      {liste === null && !courses.isLoading && (
+        <EtatVide titre="Pas encore de liste" message="La liste « Courses » arrive avec les données du foyer." />
+      )}
+      {liste !== null && articles.length === 0 && (
+        <EtatVide titre="Liste vide" message="Dis un mot, il est déjà dessus." />
+      )}
+
+      {grouperParRayon(aFaire).map(([rayon, lignes]) => (
+        <section key={rayon} className="mb-3">
+          <h3 className="mb-1 px-1 text-note font-[590] uppercase tracking-wide text-encre-3">{rayon}</h3>
+          <ul className="flex flex-col gap-1">
+            {lignes.map((article) => (
+              <li key={article.id} className="flex items-center rounded-md bg-fond-eleve px-2 shadow-carte">
+                <Coche
+                  cochee={false}
+                  onBascule={() => basculer(article)}
+                  etiquette={`Cocher ${article.libelle}`}
+                />
+                <span className="flex-1 py-3 text-corps text-encre">{article.libelle}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ))}
+
+      {/* Les cochés glissent en bas */}
+      {coches.length > 0 && (
+        <section className="mt-5 opacity-50">
+          <div className="mb-1 flex items-center justify-between px-1">
+            <h3 className="text-note font-[590] uppercase tracking-wide text-encre-3">Dans le panier</h3>
+            <button
+              className="min-h-sur-tactile text-note text-encre-3 underline"
+              onClick={() => void supprimerArticlesCoches(coches).then(rafraichir)}
+            >
+              Vider
+            </button>
+          </div>
+          <ul>
+            {coches.map((article) => (
+              <li key={article.id} className="flex items-center px-2">
+                <Coche
+                  cochee
+                  onBascule={() => basculer(article)}
+                  etiquette={`Décocher ${article.libelle}`}
+                />
+                <span className="flex-1 py-2 text-corps text-encre-3 line-through">{article.libelle}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      <ModeMagasin
+        ouvert={magasinOuvert}
+        onFermer={() => setMagasinOuvert(false)}
+        articles={articles}
+        onBascule={basculer}
+      />
+    </div>
+  )
+}

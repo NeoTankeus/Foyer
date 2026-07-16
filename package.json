@@ -1,0 +1,41 @@
+{
+  "name": "foyer",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "FOYER — le quotidien, en paix.",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "apercu": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "generer:icones": "node scripts/generer-icones.mjs",
+    "generer:types": "supabase gen types typescript --local > src/lib/basedonnees.types.ts"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.0",
+    "@tanstack/react-query": "^5.51.0",
+    "date-fns": "^3.6.0",
+    "date-fns-tz": "^3.1.3",
+    "dexie": "^4.0.8",
+    "framer-motion": "^11.3.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.26.0",
+    "rrule": "^2.8.1",
+    "zod": "^3.23.8",
+    "zustand": "^4.5.4"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.1",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "autoprefixer": "^10.4.19",
+    "postcss": "^8.4.39",
+    "tailwindcss": "^3.4.6",
+    "typescript": "^5.5.3",
+    "vite": "^5.4.0",
+    "vite-plugin-pwa": "^0.20.0"
+  }
+}
