@@ -3,6 +3,7 @@ import Dexie, { type Table } from 'dexie'
 import type {
   LigneArticle,
   LigneCelebration,
+  LigneConcert,
   LigneColis,
   LigneDocument,
   LigneEvenement,
@@ -48,6 +49,7 @@ export type TableSynchronisee =
   | 'sas'
   | 'souvenirs'
   | 'gastif_conversations'
+  | 'concerts'
 
 export interface MutationEnAttente {
   id: string // uuid client, idempotent
@@ -81,6 +83,7 @@ class BaseFoyer extends Dexie {
   sas!: Table<LigneSas, string>
   souvenirs!: Table<LigneSouvenir, string>
   gastif_conversations!: Table<LigneGastifConversation, string>
+  concerts!: Table<LigneConcert, string>
   file_attente!: Table<MutationEnAttente, string>
 
   constructor() {
@@ -115,6 +118,9 @@ class BaseFoyer extends Dexie {
     })
     this.version(4).stores({
       gastif_conversations: 'id, membre_id',
+    })
+    this.version(5).stores({
+      concerts: 'id, date_evenement',
     })
   }
 }

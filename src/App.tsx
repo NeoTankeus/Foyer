@@ -6,6 +6,7 @@ import { EcranConnexion } from '@/fonctionnalites/auth/EcranConnexion'
 import { EcranAujourdhui } from '@/fonctionnalites/aujourdhui/EcranAujourdhui'
 import { BoutonSas } from '@/fonctionnalites/sas/BoutonSas'
 import { EcranEnfant } from '@/fonctionnalites/enfant/EcranEnfant'
+import { GardeFou } from '@/design/composants/GardeFou'
 
 // Aujourd'hui charge en premier ; le reste arrive en différé (< 1,5 s au premier écran utile).
 const paresseux = <T extends Record<string, unknown>>(
@@ -20,6 +21,7 @@ const EcranNous = paresseux(() => import('@/fonctionnalites/nous/EcranNous'), 'E
 const EcranEquilibre = paresseux(() => import('@/fonctionnalites/nous/EcranEquilibre'), 'EcranEquilibre')
 const EcranAdministration = paresseux(() => import('@/fonctionnalites/nous/EcranAdministration'), 'EcranAdministration')
 const EcranRecherche = paresseux(() => import('@/fonctionnalites/recherche/EcranRecherche'), 'EcranRecherche')
+const EcranConcerts = paresseux(() => import('@/fonctionnalites/concerts/EcranConcerts'), 'EcranConcerts')
 const EcranCelebrations = paresseux(() => import('@/fonctionnalites/celebrations/EcranCelebrations'), 'EcranCelebrations')
 const EcranVoyages = paresseux(() => import('@/fonctionnalites/voyages/EcranVoyages'), 'EcranVoyages')
 const EcranVoyage = paresseux(() => import('@/fonctionnalites/voyages/EcranVoyage'), 'EcranVoyage')
@@ -159,10 +161,15 @@ function Interieur() {
 
   // Le mode enfant remplace toute l'app : une autre app, pas l'app adulte en plus gros.
   if (modeEnfant) {
-    return <EcranEnfant onQuitter={quitterModeEnfant} />
+    return (
+      <GardeFou>
+        <EcranEnfant onQuitter={quitterModeEnfant} />
+      </GardeFou>
+    )
   }
 
   return (
+    <GardeFou>
     <BrowserRouter>
       <div
         className="min-h-dvh bg-fond"
@@ -179,6 +186,7 @@ function Interieur() {
             <Route path="/nous/equilibre" element={<EcranEquilibre />} />
             <Route path="/nous/administration" element={<EcranAdministration />} />
             <Route path="/recherche" element={<EcranRecherche />} />
+            <Route path="/nous/concerts" element={<EcranConcerts />} />
             <Route path="/nous/celebrations" element={<EcranCelebrations />} />
             <Route path="/nous/voyages" element={<EcranVoyages />} />
             <Route path="/nous/voyages/:id" element={<EcranVoyage />} />
@@ -195,5 +203,6 @@ function Interieur() {
         <BarreOnglets />
       </div>
     </BrowserRouter>
+    </GardeFou>
   )
 }

@@ -139,6 +139,7 @@ export interface Database {
       sas: Table<LigneSas>
       souvenirs: Table<LigneSouvenir>
       gastif_conversations: Table<LigneGastifConversation>
+      concerts: Table<LigneConcert>
     }
     Views: Record<string, never>
     Functions: Record<string, never>
@@ -338,4 +339,17 @@ export type LigneGastifConversation = {
   messages: { role: 'utilisateur' | 'gastif'; texte: string; a: string }[]
   cree_le: string
   modifie_le: string
+}
+
+export type LigneConcert = {
+  id: string
+  foyer_id: string
+  titre: string
+  lieu: string | null
+  date_evenement: string | null
+  codes_acces: string | null
+  format: string | null
+  image_donnees: string | null
+  notes: string | null
+  cree_le: string
 }

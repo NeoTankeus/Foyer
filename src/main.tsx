@@ -17,6 +17,13 @@ const clientRequetes = new QueryClient({
 
 demarrerSyncAuRetourDuReseau()
 
+// Après un déploiement, un ancien onglet peut charger un morceau d'app périmé :
+// au lieu d'une page blanche, on recharge proprement la nouvelle version.
+window.addEventListener('vite:preloadError', (evenement) => {
+  evenement.preventDefault()
+  window.location.reload()
+})
+
 const racine = document.getElementById('racine')
 if (!racine) throw new Error('Élément racine introuvable')
 

@@ -31,6 +31,7 @@ export function EcranNous() {
     { chemin: '/nous/equilibre', libelle: 'Équilibre', detail: 'la répartition réelle, en minutes', icone: '⚖️', couleur: 'var(--ardoise)', adulte: true },
     { chemin: '/nous/celebrations', libelle: 'Célébrations', detail: 'anniversaires et coffre à idées', icone: '🎂', couleur: 'var(--corail)' },
     { chemin: '/nous/voyages', libelle: 'Voyages', detail: 'valises, réservations, météo', icone: '✈️', couleur: 'var(--ardoise)' },
+    { chemin: '/nous/concerts', libelle: 'Concerts & sorties', detail: 'billets scannés, prêts pour l’entrée', icone: '🎤', couleur: 'var(--corail)' },
     { chemin: '/nous/souvenirs', libelle: 'Souvenirs', detail: 'photos par voyage, album imprimable', icone: '📷', couleur: 'var(--or)' },
     { chemin: '/nous/routines', libelle: 'Routines', detail: 'les matins et soirs de Gabriel', icone: '⏰', couleur: 'var(--sauge)' },
     { chemin: '/nous/recompenses', libelle: 'Récompenses', detail: 'points → vraies récompenses', icone: '🎁', couleur: 'var(--prune)' },

@@ -39,7 +39,7 @@ export async function assemblerContexte(
   const [
     evenements, taches, tachesFaites, courses, repas, recettes,
     voyages, reservations, valises, documents, colis, celebrations,
-    souvenirs, mur, routines, recompenses,
+    souvenirs, mur, routines, recompenses, concerts,
   ] = await Promise.all([
     supabase.from('evenements').select('*').gt('fin_a', debut).lt('debut_a', fin).order('debut_a'),
     supabase.from('taches').select('*').eq('statut', 'a_faire').order('echeance'),
@@ -57,6 +57,7 @@ export async function assemblerContexte(
     supabase.from('mur').select('*').order('cree_le', { ascending: false }).limit(15),
     supabase.from('routines').select('*').eq('active', true),
     supabase.from('recompenses').select('*').eq('active', true),
+    supabase.from('concerts').select('*'),
   ])
 
   const prenom = (id: string | null) => membres.find((m) => m.id === id)?.prenom ?? '?'
@@ -134,6 +135,11 @@ export async function assemblerContexte(
   const notes = (mur.data ?? []).filter((n) => n.contenu)
   if (notes.length > 0)
     lignes.push(`Derniers mots sur le Mur : ${notes.slice(0, 8).map((n) => `« ${n.contenu?.slice(0, 60)} » (${prenom(n.auteur_id)})`).join(' · ')}.`)
+
+  // Concerts & sorties
+  const sorties = (concerts.data ?? []) as { titre: string; lieu: string | null; date_evenement: string | null }[]
+  if (sorties.length > 0)
+    lignes.push(`Concerts et sorties : ${sorties.map((s) => `${s.titre}${s.lieu ? ` à ${s.lieu}` : ''}${s.date_evenement ? ` le ${jourCourt(s.date_evenement)}` : ''}`).join(' · ')}.`)
 
   // Routines & récompenses
   for (const r of routines.data ?? [])
