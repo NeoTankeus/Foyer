@@ -177,7 +177,13 @@ function CoffreAIdees({ celebration }: { celebration: LigneCelebration }) {
       for (const i of (idees.data ?? []).filter((x) => x.url && !x.offert)) {
         const produit = await analyserLien(i.url ?? '')
         if (produit.prix !== null) {
-          await muter({ table: 'idees_cadeaux', type: 'update', cible_id: i.id, charge: { prix: produit.prix } })
+          const jour = new Date().toISOString().slice(0, 10)
+          const historique = [...(i.historique_prix ?? [])]
+          if (historique[historique.length - 1]?.date !== jour) historique.push({ date: jour, prix: produit.prix })
+          await muter({
+            table: 'idees_cadeaux', type: 'update', cible_id: i.id,
+            charge: { prix: produit.prix, historique_prix: historique.slice(-90) },
+          })
         }
       }
       await clientRequetes.invalidateQueries({ queryKey: ['idees', celebration.id] })
@@ -285,6 +291,9 @@ function CoffreAIdees({ celebration }: { celebration: LigneCelebration }) {
                   </a>
                 )}
                 {i.url && ' · '}
+                {(i.historique_prix?.length ?? 0) >= 2 && (
+                  <CourbePrix historique={i.historique_prix ?? []} />
+                )}
                 {i.libelle.length > 3 && (
                   <a
                     href={`https://www.google.com/search?tbm=shop&q=${encodeURIComponent(i.libelle)}`}
@@ -303,5 +312,31 @@ function CoffreAIdees({ celebration }: { celebration: LigneCelebration }) {
         <p className="text-legende text-encre-3">Coché = offert. Plus jamais de doublon.</p>
       )}
     </div>
+  )
+}
+
+
+/** Mini-courbe de prix (90 jours max) — la baisse se voit d'un coup d'œil. */
+function CourbePrix({ historique }: { historique: { date: string; prix: number }[] }) {
+  const valeurs = historique.map((h) => h.prix)
+  const min = Math.min(...valeurs)
+  const max = Math.max(...valeurs)
+  const plage = max - min || 1
+  const points = valeurs
+    .map((v, i) => `${(i / (valeurs.length - 1)) * 60},${14 - ((v - min) / plage) * 12}`)
+    .join(' ')
+  const dernier = valeurs[valeurs.length - 1] ?? 0
+  const premier = valeurs[0] ?? 0
+  return (
+    <svg width="64" height="16" viewBox="0 0 64 16" className="ml-1 inline-block align-middle" aria-label="Évolution du prix">
+      <polyline
+        points={points}
+        fill="none"
+        stroke={dernier < premier ? 'var(--fait)' : 'var(--encre-3)'}
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
   )
 }

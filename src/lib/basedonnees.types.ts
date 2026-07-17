@@ -141,6 +141,8 @@ export interface Database {
       gastif_conversations: Table<LigneGastifConversation>
       concerts: Table<LigneConcert>
       depenses: Table<LigneDepense>
+      integrations: Table<LigneIntegration>
+      push_abonnements: Table<LignePushAbonnement>
     }
     Views: Record<string, never>
     Functions: Record<string, never>
@@ -183,6 +185,7 @@ export type LigneIdeeCadeau = {
   prix: number | null
   url: string | null
   image_url: string | null
+  historique_prix?: { date: string; prix: number }[]
   offert: boolean
   offert_le: string | null
   cree_par: string | null
@@ -366,5 +369,26 @@ export type LigneDepense = {
   categorie: string | null
   date_depense: string | null
   image_donnees: string | null
+  cree_le: string
+}
+
+
+export type LigneIntegration = {
+  id: string
+  foyer_id: string
+  membre_id: string | null
+  fournisseur: 'icloud_caldav' | 'laposte' | 'chronodrive' | 'resend_inbound' | 'anthropic'
+  vault_ref: string | null
+  reglages: { ics_url?: string }
+  statut: 'active' | 'erreur' | 'desactivee'
+  derniere_sync: string | null
+  cree_le: string
+}
+
+export type LignePushAbonnement = {
+  id: string
+  membre_id: string
+  endpoint: string
+  cles: Record<string, string>
   cree_le: string
 }

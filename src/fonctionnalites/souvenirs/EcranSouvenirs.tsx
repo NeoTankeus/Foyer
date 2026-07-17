@@ -170,7 +170,7 @@ export function EcranSouvenirs() {
 
           <div className="mb-3 flex gap-2">
             <Bouton variante="valider" pleineLargeur onClick={() => champCamera.current?.click()} desactive={ajoutEnCours}>
-              {ajoutEnCours ? 'Ajout…' : '📷 Prendre une photo'}
+              {ajoutEnCours ? 'Ajout…' : '📷 Photo'}
             </Bouton>
             <Bouton variante="discret" pleineLargeur onClick={() => champPellicule.current?.click()} desactive={ajoutEnCours}>
               Pellicule

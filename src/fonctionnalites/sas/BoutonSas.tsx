@@ -9,6 +9,9 @@ import { muter } from '@/lib/sync'
 import { ajouterArticle, creerEvenement, creerTache, utiliserListeCourses } from '@/lib/requetes'
 import { devinerRayon } from '@/fonctionnalites/courses/rayons'
 import { demarrerDictee, dicteePossible } from '@/fonctionnalites/courses/dictee'
+import { compresserImage } from '@/fonctionnalites/souvenirs/donnees'
+import { supabase } from '@/lib/supabase'
+import { useRef } from 'react'
 import { maintenantLocal, versUtc } from '@/lib/dates'
 import { Feuille } from '@/design/composants/Feuille'
 import { Bouton } from '@/design/composants/Bouton'
@@ -24,12 +27,103 @@ export function BoutonSas() {
   const [texte, setTexte] = useState('')
   const [dicteeEnCours, setDicteeEnCours] = useState(false)
   const [confirmation, setConfirmation] = useState<string | null>(null)
+  const champPhoto = useRef<HTMLInputElement>(null)
+  const [lectureEnCours, setLectureEnCours] = useState(false)
+  const [proposition, setProposition] = useState<{
+    resume: string
+    evenement: { titre: string; date: string; heure: string | null; lieu: string | null } | null
+    taches: { titre: string; echeance: string | null }[]
+    articles: string[]
+    photo: string
+  } | null>(null)
 
   const { pathname } = useLocation()
 
   if (!membre || !foyer) return null
   // Sur l'écran Gastif, c'est son bouton d'envoi qui occupe cette place.
   if (pathname === '/gastif') return null
+
+  const lirePhoto = async (fichiers: FileList | null) => {
+    const fichier = fichiers?.[0]
+    if (!fichier) return
+    setLectureEnCours(true)
+    try {
+      const image = await compresserImage(fichier)
+      const { data: session } = await supabase.auth.getSession()
+      const reponse = await fetch('/api/analyser-photo', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${session.session?.access_token ?? ''}`,
+        },
+        body: JSON.stringify({ image }),
+      })
+      const donnees = (await reponse.json()) as { proposition?: Omit<NonNullable<typeof proposition>, 'photo'>; message?: string }
+      if (donnees.proposition) {
+        setProposition({
+          resume: donnees.proposition.resume ?? '',
+          evenement: donnees.proposition.evenement ?? null,
+          taches: donnees.proposition.taches ?? [],
+          articles: donnees.proposition.articles ?? [],
+          photo: image,
+        })
+      } else {
+        setConfirmation(donnees.message ?? 'Photo illisible — réessaie de plus près.')
+        setTimeout(() => setConfirmation(null), 2500)
+      }
+    } finally {
+      setLectureEnCours(false)
+    }
+  }
+
+  const validerProposition = async () => {
+    if (!proposition) return
+    let creations = 0
+    if (proposition.evenement?.date) {
+      const heure = proposition.evenement.heure ?? '09:00'
+      const debutLocal = new Date(`${proposition.evenement.date}T${heure}:00`)
+      const finLocal = new Date(debutLocal.getTime() + 3600_000)
+      await creerEvenement(foyer.id, membre.id, {
+        titre: proposition.evenement.titre, debut_a: versUtc(debutLocal), fin_a: versUtc(finLocal),
+        lieu: proposition.evenement.lieu, participants: [], journee_entiere: false,
+      })
+      creations += 1
+    }
+    for (const tache of proposition.taches) {
+      await creerTache(foyer.id, membre.id, {
+        titre: tache.titre, assignee_id: null, echeance: tache.echeance,
+        rrule: null, effort_minutes: 10, groupe_rotation: null,
+      })
+      creations += 1
+    }
+    if (courses.data?.liste) {
+      for (const article of proposition.articles) {
+        await ajouterArticle(courses.data.liste.id, membre.id, article, devinerRayon(article))
+        creations += 1
+      }
+    }
+    const idSas = crypto.randomUUID()
+    await muter({
+      table: 'sas', type: 'insert', cible_id: idSas,
+      charge: {
+        id: idSas, foyer_id: foyer.id, auteur_id: membre.id, type: 'photo',
+        media_url: proposition.photo, transcription: proposition.resume,
+        interpretation: { evenement: proposition.evenement, taches: proposition.taches, articles: proposition.articles },
+        statut: 'valide',
+      },
+    })
+    await Promise.all([
+      clientRequetes.invalidateQueries({ queryKey: ['evenements'] }),
+      clientRequetes.invalidateQueries({ queryKey: ['taches'] }),
+      clientRequetes.invalidateQueries({ queryKey: ['courses'] }),
+    ])
+    setProposition(null)
+    setConfirmation(`${creations} élément${creations > 1 ? 's' : ''} créé${creations > 1 ? 's' : ''} ✓`)
+    setTimeout(() => {
+      setConfirmation(null)
+      setOuvert(false)
+    }, 1400)
+  }
 
   const enregistrerSas = async (destination: Destination) => {
     const contenu = texte.trim()
@@ -120,6 +214,35 @@ export function BoutonSas() {
             </motion.p>
           ) : (
             <motion.div key="saisie" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col gap-3">
+              {proposition ? (
+                <div className="flex flex-col gap-3">
+                  <p className="text-corps font-[590] text-encre">Gastif a lu :</p>
+                  <p className="text-corps-2 text-encre-2">{proposition.resume}</p>
+                  <div className="rounded-xl bg-fond-sourd p-3 text-corps-2 text-encre">
+                    {proposition.evenement && (
+                      <p>📅 {proposition.evenement.titre} — {proposition.evenement.date}{proposition.evenement.heure ? ` à ${proposition.evenement.heure}` : ''}</p>
+                    )}
+                    {proposition.taches.map((t, i) => (
+                      <p key={i}>✅ {t.titre}{t.echeance ? ` (avant le ${t.echeance})` : ''}</p>
+                    ))}
+                    {proposition.articles.map((a, i) => (
+                      <p key={i}>🛒 {a}</p>
+                    ))}
+                    {!proposition.evenement && proposition.taches.length === 0 && proposition.articles.length === 0 && (
+                      <p className="text-encre-3">Rien d'actionnable détecté — la photo sera gardée dans le Sas.</p>
+                    )}
+                  </div>
+                  <div className="flex gap-2">
+                    <Bouton variante="valider" pleineLargeur onClick={() => void validerProposition()}>
+                      Tout créer
+                    </Bouton>
+                    <Bouton variante="discret" onClick={() => setProposition(null)}>
+                      Annuler
+                    </Bouton>
+                  </div>
+                </div>
+              ) : (
+              <>
               <div className="flex gap-2">
                 <textarea
                   value={texte}
@@ -156,9 +279,24 @@ export function BoutonSas() {
                 <Bouton variante="discret" onClick={() => void enregistrerSas('evenement')}>Événement</Bouton>
                 <Bouton variante="discret" onClick={() => void enregistrerSas('mur')}>Mot sur le Mur</Bouton>
               </div>
+              <Bouton
+                variante="soleil"
+                pleineLargeur
+                desactive={lectureEnCours}
+                onClick={() => champPhoto.current?.click()}
+              >
+                {lectureEnCours ? 'Gastif lit la photo…' : '📷 Photographier un document'}
+              </Bouton>
+              <input
+                ref={champPhoto} type="file" accept="image/*" capture="environment" hidden
+                aria-hidden="true" onChange={(e) => void lirePhoto(e.target.files)}
+              />
               <p className="text-legende text-encre-3">
-                Pour les courses, « piles et lait » fait deux articles. La photo du mot de l’école arrive avec Gastif.
+                Pour les courses, « piles et lait » fait deux articles. Le mot de l’école en photo →
+                événement + tâche + courses, d’un coup.
               </p>
+              </>
+              )}
             </motion.div>
           )}
         </AnimatePresence>

@@ -3,6 +3,7 @@
 // base qui refuse, pas l'interface.
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import type { LigneIntegration } from '@/lib/basedonnees.types'
 import { utiliserSession } from '@/etat/session'
 import type { CouleurMembre, LigneMembre, RoleMembre } from '@/lib/basedonnees.types'
 import { couleurMembre } from '@/lib/couleurs'
@@ -37,9 +38,18 @@ export function EcranAdministration() {
   const [enEdition, setEnEdition] = useState<LigneMembre | null>(null)
   const [creation, setCreation] = useState(false)
   const [journal, setJournal] = useState<LigneJournal[]>([])
+  const [calendriers, setCalendriers] = useState<LigneIntegration[]>([])
+  const [urlIcs, setUrlIcs] = useState('')
+  const [membreIcs, setMembreIcs] = useState<string | null>(null)
+  const [importEnCours, setImportEnCours] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
 
   useEffect(() => {
+    void supabase
+      .from('integrations')
+      .select('*')
+      .eq('fournisseur', 'icloud_caldav')
+      .then(({ data }) => setCalendriers(data ?? []))
     void supabase
       .from('journal_audit' as never)
       .select('id, acteur_id, action, cible, cree_le')
@@ -147,6 +157,99 @@ export function EcranAdministration() {
           Admins : accès complet. Enfant et invités : lecture, création et coches uniquement —
           la base refuse le reste, quelle que soit l’interface.
         </p>
+      </Carte>
+
+      <Carte>
+        <h3 className="mb-2 text-note font-[590] uppercase tracking-wide text-encre-3">
+          📅 Calendriers Apple (import automatique chaque matin)
+        </h3>
+        <p className="mb-2 text-note text-encre-3">
+          Sur iPhone : Calendrier → le calendrier → Partager → « Calendrier public » → copie le lien
+          webcal://… et colle-le ici. Ses événements arrivent dans FOYER, reliés au bon membre.
+        </p>
+        {calendriers.map((c) => (
+          <div key={c.id} className="flex items-center gap-2 border-b border-trait py-1.5 last:border-0">
+            <span className="flex-1 truncate text-note text-encre-2">
+              {membres.find((m) => m.id === c.membre_id)?.prenom ?? 'Foyer'} · {c.reglages.ics_url?.slice(0, 40)}…
+            </span>
+            <span className="text-legende text-encre-3">
+              {c.derniere_sync ? `sync ${new Date(c.derniere_sync).toLocaleDateString('fr-FR')}` : 'jamais'}
+            </span>
+            <button
+              aria-label="Retirer ce calendrier"
+              className="min-h-[32px] min-w-[32px] text-note text-encre-3"
+              onClick={() =>
+                void supabase.from('integrations').delete().eq('id', c.id).then(() =>
+                  setCalendriers(calendriers.filter((x) => x.id !== c.id)),
+                )
+              }
+            >
+              ✕
+            </button>
+          </div>
+        ))}
+        <div className="mt-2 flex flex-col gap-2">
+          <input
+            value={urlIcs}
+            onChange={(e) => setUrlIcs(e.target.value)}
+            placeholder="webcal://p123-caldav.icloud.com/published/…"
+            aria-label="Lien du calendrier public"
+            inputMode="url"
+            className="min-h-sur-tactile w-full rounded-md border border-trait bg-fond-eleve px-3 text-note"
+          />
+          <div className="flex items-center gap-2">
+            <span className="text-note text-encre-3">Pour :</span>
+            {membres.filter((m) => m.role !== 'guest').map((m) => (
+              <PastilleMembre
+                key={m.id}
+                membre={m}
+                taille={30}
+                estompee={membreIcs !== null && membreIcs !== m.id}
+                onClick={() => setMembreIcs(membreIcs === m.id ? null : m.id)}
+              />
+            ))}
+            <Bouton
+              variante="valider"
+              onClick={() => {
+                if (!foyer || !urlIcs.trim()) return
+                void supabase.from('integrations').insert({
+                  id: crypto.randomUUID(), foyer_id: foyer.id, membre_id: membreIcs,
+                  fournisseur: 'icloud_caldav', vault_ref: null,
+                  reglages: { ics_url: urlIcs.trim() }, statut: 'active', derniere_sync: null,
+                } as never).then(({ error }) => {
+                  if (!error) {
+                    setUrlIcs('')
+                    confirmer('Calendrier ajouté — import chaque matin.')
+                    void supabase.from('integrations').select('*').eq('fournisseur', 'icloud_caldav')
+                      .then(({ data }) => setCalendriers(data ?? []))
+                  }
+                })
+              }}
+            >
+              Ajouter
+            </Bouton>
+          </div>
+          {calendriers.length > 0 && (
+            <Bouton
+              variante="discret"
+              desactive={importEnCours}
+              onClick={() => {
+                setImportEnCours(true)
+                void supabase.auth.getSession().then(({ data }) =>
+                  fetch('/api/importer-ics', {
+                    method: 'POST',
+                    headers: { authorization: `Bearer ${data.session?.access_token ?? ''}` },
+                  })
+                    .then((r) => r.json() as Promise<{ importes?: number }>)
+                    .then((r) => confirmer(`${r.importes ?? 0} événement(s) importé(s).`))
+                    .finally(() => setImportEnCours(false)),
+                )
+              }}
+            >
+              {importEnCours ? 'Import…' : 'Importer maintenant'}
+            </Bouton>
+          )}
+        </div>
       </Carte>
 
       <Carte>

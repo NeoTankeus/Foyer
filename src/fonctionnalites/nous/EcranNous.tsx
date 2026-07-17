@@ -5,6 +5,7 @@ import { utiliserSession } from '@/etat/session'
 import { utiliserUi } from '@/etat/ui'
 import { baseLocale } from '@/lib/dexie'
 import { rejouerFileAttente } from '@/lib/sync'
+import { activerNotifications, etatAbonnement, notificationsPossibles } from '@/lib/notifications'
 import { PastilleMembre } from '@/design/composants/PastilleMembre'
 import { Bouton } from '@/design/composants/Bouton'
 import { Carte } from '@/design/composants/Carte'
@@ -22,10 +23,12 @@ export function EcranNous() {
   const naviguer = useNavigate()
   const [enAttente, setEnAttente] = useState(0)
   const [demandeCode, setDemandeCode] = useState(false)
+  const [notifications, setNotifications] = useState<'active' | 'refuse' | 'inactif'>('inactif')
   const [code, setCode] = useState('')
 
   useEffect(() => {
     void baseLocale.file_attente.count().then(setEnAttente)
+    void etatAbonnement().then(setNotifications)
   }, [])
 
   const estAdulte = membre?.role === 'adult'
@@ -153,6 +156,36 @@ export function EcranNous() {
             </Bouton>
           </div>
         </Feuille>
+
+        <Carte>
+          <h3 className="mb-1 text-note font-[590] uppercase tracking-wide text-encre-3">
+            🔔 Notifications
+          </h3>
+          {notifications === 'active' ? (
+            <p className="text-corps-2 text-fait">Activées sur ce téléphone — brief du matin à ~7h, colis, baisses de prix.</p>
+          ) : notifications === 'refuse' ? (
+            <p className="text-corps-2 text-encre-3">
+              Refusées dans les réglages du téléphone. Réglages → Notifications → FOYER pour les rouvrir.
+            </p>
+          ) : (
+            <>
+              <p className="mb-2 text-corps-2 text-encre-2">
+                Le brief de Gastif à ~7h, les colis livrés et les baisses de prix, directement sur l’écran verrouillé.
+                {notificationsPossibles() ? '' : ' Sur iPhone : ajoute d’abord FOYER à l’écran d’accueil.'}
+              </p>
+              {notificationsPossibles() && (
+                <Bouton
+                  variante="valider"
+                  onClick={() => {
+                    if (membre) void activerNotifications(membre.id).then((ok) => setNotifications(ok ? 'active' : 'refuse'))
+                  }}
+                >
+                  Activer sur ce téléphone
+                </Bouton>
+              )}
+            </>
+          )}
+        </Carte>
 
         {enAttente > 0 && (
           <Carte>
