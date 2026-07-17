@@ -1,6 +1,7 @@
 // Le Sas — capture éclair, partout. Photo/dictée/texte → routé en un tap.
 // Rien ne se perd jamais.
 import { useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useQueryClient } from '@tanstack/react-query'
 import { utiliserSession } from '@/etat/session'
@@ -24,7 +25,11 @@ export function BoutonSas() {
   const [dicteeEnCours, setDicteeEnCours] = useState(false)
   const [confirmation, setConfirmation] = useState<string | null>(null)
 
+  const { pathname } = useLocation()
+
   if (!membre || !foyer) return null
+  // Sur l'écran Gastif, c'est son bouton d'envoi qui occupe cette place.
+  if (pathname === '/gastif') return null
 
   const enregistrerSas = async (destination: Destination) => {
     const contenu = texte.trim()

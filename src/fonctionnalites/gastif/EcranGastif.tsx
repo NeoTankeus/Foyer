@@ -1,11 +1,11 @@
 // Gastif — l'intendant du foyer. Il lit l'état réel de la maison à chaque question.
 // Cerveau : Gemini (gratuit) via la fonction serveur /api/gastif — la clé reste côté serveur.
 import { useEffect, useRef, useState } from 'react'
+import { motion } from 'framer-motion'
 import { supabase } from '@/lib/supabase'
 import { muter } from '@/lib/sync'
 import { utiliserSession } from '@/etat/session'
 import { assemblerContexte } from './contexte'
-import { Bouton } from '@/design/composants/Bouton'
 
 interface MessageGastif {
   role: 'utilisateur' | 'gastif'
@@ -192,7 +192,7 @@ export function EcranGastif() {
       </div>
 
       <form
-        className="verre verre-clair au-dessus-onglets fixed inset-x-0 z-20 flex gap-2 border-t border-trait px-4 py-2"
+        className="au-dessus-onglets fixed inset-x-0 z-20 flex items-center gap-2 px-4 pb-1"
         onSubmit={(e) => {
           e.preventDefault()
           void envoyer()
@@ -203,11 +203,28 @@ export function EcranGastif() {
           onChange={(e) => setSaisie(e.target.value)}
           placeholder="Demande à Gastif…"
           aria-label="Message à Gastif"
-          className="min-h-sur-tactile flex-1 rounded-full border border-trait bg-fond-eleve px-4 text-corps"
+          className="verre verre-clair min-h-[52px] flex-1 rounded-full border border-trait px-5
+            text-corps text-encre shadow-carte placeholder:text-encre-3"
         />
-        <Bouton type="submit" desactive={reflechit || !saisie.trim()}>
-          →
-        </Bouton>
+        {/* Le bouton d'envoi — rond, dégradé, à la place du + */}
+        <motion.button
+          type="submit"
+          disabled={reflechit || !saisie.trim()}
+          aria-label="Envoyer à Gastif"
+          whileTap={{ scale: 0.88 }}
+          animate={{ scale: saisie.trim() ? 1 : 0.92, opacity: saisie.trim() ? 1 : 0.55 }}
+          transition={{ type: 'spring', stiffness: 400, damping: 32 }}
+          className="degrade-chaud flex h-14 w-14 shrink-0 items-center justify-center rounded-full
+            text-white shadow-carte disabled:opacity-40"
+        >
+          <svg width="22" height="22" viewBox="0 0 22 22" aria-hidden="true">
+            <path
+              d="M11 17V5M5.5 10.5 11 5l5.5 5.5"
+              fill="none" stroke="currentColor" strokeWidth="2.4"
+              strokeLinecap="round" strokeLinejoin="round"
+            />
+          </svg>
+        </motion.button>
       </form>
     </div>
   )
