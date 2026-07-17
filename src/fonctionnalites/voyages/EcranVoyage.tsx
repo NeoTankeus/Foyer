@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { utiliserSession } from '@/etat/session'
+import { supabase } from '@/lib/supabase'
 import { muter } from '@/lib/sync'
 import {
   chargerMeteo,
@@ -31,6 +32,69 @@ export function EcranVoyage() {
   const [meteo, setMeteo] = useState<MeteoJour[] | null>(null)
   const [membreValise, setMembreValise] = useState<string | null>(null)
   const [ajoutResa, setAjoutResa] = useState(false)
+  const [collerEmail, setCollerEmail] = useState(false)
+  const [emailColle, setEmailColle] = useState('')
+  const [analyseEnCours, setAnalyseEnCours] = useState(false)
+  const [resultatAnalyse, setResultatAnalyse] = useState<string | null>(null)
+
+  const analyserEmail = async () => {
+    if (!emailColle.trim() || !voyage) return
+    setAnalyseEnCours(true)
+    setResultatAnalyse(null)
+    try {
+      const { data: session } = await supabase.auth.getSession()
+      const reponse = await fetch('/api/analyser-reservation', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${session.session?.access_token ?? ''}`,
+        },
+        body: JSON.stringify({ texte: emailColle }),
+      })
+      const donnees = (await reponse.json()) as {
+        reservations?: {
+          type: LigneReservation['type']
+          fournisseur: string | null
+          reference: string | null
+          debut_a: string | null
+          fin_a: string | null
+          adresse: string | null
+          prix: number | null
+          codes_acces: string | null
+        }[]
+        message?: string
+      }
+      if (!reponse.ok || !donnees.reservations) {
+        setResultatAnalyse(donnees.message ?? 'Analyse impossible — réessaie.')
+        return
+      }
+      if (donnees.reservations.length === 0) {
+        setResultatAnalyse('Aucune réservation trouvée dans ce texte.')
+        return
+      }
+      for (const r of donnees.reservations) {
+        const rid = crypto.randomUUID()
+        await muter({
+          table: 'reservations', type: 'insert', cible_id: rid,
+          charge: {
+            id: rid, voyage_id: voyage.id, doc_path: null,
+            email_brut: emailColle.slice(0, 4000), ...r,
+          },
+        })
+      }
+      await clientRequetes.invalidateQueries({ queryKey: ['reservations', voyage.id] })
+      setResultatAnalyse(`${donnees.reservations.length} réservation(s) créée(s) ✓`)
+      setEmailColle('')
+      setTimeout(() => {
+        setResultatAnalyse(null)
+        setCollerEmail(false)
+      }, 1500)
+    } catch {
+      setResultatAnalyse('Pas de réseau — réessaie.')
+    } finally {
+      setAnalyseEnCours(false)
+    }
+  }
 
   const voyage = voyages.data?.find((v) => v.id === id)
 
@@ -144,7 +208,12 @@ export function EcranVoyage() {
         <div className="flex items-center justify-between">
           <h3 className="text-titre-3 text-encre">Réservations</h3>
           {membre?.role === 'adult' && (
-            <Bouton variante="discret" onClick={() => setAjoutResa(true)} etiquette="Ajouter une réservation">+</Bouton>
+            <div className="flex gap-1">
+              <Bouton variante="soleil" onClick={() => setCollerEmail(true)}>
+                📧 Coller un email
+              </Bouton>
+              <Bouton variante="discret" onClick={() => setAjoutResa(true)} etiquette="Ajouter une réservation">+</Bouton>
+            </div>
           )}
         </div>
         {(reservations.data?.length ?? 0) === 0 ? (
@@ -189,6 +258,31 @@ export function EcranVoyage() {
           ))}
         </ul>
       </section>
+
+      <Feuille ouverte={collerEmail} onFermer={() => setCollerEmail(false)} titre="Coller une confirmation">
+        <div className="flex flex-col gap-3">
+          <p className="text-note text-encre-3">
+            Copie l’email de confirmation (Booking, Airbnb, SNCF, loueur…) et colle-le ici :
+            l’IA en extrait la réservation — dates, référence, adresse, prix, codes.
+          </p>
+          <textarea
+            value={emailColle}
+            onChange={(e) => setEmailColle(e.target.value)}
+            rows={8}
+            placeholder="Colle ici tout le contenu de l’email…"
+            aria-label="Email de confirmation"
+            className="w-full rounded-md border border-trait bg-fond-eleve px-3 py-2 text-note"
+          />
+          {resultatAnalyse && (
+            <p className={`text-note font-[590] ${resultatAnalyse.includes('✓') ? 'text-fait' : 'text-encre-2'}`}>
+              {resultatAnalyse}
+            </p>
+          )}
+          <Bouton pleineLargeur variante="valider" desactive={analyseEnCours || !emailColle.trim()} onClick={() => void analyserEmail()}>
+            {analyseEnCours ? 'Lecture en cours…' : 'Analyser et créer'}
+          </Bouton>
+        </div>
+      </Feuille>
 
       <Feuille ouverte={ajoutResa} onFermer={() => setAjoutResa(false)} titre="Nouvelle réservation">
         <FormReservation
