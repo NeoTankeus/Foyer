@@ -89,9 +89,26 @@ export function EcranCourses() {
       <div className="flex items-center justify-between px-1 pb-2">
         <h2 className="text-titre-3 text-encre">Courses</h2>
         {aFaire.length > 0 && (
-          <Bouton variante="discret" onClick={() => setMagasinOuvert(true)}>
-            Mode magasin
-          </Bouton>
+          <div className="flex gap-1">
+            <Bouton
+              variante="discret"
+              etiquette="Copier la liste et ouvrir Chronodrive"
+              onClick={() => {
+                // Chronodrive V1 : liste triée par rayon dans le presse-papier + le site.
+                // (Le remplissage automatique du panier — V2 — demande un robot serveur, à venir.)
+                const parRayon = grouperParRayon(aFaire)
+                  .map(([rayon, lignes]) => `${rayon.toUpperCase()}\n${lignes.map((l) => `- ${l.libelle}`).join('\n')}`)
+                  .join('\n\n')
+                void navigator.clipboard?.writeText(parRayon)
+                window.open('https://www.chronodrive.com', '_blank', 'noopener')
+              }}
+            >
+              Chronodrive
+            </Bouton>
+            <Bouton variante="discret" onClick={() => setMagasinOuvert(true)}>
+              Mode magasin
+            </Bouton>
+          </div>
         )}
       </div>
 

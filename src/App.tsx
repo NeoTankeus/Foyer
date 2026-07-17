@@ -51,10 +51,11 @@ function IconeOnglet({ nom }: { nom: string }) {
         </svg>
       )
     case 'gastif':
+      // L'icône de Gastif : ILY 🤟
       return (
-        <svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true" className="gastif-respire">
-          <path d="M12 4c3.5 0 7.5 2.4 7.5 7.2S16.4 20 12 20s-7.5-4-7.5-8.8S8.5 4 12 4Z" {...traits} />
-        </svg>
+        <span className="text-[20px] leading-none" aria-hidden="true">
+          🤟
+        </span>
       )
     default:
       return (

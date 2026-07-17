@@ -6,6 +6,7 @@ import type {
   LigneColis,
   LigneDocument,
   LigneEvenement,
+  LigneGastifConversation,
   LigneIdeeCadeau,
   LigneListe,
   LigneMembre,
@@ -46,6 +47,7 @@ export type TableSynchronisee =
   | 'recompense_echanges'
   | 'sas'
   | 'souvenirs'
+  | 'gastif_conversations'
 
 export interface MutationEnAttente {
   id: string // uuid client, idempotent
@@ -78,6 +80,7 @@ class BaseFoyer extends Dexie {
   recompense_echanges!: Table<LigneRecompenseEchange, string>
   sas!: Table<LigneSas, string>
   souvenirs!: Table<LigneSouvenir, string>
+  gastif_conversations!: Table<LigneGastifConversation, string>
   file_attente!: Table<MutationEnAttente, string>
 
   constructor() {
@@ -109,6 +112,9 @@ class BaseFoyer extends Dexie {
     })
     this.version(3).stores({
       souvenirs: 'id, voyage_id, pris_le',
+    })
+    this.version(4).stores({
+      gastif_conversations: 'id, membre_id',
     })
   }
 }

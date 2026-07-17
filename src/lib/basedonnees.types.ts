@@ -138,6 +138,7 @@ export interface Database {
       recompense_echanges: Table<LigneRecompenseEchange>
       sas: Table<LigneSas>
       souvenirs: Table<LigneSouvenir>
+      gastif_conversations: Table<LigneGastifConversation>
     }
     Views: Record<string, never>
     Functions: Record<string, never>
@@ -326,4 +327,13 @@ export type LigneSouvenir = {
   image_donnees: string // JPEG en data-URI, recompressé côté client
   favori: boolean
   cree_le: string
+}
+
+export type LigneGastifConversation = {
+  id: string
+  foyer_id: string
+  membre_id: string
+  messages: { role: 'utilisateur' | 'gastif'; texte: string; a: string }[]
+  cree_le: string
+  modifie_le: string
 }
