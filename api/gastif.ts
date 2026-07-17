@@ -96,37 +96,66 @@ ${corps.contexte}`
     )
   }
 
-  // Cascade de modèles gratuits : certains projets Google n'ont aucun quota
-  // sur certains modèles — on essaie jusqu'à trouver celui qui répond.
-  const MODELES = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.0-flash', 'gemma-3-27b-it']
+  // On ne devine plus les modèles : on demande à Google la liste exacte de
+  // ceux que CETTE clé peut appeler, puis on essaie les meilleurs dans l'ordre.
+  const listeReponse = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models?key=${cleGemini}&pageSize=100`,
+  )
+  if (!listeReponse.ok) {
+    const detail = await listeReponse.text()
+    return new Response(
+      JSON.stringify({
+        erreur: 'cle',
+        message: `Cette clé ne peut même pas lister les modèles (${listeReponse.status}) — elle est invalide ou restreinte. Recrée-la sur aistudio.google.com → Get API key → « Create API key in NEW project ». Détail : ${detail.slice(0, 200)}`,
+      }),
+      { status: 502, headers: { 'content-type': 'application/json' } },
+    )
+  }
+  const liste = (await listeReponse.json()) as {
+    models?: { name: string; supportedGenerationMethods?: string[] }[]
+  }
+  const disponibles = (liste.models ?? [])
+    .filter((m) => m.supportedGenerationMethods?.includes('generateContent'))
+    .map((m) => m.name.replace(/^models\//, ''))
+    // ni vision-only, ni embeddings, ni TTS/images
+    .filter((n) => !/embedding|image|tts|audio|veo|imagen|aqa/i.test(n))
+
+  const score = (n: string): number => {
+    if (/flash-lite/.test(n)) return 0 // quotas gratuits les plus larges d'abord
+    if (/gemma/.test(n)) return 1
+    if (/flash/.test(n)) return 2
+    return 3
+  }
+  const candidats = disponibles.sort((a, b) => score(a) - score(b) || b.localeCompare(a)).slice(0, 6)
+
   let reponseGemini: Response | null = null
   let derniereRaison = ''
-  for (const modele of MODELES) {
+  let modeleUtilise = ''
+  for (const modele of candidats) {
     const tentative = await appeler(modele)
     if (tentative.ok) {
       reponseGemini = tentative
+      modeleUtilise = modele
       break
     }
-    if (tentative.status === 429 || tentative.status === 404) {
-      try {
-        const detail = (await tentative.json()) as { error?: { message?: string } }
-        derniereRaison = detail.error?.message ?? ''
-      } catch { /* corps illisible */ }
-      continue // modèle suivant
+    try {
+      const detail = (await tentative.json()) as { error?: { message?: string } }
+      derniereRaison = `${modele} → ${detail.error?.message ?? tentative.status}`
+    } catch {
+      derniereRaison = `${modele} → ${tentative.status}`
     }
-    reponseGemini = tentative // autre erreur : on la traite plus bas
-    break
   }
 
   if (!reponseGemini) {
     return new Response(
       JSON.stringify({
         erreur: 'quota',
-        message: `Aucun modèle gratuit ne répond avec cette clé. Détail Google : « ${derniereRaison.slice(0, 200) || 'aucun'} ». Solution : sur aistudio.google.com → Get API key → « Create API key in NEW project », puis remplace GEMINI_API_KEY dans Vercel et redéploie.`,
+        message: `Ta clé voit ${candidats.length} modèle(s) [${candidats.slice(0, 3).join(', ')}…] mais aucun n'accepte de répondre (quota à zéro sur ce projet Google). Dernier refus : « ${derniereRaison.slice(0, 180)} ». La solution qui marche : aistudio.google.com → Get API key → « Create API key in NEW project » → remplace GEMINI_API_KEY dans Vercel → Redeploy.`,
       }),
       { status: 429, headers: { 'content-type': 'application/json' } },
     )
   }
+  void modeleUtilise
 
   if (!reponseGemini.ok) {
     const detail = await reponseGemini.text()
