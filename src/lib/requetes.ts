@@ -112,6 +112,7 @@ export interface NouvelleTache {
   rrule: string | null
   effort_minutes: number
   groupe_rotation: string | null
+  points?: number
 }
 
 export async function creerTache(foyerId: string, membreId: string, brouillon: NouvelleTache) {
@@ -140,14 +141,26 @@ export async function creerTache(foyerId: string, membreId: string, brouillon: N
 export async function completerTache(
   tache: LigneTache,
   faitePar: string,
-  adultes: LigneMembre[],
+  membres: LigneMembre[],
 ) {
+  const adultes = membres.filter((m) => m.role === 'adult')
   await muter({
     table: 'taches',
     type: 'update',
     cible_id: tache.id,
     charge: { statut: 'faite', faite_par: faitePar, faite_le: new Date().toISOString() },
   })
+
+  // Mission d'enfant : les points tombent à la complétion.
+  const assignee = membres.find((m) => m.id === tache.assignee_id)
+  if (assignee?.role === 'child' && tache.points > 0) {
+    await muter({
+      table: 'membres',
+      type: 'update',
+      cible_id: assignee.id,
+      charge: { points: assignee.points + tache.points },
+    })
+  }
 
   if (!tache.rrule) return
   const base = tache.echeance ? new Date(`${tache.echeance}T12:00:00`) : maintenantLocal()

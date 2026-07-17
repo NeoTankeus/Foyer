@@ -3,8 +3,10 @@ import { useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { EcranTaches } from '@/fonctionnalites/taches/EcranTaches'
 import { EcranCourses } from '@/fonctionnalites/courses/EcranCourses'
+import { EcranMenus } from '@/fonctionnalites/repas/EcranMenus'
+import { EcranMur } from '@/fonctionnalites/mur/EcranMur'
 
-type Volet = 'taches' | 'courses'
+type Volet = 'taches' | 'courses' | 'menus' | 'mur'
 
 export function EcranMaison() {
   const [parametres] = useSearchParams()
@@ -20,6 +22,8 @@ export function EcranMaison() {
             [
               ['taches', 'Tâches'],
               ['courses', 'Courses'],
+              ['menus', 'Menus'],
+              ['mur', 'Le Mur'],
             ] as const
           ).map(([valeur, libelle]) => (
             <button
@@ -27,7 +31,7 @@ export function EcranMaison() {
               role="tab"
               aria-selected={volet === valeur}
               onClick={() => setVolet(valeur)}
-              className={`min-h-sur-tactile flex-1 rounded-[8px] text-corps-2 font-[590]
+              className={`min-h-sur-tactile flex-1 rounded-[8px] text-note font-[590]
                 ${volet === valeur ? 'bg-fond-eleve text-encre shadow-carte' : 'text-encre-3'}`}
             >
               {libelle}
@@ -35,7 +39,12 @@ export function EcranMaison() {
           ))}
         </div>
       </header>
-      <div className="px-4 pt-3">{volet === 'taches' ? <EcranTaches /> : <EcranCourses />}</div>
+      <div className="px-4 pt-3">
+        {volet === 'taches' && <EcranTaches />}
+        {volet === 'courses' && <EcranCourses />}
+        {volet === 'menus' && <EcranMenus />}
+        {volet === 'mur' && <EcranMur />}
+      </div>
     </div>
   )
 }

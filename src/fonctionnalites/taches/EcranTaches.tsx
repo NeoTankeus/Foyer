@@ -21,12 +21,11 @@ export function EcranTaches() {
   const taches = utiliserTachesOuvertes()
   const [creationOuverte, setCreationOuverte] = useState(false)
 
-  const adultes = membres.filter((m) => m.role === 'adult')
   const aujourdHui = dateIsoJour(maintenantLocal())
 
   const completer = (tache: LigneTache) => {
     if (!membre) return
-    void completerTache(tache, membre.id, adultes).then(() =>
+    void completerTache(tache, membre.id, membres).then(() =>
       clientRequetes.invalidateQueries({ queryKey: ['taches'] }),
     )
   }
@@ -117,6 +116,7 @@ interface PropsCreation {
     rrule: string | null
     effort_minutes: number
     groupe_rotation: string | null
+    points: number
   }) => Promise<void>
 }
 
@@ -128,6 +128,9 @@ function FeuilleNouvelleTache({ ouverte, onFermer, onCreer }: PropsCreation) {
   const [regle, setRegle] = useState<string | null>(null)
   const [effort, setEffort] = useState(10)
   const [rotation, setRotation] = useState(false)
+  const [points, setPoints] = useState(0)
+
+  const assigneEstEnfant = membres.find((m) => m.id === assignee)?.role === 'child'
 
   const valider = async () => {
     if (!titre.trim()) return
@@ -138,11 +141,13 @@ function FeuilleNouvelleTache({ ouverte, onFermer, onCreer }: PropsCreation) {
       rrule: regle,
       effort_minutes: effort,
       groupe_rotation: rotation && regle ? titre.trim().toLowerCase() : null,
+      points: assigneEstEnfant ? points : 0,
     })
     setTitre('')
     setEcheance('')
     setRegle(null)
     setRotation(false)
+    setPoints(0)
   }
 
   return (
@@ -199,6 +204,23 @@ function FeuilleNouvelleTache({ ouverte, onFermer, onCreer }: PropsCreation) {
               onChange={(e) => setRotation(e.target.checked)}
               className="h-6 w-6"
             />
+          </label>
+        )}
+        {assigneEstEnfant && (
+          <label className="block">
+            <span className="mb-1 block text-note font-[500] text-encre-2">
+              Mission : points gagnés à la complétion
+            </span>
+            <select
+              value={points}
+              onChange={(e) => setPoints(Number(e.target.value))}
+              className="min-h-sur-tactile w-full rounded-md border border-trait bg-fond-eleve px-3 text-corps text-encre"
+            >
+              <option value={0}>Sans points</option>
+              <option value={5}>5 points</option>
+              <option value={10}>10 points</option>
+              <option value={20}>20 points</option>
+            </select>
           </label>
         )}
         <label className="block">

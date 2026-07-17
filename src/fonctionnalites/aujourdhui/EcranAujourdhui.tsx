@@ -27,7 +27,6 @@ export function EcranAujourdhui() {
   const [evenementOuvert, setEvenementOuvert] = useState<LigneEvenement | null>(null)
   const [confirmeSuppression, setConfirmeSuppression] = useState(false)
 
-  const adultes = membres.filter((m) => m.role === 'adult')
 
   return (
     <div className="pb-4">
@@ -57,7 +56,7 @@ export function EcranAujourdhui() {
             membres={membres}
             onCompleter={(tache) => {
               if (!membre) return
-              void completerTache(tache, membre.id, adultes).then(() =>
+              void completerTache(tache, membre.id, membres).then(() =>
                 clientRequetes.invalidateQueries({ queryKey: ['taches'] }),
               )
             }}

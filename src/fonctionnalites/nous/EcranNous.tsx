@@ -1,5 +1,6 @@
-// Nous : les membres du foyer, l'état de la sync, la déconnexion.
+// Nous : la famille, et la porte d'entrée des modules du foyer.
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { utiliserSession } from '@/etat/session'
 import { baseLocale } from '@/lib/dexie'
 import { rejouerFileAttente } from '@/lib/sync'
@@ -15,11 +16,25 @@ const ROLES: Record<string, string> = {
 
 export function EcranNous() {
   const { membre, membres, foyer, deconnecter } = utiliserSession()
+  const naviguer = useNavigate()
   const [enAttente, setEnAttente] = useState(0)
 
   useEffect(() => {
     void baseLocale.file_attente.count().then(setEnAttente)
   }, [])
+
+  const estAdulte = membre?.role === 'adult'
+
+  const MODULES: { chemin: string; libelle: string; detail: string; adulte?: boolean }[] = [
+    { chemin: '/nous/equilibre', libelle: 'Équilibre', detail: 'la répartition réelle, en minutes', adulte: true },
+    { chemin: '/nous/celebrations', libelle: 'Célébrations', detail: 'anniversaires et coffre à idées' },
+    { chemin: '/nous/voyages', libelle: 'Voyages', detail: 'valises, réservations, météo' },
+    { chemin: '/nous/souvenirs', libelle: 'Souvenirs', detail: 'photos par voyage, album imprimable' },
+    { chemin: '/nous/routines', libelle: 'Routines', detail: 'les matins et soirs de Gabriel' },
+    { chemin: '/nous/recompenses', libelle: 'Récompenses', detail: 'points → vraies récompenses' },
+    { chemin: '/nous/coffre', libelle: 'Le Coffre', detail: 'papiers et échéances', adulte: true },
+    { chemin: '/nous/colis', libelle: 'Colis', detail: 'suivis, invisibles pour Gabriel', adulte: true },
+  ]
 
   return (
     <div className="pb-4">
@@ -51,6 +66,23 @@ export function EcranNous() {
           </ul>
         </Carte>
 
+        <nav aria-label="Modules du foyer" className="overflow-hidden rounded-lg bg-fond-eleve shadow-carte">
+          {MODULES.filter((m) => !m.adulte || estAdulte).map((module) => (
+            <button
+              key={module.chemin}
+              onClick={() => naviguer(module.chemin)}
+              className="flex min-h-sur-tactile w-full items-center gap-3 border-b border-trait px-4 py-3
+                text-left last:border-0 active:bg-fond-sourd"
+            >
+              <div className="flex-1">
+                <p className="text-corps text-encre">{module.libelle}</p>
+                <p className="text-legende text-encre-3">{module.detail}</p>
+              </div>
+              <span aria-hidden="true" className="text-encre-3">›</span>
+            </button>
+          ))}
+        </nav>
+
         {enAttente > 0 && (
           <Carte>
             <p className="text-corps-2 text-encre-2">
@@ -70,13 +102,6 @@ export function EcranNous() {
             </div>
           </Carte>
         )}
-
-        <Carte>
-          <p className="text-corps-2 text-encre-3">
-            Équilibre de la charge, intégrations (calendrier Apple, colis) et Coffre
-            arrivent dans les prochaines phases.
-          </p>
-        </Carte>
 
         <Bouton variante="discret" pleineLargeur onClick={() => void deconnecter()}>
           Se déconnecter
