@@ -16,6 +16,7 @@ const EcranMaison = paresseux(() => import('@/fonctionnalites/maison/EcranMaison
 const EcranGastif = paresseux(() => import('@/fonctionnalites/gastif/EcranGastif'), 'EcranGastif')
 const EcranNous = paresseux(() => import('@/fonctionnalites/nous/EcranNous'), 'EcranNous')
 const EcranEquilibre = paresseux(() => import('@/fonctionnalites/nous/EcranEquilibre'), 'EcranEquilibre')
+const EcranAdministration = paresseux(() => import('@/fonctionnalites/nous/EcranAdministration'), 'EcranAdministration')
 const EcranCelebrations = paresseux(() => import('@/fonctionnalites/celebrations/EcranCelebrations'), 'EcranCelebrations')
 const EcranVoyages = paresseux(() => import('@/fonctionnalites/voyages/EcranVoyages'), 'EcranVoyages')
 const EcranVoyage = paresseux(() => import('@/fonctionnalites/voyages/EcranVoyage'), 'EcranVoyage')
@@ -159,6 +160,7 @@ export function App() {
             <Route path="/gastif" element={<EcranGastif />} />
             <Route path="/nous" element={<EcranNous />} />
             <Route path="/nous/equilibre" element={<EcranEquilibre />} />
+            <Route path="/nous/administration" element={<EcranAdministration />} />
             <Route path="/nous/celebrations" element={<EcranCelebrations />} />
             <Route path="/nous/voyages" element={<EcranVoyages />} />
             <Route path="/nous/voyages/:id" element={<EcranVoyage />} />

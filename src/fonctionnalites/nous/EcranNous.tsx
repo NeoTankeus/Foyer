@@ -34,6 +34,7 @@ export function EcranNous() {
     { chemin: '/nous/recompenses', libelle: 'Récompenses', detail: 'points → vraies récompenses', icone: '🎁', couleur: 'var(--prune)' },
     { chemin: '/nous/coffre', libelle: 'Le Coffre', detail: 'papiers et échéances', icone: '🗄️', couleur: 'var(--encre-2)', adulte: true },
     { chemin: '/nous/colis', libelle: 'Colis', detail: 'suivis, invisibles pour Gabriel', icone: '📦', couleur: 'var(--ambre)', adulte: true },
+    { chemin: '/nous/administration', libelle: 'Administration', detail: 'membres, rôles, journal d’audit', icone: '🛠️', couleur: 'var(--encre-2)', adulte: true },
   ]
 
   return (

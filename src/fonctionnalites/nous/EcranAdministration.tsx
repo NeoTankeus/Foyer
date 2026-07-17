@@ -1,0 +1,281 @@
+// Administration — réservée aux admins (rôle adult, appliqué par la RLS côté base).
+// Les autres rôles consultent, créent, cochent — mais ne modifient rien : c'est la
+// base qui refuse, pas l'interface.
+import { useEffect, useState } from 'react'
+import { supabase } from '@/lib/supabase'
+import { utiliserSession } from '@/etat/session'
+import type { CouleurMembre, LigneMembre, RoleMembre } from '@/lib/basedonnees.types'
+import { couleurMembre } from '@/lib/couleurs'
+import { Bouton } from '@/design/composants/Bouton'
+import { Carte } from '@/design/composants/Carte'
+import { Feuille } from '@/design/composants/Feuille'
+import { ChampTexte } from '@/design/composants/ChampTexte'
+import { PastilleMembre } from '@/design/composants/PastilleMembre'
+
+const COULEURS: CouleurMembre[] = ['ambre', 'sauge', 'ardoise', 'prune', 'corail', 'or']
+const ROLES: { valeur: RoleMembre; libelle: string }[] = [
+  { valeur: 'adult', libelle: 'Admin (adulte)' },
+  { valeur: 'child', libelle: 'Enfant' },
+  { valeur: 'guest', libelle: 'Invité' },
+]
+
+interface LigneJournal {
+  id: number
+  acteur_id: string | null
+  action: string
+  cible: string
+  cree_le: string
+}
+
+export function EcranAdministration() {
+  const { membre, membres, foyer } = utiliserSession()
+  const [nomFoyer, setNomFoyer] = useState(foyer?.nom ?? '')
+  const [enEdition, setEnEdition] = useState<LigneMembre | null>(null)
+  const [creation, setCreation] = useState(false)
+  const [journal, setJournal] = useState<LigneJournal[]>([])
+  const [message, setMessage] = useState<string | null>(null)
+
+  useEffect(() => {
+    void supabase
+      .from('journal_audit' as never)
+      .select('id, acteur_id, action, cible, cree_le')
+      .order('cree_le', { ascending: false })
+      .limit(30)
+      .then(({ data }) => setJournal((data as unknown as LigneJournal[]) ?? []))
+  }, [])
+
+  if (membre?.role !== 'adult') {
+    return (
+      <div className="px-5 pt-8 text-center">
+        <p className="text-corps text-encre-2">Cette page est réservée aux admins du foyer.</p>
+      </div>
+    )
+  }
+
+  const confirmer = (texte: string) => {
+    setMessage(texte)
+    setTimeout(() => setMessage(null), 3000)
+  }
+
+  const enregistrerFoyer = async () => {
+    if (!foyer || !nomFoyer.trim()) return
+    await supabase.from('foyers').update({ nom: nomFoyer.trim() }).eq('id', foyer.id)
+    confirmer('Nom du foyer enregistré.')
+  }
+
+  return (
+    <div className="flex flex-col gap-4 px-5 pt-3 pb-8">
+      <h2 className="text-titre-3 text-encre">🛠️ Administration</h2>
+      {message && <p className="text-note font-[590] text-fait">{message}</p>}
+
+      <Carte>
+        <h3 className="mb-2 text-note font-[590] uppercase tracking-wide text-encre-3">Le foyer</h3>
+        <div className="flex gap-2">
+          <input
+            value={nomFoyer}
+            onChange={(e) => setNomFoyer(e.target.value)}
+            aria-label="Nom du foyer"
+            className="min-h-sur-tactile flex-1 rounded-md border border-trait bg-fond-eleve px-3 text-corps"
+          />
+          <Bouton variante="valider" onClick={() => void enregistrerFoyer()}>OK</Bouton>
+        </div>
+      </Carte>
+
+      <Carte>
+        <div className="mb-2 flex items-center justify-between">
+          <h3 className="text-note font-[590] uppercase tracking-wide text-encre-3">Membres</h3>
+          <Bouton variante="discret" onClick={() => setCreation(true)} etiquette="Ajouter un membre">+</Bouton>
+        </div>
+        <ul>
+          {membres.map((m) => (
+            <li key={m.id} className="flex items-center gap-3 border-b border-trait py-2 last:border-0">
+              <PastilleMembre membre={m} taille={34} />
+              <div className="flex-1">
+                <p className="text-corps text-encre">{m.prenom}</p>
+                <p className="text-legende text-encre-3">
+                  {ROLES.find((r) => r.valeur === m.role)?.libelle}
+                  {m.email_invitation ? ` · ${m.email_invitation}` : ''}
+                  {m.role === 'child' ? ` · ${m.points} pts` : ''}
+                  {m.role === 'guest' && m.actif_jusqu_au
+                    ? ` · expire le ${new Date(m.actif_jusqu_au).toLocaleDateString('fr-FR')}`
+                    : ''}
+                </p>
+              </div>
+              <Bouton variante="discret" onClick={() => setEnEdition(m)}>Modifier</Bouton>
+            </li>
+          ))}
+        </ul>
+        <p className="mt-2 text-legende text-encre-3">
+          Admins : accès complet. Enfant et invités : lecture, création et coches uniquement —
+          la base refuse le reste, quelle que soit l’interface.
+        </p>
+      </Carte>
+
+      <Carte>
+        <h3 className="mb-2 text-note font-[590] uppercase tracking-wide text-encre-3">
+          Journal d’audit — qui a touché aux données sensibles
+        </h3>
+        {journal.length === 0 ? (
+          <p className="text-corps-2 text-encre-3">Rien à signaler.</p>
+        ) : (
+          <ul className="flex flex-col gap-1">
+            {journal.map((l) => {
+              const acteur = membres.find((m) => m.id === l.acteur_id)
+              return (
+                <li key={l.id} className="chiffres flex justify-between text-legende text-encre-2">
+                  <span>
+                    {acteur?.prenom ?? 'système'} · {l.action} · {l.cible.split(':')[0]}
+                  </span>
+                  <span className="text-encre-3">
+                    {new Date(l.cree_le).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                </li>
+              )
+            })}
+          </ul>
+        )}
+      </Carte>
+
+      <Feuille ouverte={enEdition !== null} onFermer={() => setEnEdition(null)} titre={`Modifier ${enEdition?.prenom ?? ''}`}>
+        {enEdition && (
+          <FormMembre
+            initial={enEdition}
+            surEnregistrement={async (valeurs) => {
+              await supabase.from('membres').update(valeurs).eq('id', enEdition.id)
+              setEnEdition(null)
+              window.location.reload()
+            }}
+          />
+        )}
+      </Feuille>
+
+      <Feuille ouverte={creation} onFermer={() => setCreation(false)} titre="Nouveau membre">
+        {foyer && (
+          <FormMembre
+            surEnregistrement={async (valeurs) => {
+              await supabase.from('membres').insert({
+                id: crypto.randomUUID(),
+                foyer_id: foyer.id,
+                prenom: valeurs.prenom ?? 'Nouveau',
+                role: valeurs.role ?? 'guest',
+                couleur: valeurs.couleur ?? 'prune',
+                email_invitation: valeurs.email_invitation ?? null,
+                actif_jusqu_au: valeurs.actif_jusqu_au ?? null,
+                points: 0,
+                modules_autorises: valeurs.role === 'guest' ? ['evenements', 'routines', 'mur'] : [],
+              })
+              setCreation(false)
+              window.location.reload()
+            }}
+          />
+        )}
+      </Feuille>
+    </div>
+  )
+}
+
+function FormMembre({
+  initial,
+  surEnregistrement,
+}: {
+  initial?: LigneMembre
+  surEnregistrement: (valeurs: {
+    prenom?: string
+    role?: RoleMembre
+    couleur?: CouleurMembre
+    email_invitation?: string | null
+    actif_jusqu_au?: string | null
+    points?: number
+  }) => Promise<void>
+}) {
+  const [prenom, setPrenom] = useState(initial?.prenom ?? '')
+  const [role, setRole] = useState<RoleMembre>(initial?.role ?? 'guest')
+  const [couleur, setCouleur] = useState<CouleurMembre>(initial?.couleur ?? 'prune')
+  const [email, setEmail] = useState(initial?.email_invitation ?? '')
+  const [expiration, setExpiration] = useState(initial?.actif_jusqu_au?.slice(0, 10) ?? '')
+  const [points, setPoints] = useState(initial?.points ?? 0)
+  const [enCours, setEnCours] = useState(false)
+
+  return (
+    <div className="flex flex-col gap-3">
+      <ChampTexte etiquette="Prénom" value={prenom} onChange={(e) => setPrenom(e.target.value)} />
+      <div className="flex gap-1">
+        {ROLES.map((r) => (
+          <button
+            key={r.valeur}
+            onClick={() => setRole(r.valeur)}
+            aria-pressed={role === r.valeur}
+            className={`min-h-sur-tactile flex-1 rounded-xl text-note font-[590]
+              ${role === r.valeur ? 'bg-encre text-fond' : 'bg-fond-sourd text-encre-2'}`}
+          >
+            {r.libelle}
+          </button>
+        ))}
+      </div>
+      <div>
+        <span className="mb-1 block text-note font-[500] text-encre-2">Couleur du fil</span>
+        <div className="flex gap-2">
+          {COULEURS.map((c) => (
+            <button
+              key={c}
+              onClick={() => setCouleur(c)}
+              aria-label={c}
+              aria-pressed={couleur === c}
+              className="flex min-h-sur-tactile min-w-sur-tactile items-center justify-center"
+            >
+              <span
+                className="h-8 w-8 rounded-full"
+                style={{
+                  background: couleurMembre(c),
+                  outline: couleur === c ? '3px solid var(--encre)' : 'none',
+                  outlineOffset: 2,
+                }}
+              />
+            </button>
+          ))}
+        </div>
+      </div>
+      <ChampTexte
+        etiquette="Email de connexion (facultatif — relie un compte)"
+        type="email"
+        value={email}
+        onChange={(e) => setEmail(e.target.value)}
+      />
+      {role === 'guest' && (
+        <ChampTexte
+          etiquette="Accès jusqu'au (invités)"
+          type="date"
+          value={expiration}
+          onChange={(e) => setExpiration(e.target.value)}
+        />
+      )}
+      {role === 'child' && (
+        <ChampTexte
+          etiquette="Points"
+          type="number"
+          value={String(points)}
+          onChange={(e) => setPoints(Number(e.target.value))}
+        />
+      )}
+      <Bouton
+        pleineLargeur
+        variante="valider"
+        desactive={enCours}
+        onClick={() => {
+          if (!prenom.trim()) return
+          setEnCours(true)
+          void surEnregistrement({
+            prenom: prenom.trim(),
+            role,
+            couleur,
+            email_invitation: email.trim() || null,
+            actif_jusqu_au: role === 'guest' && expiration ? new Date(`${expiration}T23:59:59`).toISOString() : null,
+            points,
+          })
+        }}
+      >
+        {enCours ? 'Enregistrement…' : 'Enregistrer'}
+      </Bouton>
+    </div>
+  )
+}
