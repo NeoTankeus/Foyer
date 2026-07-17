@@ -29,6 +29,11 @@ export default defineConfig({
         ],
         shortcuts: [
           {
+            name: 'Le Sas — capture rapide',
+            url: '/?sas=1',
+            icons: [{ src: '/icones/icone-192.png', sizes: '192x192' }],
+          },
+          {
             name: 'Ajouter aux courses',
             url: '/maison?ajout=courses',
             icons: [{ src: '/icones/icone-192.png', sizes: '192x192' }],

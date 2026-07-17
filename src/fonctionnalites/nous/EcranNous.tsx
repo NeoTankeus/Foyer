@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { utiliserSession } from '@/etat/session'
+import { utiliserUi } from '@/etat/ui'
 import { baseLocale } from '@/lib/dexie'
 import { rejouerFileAttente } from '@/lib/sync'
 import { PastilleMembre } from '@/design/composants/PastilleMembre'
@@ -16,6 +17,7 @@ const ROLES: Record<string, string> = {
 
 export function EcranNous() {
   const { membre, membres, foyer, deconnecter } = utiliserSession()
+  const { activerModeEnfant } = utiliserUi()
   const naviguer = useNavigate()
   const [enAttente, setEnAttente] = useState(0)
 
@@ -66,6 +68,12 @@ export function EcranNous() {
             ))}
           </ul>
         </Carte>
+
+        {estAdulte && membres.some((m) => m.role === 'child') && (
+          <Bouton variante="soleil" pleineLargeur onClick={activerModeEnfant}>
+            🧒 Passer en mode enfant
+          </Bouton>
+        )}
 
         <nav aria-label="Modules du foyer" className="overflow-hidden rounded-lg bg-fond-eleve shadow-carte">
           {MODULES.filter((m) => !m.adulte || estAdulte).map((module) => (

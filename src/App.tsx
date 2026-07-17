@@ -1,9 +1,11 @@
 import { Suspense, lazy, useEffect } from 'react'
 import { BrowserRouter, NavLink, Navigate, Route, Routes } from 'react-router-dom'
 import { utiliserSession } from '@/etat/session'
+import { utiliserUi } from '@/etat/ui'
 import { EcranConnexion } from '@/fonctionnalites/auth/EcranConnexion'
 import { EcranAujourdhui } from '@/fonctionnalites/aujourdhui/EcranAujourdhui'
 import { BoutonSas } from '@/fonctionnalites/sas/BoutonSas'
+import { EcranEnfant } from '@/fonctionnalites/enfant/EcranEnfant'
 
 // Aujourd'hui charge en premier ; le reste arrive en différé (< 1,5 s au premier écran utile).
 const paresseux = <T extends Record<string, unknown>>(
@@ -147,6 +149,17 @@ export function App() {
 
   if (!session) return <EcranConnexion />
   if (!membre) return <EcranSansMembre />
+
+  return <Interieur />
+}
+
+function Interieur() {
+  const { modeEnfant, quitterModeEnfant } = utiliserUi()
+
+  // Le mode enfant remplace toute l'app : une autre app, pas l'app adulte en plus gros.
+  if (modeEnfant) {
+    return <EcranEnfant onQuitter={quitterModeEnfant} />
+  }
 
   return (
     <BrowserRouter>

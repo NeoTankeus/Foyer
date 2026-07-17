@@ -1,6 +1,7 @@
 // L'écran Aujourd'hui : Le Fil, le brief, les cartes du jour. Rien d'autre.
 import { useState } from 'react'
-import { useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { supabase } from '@/lib/supabase'
 import { utiliserSession } from '@/etat/session'
 import {
   completerTache,
@@ -26,6 +27,23 @@ export function EcranAujourdhui() {
   const celebrations = utiliserCelebrationsProches(7)
   const [evenementOuvert, setEvenementOuvert] = useState<LigneEvenement | null>(null)
   const [confirmeSuppression, setConfirmeSuppression] = useState(false)
+
+  // Papiers qui expirent sous 60 jours — visible des adultes seulement (RLS).
+  const papiersExpirants = useQuery({
+    queryKey: ['documents', 'expirants'],
+    queryFn: async () => {
+      const limite = new Date(Date.now() + 60 * 24 * 3600 * 1000).toISOString().slice(0, 10)
+      const { data, error } = await supabase
+        .from('documents')
+        .select('*')
+        .not('expire_le', 'is', null)
+        .lte('expire_le', limite)
+        .order('expire_le')
+      if (error) return []
+      return data
+    },
+    enabled: membre?.role === 'adult',
+  })
 
 
   return (
@@ -61,6 +79,22 @@ export function EcranAujourdhui() {
               )
             }}
           />
+          {(papiersExpirants.data?.length ?? 0) > 0 && (
+            <div className="rounded-xl bg-fond-eleve p-4 shadow-carte">
+              <h2 className="mb-1 text-note font-[590] uppercase tracking-wide text-encre-3">
+                🗄️ Papiers à renouveler
+              </h2>
+              {(papiersExpirants.data ?? []).map((d) => (
+                <p key={d.id} className="text-corps-2 text-encre">
+                  {d.titre}
+                  <span className="chiffres text-encre-3">
+                    {' '}
+                    — expire le {new Date(`${d.expire_le}T12:00:00`).toLocaleDateString('fr-FR')}
+                  </span>
+                </p>
+              ))}
+            </div>
+          )}
           {(evenements.data?.length ?? 0) === 0 && !evenements.isLoading && (
             <EtatVide
               titre="Journée libre"

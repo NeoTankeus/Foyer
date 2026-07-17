@@ -18,7 +18,8 @@ export function BoutonSas() {
   const { membre, foyer } = utiliserSession()
   const clientRequetes = useQueryClient()
   const courses = utiliserListeCourses()
-  const [ouvert, setOuvert] = useState(false)
+  // Le raccourci PWA « Le Sas » (appui long sur l'icône) ouvre directement la capture.
+  const [ouvert, setOuvert] = useState(() => new URLSearchParams(window.location.search).has('sas'))
   const [texte, setTexte] = useState('')
   const [dicteeEnCours, setDicteeEnCours] = useState(false)
   const [confirmation, setConfirmation] = useState<string | null>(null)
