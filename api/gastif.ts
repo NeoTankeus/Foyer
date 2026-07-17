@@ -71,37 +71,58 @@ ${corps.contexte}`
     parts: [{ text: m.texte }],
   }))
 
-  const appeler = (modele: string) =>
-    fetch(
+  const appeler = (modele: string) => {
+    // Les modèles Gemma n'acceptent pas de system_instruction : on la fusionne
+    // dans le premier message utilisateur.
+    const estGemma = modele.startsWith('gemma')
+    const contenusEnvoyes = estGemma
+      ? contenus.map((c, i) =>
+          i === 0 && c.role === 'user'
+            ? { ...c, parts: [{ text: `${systeme}\n\n---\n\n${c.parts[0]?.text ?? ''}` }] }
+            : c,
+        )
+      : contenus
+    return fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${modele}:generateContent?key=${cleGemini}`,
       {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
-          system_instruction: { parts: [{ text: systeme }] },
-          contents: contenus,
+          ...(estGemma ? {} : { system_instruction: { parts: [{ text: systeme }] } }),
+          contents: contenusEnvoyes,
           generationConfig: { maxOutputTokens: 1024, temperature: 0.6 },
         }),
       },
     )
-
-  // Palier gratuit : en cas de 429 (quota par minute), on bascule sur le
-  // modèle lite (quota plus large), puis on explique calmement s'il sature aussi.
-  let reponseGemini = await appeler('gemini-2.0-flash')
-  if (reponseGemini.status === 429) {
-    reponseGemini = await appeler('gemini-2.0-flash-lite')
   }
-  if (reponseGemini.status === 429) {
-    // On remonte la vraie raison de Google : quota/minute, quota/jour, ou clé sans accès.
-    let raison = ''
-    try {
-      const detail = (await reponseGemini.json()) as { error?: { message?: string } }
-      raison = detail.error?.message ?? ''
-    } catch { /* corps illisible */ }
+
+  // Cascade de modèles gratuits : certains projets Google n'ont aucun quota
+  // sur certains modèles — on essaie jusqu'à trouver celui qui répond.
+  const MODELES = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.0-flash', 'gemma-3-27b-it']
+  let reponseGemini: Response | null = null
+  let derniereRaison = ''
+  for (const modele of MODELES) {
+    const tentative = await appeler(modele)
+    if (tentative.ok) {
+      reponseGemini = tentative
+      break
+    }
+    if (tentative.status === 429 || tentative.status === 404) {
+      try {
+        const detail = (await tentative.json()) as { error?: { message?: string } }
+        derniereRaison = detail.error?.message ?? ''
+      } catch { /* corps illisible */ }
+      continue // modèle suivant
+    }
+    reponseGemini = tentative // autre erreur : on la traite plus bas
+    break
+  }
+
+  if (!reponseGemini) {
     return new Response(
       JSON.stringify({
         erreur: 'quota',
-        message: `Le quota gratuit Gemini est atteint. Détail Google : « ${raison.slice(0, 200) || 'aucun'} ». Si ça arrive dès la première question, vérifie la clé sur aistudio.google.com.`,
+        message: `Aucun modèle gratuit ne répond avec cette clé. Détail Google : « ${derniereRaison.slice(0, 200) || 'aucun'} ». Solution : sur aistudio.google.com → Get API key → « Create API key in NEW project », puis remplace GEMINI_API_KEY dans Vercel et redéploie.`,
       }),
       { status: 429, headers: { 'content-type': 'application/json' } },
     )
