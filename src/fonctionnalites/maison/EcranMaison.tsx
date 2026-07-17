@@ -17,22 +17,26 @@ export function EcranMaison() {
     <div className="pb-4">
       <header className="verre verre-clair safe-haut sticky top-0 z-10 px-5 pb-2 pt-3">
         <h1 className="text-titre-2 text-encre">Maison</h1>
-        <div className="mt-2 flex rounded-md bg-fond-sourd p-0.5" role="tablist">
+        <div className="mt-2 flex gap-1 rounded-2xl bg-fond-sourd p-1" role="tablist">
           {(
             [
-              ['taches', 'Tâches'],
-              ['courses', 'Courses'],
-              ['menus', 'Menus'],
-              ['mur', 'Le Mur'],
+              ['taches', '✅ Tâches', 'var(--ardoise)'],
+              ['courses', '🛒 Courses', 'var(--sauge)'],
+              ['menus', '🍽️ Menus', 'var(--ambre)'],
+              ['mur', '📌 Le Mur', 'var(--prune)'],
             ] as const
-          ).map(([valeur, libelle]) => (
+          ).map(([valeur, libelle, couleur]) => (
             <button
               key={valeur}
               role="tab"
               aria-selected={volet === valeur}
-              onClick={() => setVolet(valeur)}
-              className={`min-h-sur-tactile flex-1 rounded-[8px] text-note font-[590]
-                ${volet === valeur ? 'bg-fond-eleve text-encre shadow-carte' : 'text-encre-3'}`}
+              onClick={() => {
+                navigator.vibrate?.(4)
+                setVolet(valeur)
+              }}
+              className={`min-h-sur-tactile flex-1 rounded-xl text-note font-[590] transition-colors
+                ${volet === valeur ? 'bg-fond-eleve shadow-carte' : 'text-encre-3'}`}
+              style={volet === valeur ? { color: couleur } : undefined}
             >
               {libelle}
             </button>

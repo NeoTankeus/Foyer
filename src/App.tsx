@@ -69,12 +69,13 @@ function IconeOnglet({ nom }: { nom: string }) {
 }
 
 // Tab bar adulte (5) : Aujourd'hui · Agenda · Maison · Gastif · Nous
+// Chaque onglet a sa couleur — l'actif s'allume dans sa teinte.
 const ONGLETS = [
-  { chemin: '/', libelle: 'Aujourd’hui', icone: 'aujourdhui' },
-  { chemin: '/agenda', libelle: 'Agenda', icone: 'agenda' },
-  { chemin: '/maison', libelle: 'Maison', icone: 'maison' },
-  { chemin: '/gastif', libelle: 'Gastif', icone: 'gastif' },
-  { chemin: '/nous', libelle: 'Nous', icone: 'nous' },
+  { chemin: '/', libelle: 'Aujourd’hui', icone: 'aujourdhui', couleur: 'var(--ambre)' },
+  { chemin: '/agenda', libelle: 'Agenda', icone: 'agenda', couleur: 'var(--ardoise)' },
+  { chemin: '/maison', libelle: 'Maison', icone: 'maison', couleur: 'var(--sauge)' },
+  { chemin: '/gastif', libelle: 'Gastif', icone: 'gastif', couleur: 'var(--or)' },
+  { chemin: '/nous', libelle: 'Nous', icone: 'nous', couleur: 'var(--prune)' },
 ]
 
 function BarreOnglets() {
@@ -83,25 +84,31 @@ function BarreOnglets() {
       className="verre verre-clair safe-bas fixed inset-x-0 bottom-0 z-30 border-t border-trait"
       aria-label="Navigation principale"
     >
-      <div className="flex">
+      <div className="flex px-1">
         {ONGLETS.map((onglet) => (
           <NavLink
             key={onglet.chemin}
             to={onglet.chemin}
             end={onglet.chemin === '/'}
-            className="flex min-h-sur-tactile flex-1 flex-col items-center justify-center gap-0.5 py-1.5"
+            className="flex min-h-sur-tactile flex-1 flex-col items-center justify-center py-1.5"
           >
             {({ isActive }) => (
-              <>
-                <span className={isActive ? 'text-encre' : 'text-encre-3'}>
-                  <IconeOnglet nom={onglet.icone} />
-                </span>
-                <span
-                  className={`text-legende ${isActive ? 'font-[590] text-encre' : 'text-encre-3'}`}
-                >
+              <span
+                className="flex flex-col items-center gap-0.5 rounded-2xl px-3 py-1"
+                style={
+                  isActive
+                    ? {
+                        color: onglet.couleur,
+                        background: `color-mix(in srgb, ${onglet.couleur} 14%, transparent)`,
+                      }
+                    : { color: 'var(--encre-3)' }
+                }
+              >
+                <IconeOnglet nom={onglet.icone} />
+                <span className={`text-legende ${isActive ? 'font-[700]' : ''}`}>
                   {onglet.libelle}
                 </span>
-              </>
+              </span>
             )}
           </NavLink>
         ))}

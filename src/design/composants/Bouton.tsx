@@ -4,17 +4,20 @@ import type { ReactNode } from 'react'
 interface Props {
   children: ReactNode
   onClick?: () => void
-  variante?: 'primaire' | 'discret' | 'urgent'
+  variante?: 'primaire' | 'discret' | 'urgent' | 'valider' | 'soleil'
   type?: 'button' | 'submit'
   desactive?: boolean
   pleineLargeur?: boolean
   etiquette?: string // aria-label si le contenu n'est pas du texte
 }
 
+// Boutons 3D colorés : ils s'enfoncent quand on appuie (voir tokens.css).
 const styles: Record<NonNullable<Props['variante']>, string> = {
-  primaire: 'bg-encre text-fond',
-  discret: 'bg-fond-sourd text-encre',
-  urgent: 'bg-urgent text-fond-eleve',
+  primaire: 'btn-3d btn-ardoise',
+  discret: 'btn-3d btn-clair',
+  urgent: 'btn-3d btn-corail',
+  valider: 'btn-3d btn-sauge',
+  soleil: 'btn-3d btn-ambre',
 }
 
 export function Bouton({
@@ -29,12 +32,15 @@ export function Bouton({
   return (
     <motion.button
       type={type}
-      onClick={onClick}
+      onClick={() => {
+        navigator.vibrate?.(4)
+        onClick?.()
+      }}
       disabled={desactive}
       aria-label={etiquette}
-      whileTap={{ scale: 0.97 }}
+      whileTap={{ scale: 0.98 }}
       transition={{ type: 'spring', stiffness: 400, damping: 32 }}
-      className={`min-h-sur-tactile min-w-sur-tactile rounded-md px-5 text-corps-2 font-[590]
+      className={`min-h-sur-tactile min-w-sur-tactile px-5 text-corps-2
         disabled:opacity-40 ${styles[variante]} ${pleineLargeur ? 'w-full' : ''}`}
     >
       {children}

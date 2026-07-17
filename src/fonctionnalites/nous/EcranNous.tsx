@@ -25,15 +25,15 @@ export function EcranNous() {
 
   const estAdulte = membre?.role === 'adult'
 
-  const MODULES: { chemin: string; libelle: string; detail: string; adulte?: boolean }[] = [
-    { chemin: '/nous/equilibre', libelle: 'Équilibre', detail: 'la répartition réelle, en minutes', adulte: true },
-    { chemin: '/nous/celebrations', libelle: 'Célébrations', detail: 'anniversaires et coffre à idées' },
-    { chemin: '/nous/voyages', libelle: 'Voyages', detail: 'valises, réservations, météo' },
-    { chemin: '/nous/souvenirs', libelle: 'Souvenirs', detail: 'photos par voyage, album imprimable' },
-    { chemin: '/nous/routines', libelle: 'Routines', detail: 'les matins et soirs de Gabriel' },
-    { chemin: '/nous/recompenses', libelle: 'Récompenses', detail: 'points → vraies récompenses' },
-    { chemin: '/nous/coffre', libelle: 'Le Coffre', detail: 'papiers et échéances', adulte: true },
-    { chemin: '/nous/colis', libelle: 'Colis', detail: 'suivis, invisibles pour Gabriel', adulte: true },
+  const MODULES: { chemin: string; libelle: string; detail: string; icone: string; couleur: string; adulte?: boolean }[] = [
+    { chemin: '/nous/equilibre', libelle: 'Équilibre', detail: 'la répartition réelle, en minutes', icone: '⚖️', couleur: 'var(--ardoise)', adulte: true },
+    { chemin: '/nous/celebrations', libelle: 'Célébrations', detail: 'anniversaires et coffre à idées', icone: '🎂', couleur: 'var(--corail)' },
+    { chemin: '/nous/voyages', libelle: 'Voyages', detail: 'valises, réservations, météo', icone: '✈️', couleur: 'var(--ardoise)' },
+    { chemin: '/nous/souvenirs', libelle: 'Souvenirs', detail: 'photos par voyage, album imprimable', icone: '📷', couleur: 'var(--or)' },
+    { chemin: '/nous/routines', libelle: 'Routines', detail: 'les matins et soirs de Gabriel', icone: '⏰', couleur: 'var(--sauge)' },
+    { chemin: '/nous/recompenses', libelle: 'Récompenses', detail: 'points → vraies récompenses', icone: '🎁', couleur: 'var(--prune)' },
+    { chemin: '/nous/coffre', libelle: 'Le Coffre', detail: 'papiers et échéances', icone: '🗄️', couleur: 'var(--encre-2)', adulte: true },
+    { chemin: '/nous/colis', libelle: 'Colis', detail: 'suivis, invisibles pour Gabriel', icone: '📦', couleur: 'var(--ambre)', adulte: true },
   ]
 
   return (
@@ -70,12 +70,22 @@ export function EcranNous() {
           {MODULES.filter((m) => !m.adulte || estAdulte).map((module) => (
             <button
               key={module.chemin}
-              onClick={() => naviguer(module.chemin)}
+              onClick={() => {
+                navigator.vibrate?.(4)
+                naviguer(module.chemin)
+              }}
               className="flex min-h-sur-tactile w-full items-center gap-3 border-b border-trait px-4 py-3
                 text-left last:border-0 active:bg-fond-sourd"
             >
+              <span
+                aria-hidden="true"
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-[22px]"
+                style={{ background: `color-mix(in srgb, ${module.couleur} 14%, transparent)` }}
+              >
+                {module.icone}
+              </span>
               <div className="flex-1">
-                <p className="text-corps text-encre">{module.libelle}</p>
+                <p className="text-corps font-[590] text-encre">{module.libelle}</p>
                 <p className="text-legende text-encre-3">{module.detail}</p>
               </div>
               <span aria-hidden="true" className="text-encre-3">›</span>
