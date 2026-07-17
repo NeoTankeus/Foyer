@@ -48,8 +48,15 @@ export function EcranAujourdhui() {
 
   return (
     <div className="pb-4">
-      <header className="verre verre-clair safe-haut sticky top-0 z-10 px-5 pb-2 pt-3">
+      <header className="verre verre-clair safe-haut sticky top-0 z-10 flex items-center justify-between px-5 pb-2 pt-3">
         <h1 className="text-titre-2 capitalize text-encre">{formatJourLong(maintenantLocal())}</h1>
+        <a
+          href="/recherche"
+          aria-label="Recherche globale"
+          className="flex min-h-sur-tactile min-w-sur-tactile items-center justify-center rounded-full bg-fond-sourd text-[18px]"
+        >
+          🔍
+        </a>
       </header>
 
       <div className="px-4">

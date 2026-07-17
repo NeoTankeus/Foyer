@@ -19,6 +19,7 @@ const EcranGastif = paresseux(() => import('@/fonctionnalites/gastif/EcranGastif
 const EcranNous = paresseux(() => import('@/fonctionnalites/nous/EcranNous'), 'EcranNous')
 const EcranEquilibre = paresseux(() => import('@/fonctionnalites/nous/EcranEquilibre'), 'EcranEquilibre')
 const EcranAdministration = paresseux(() => import('@/fonctionnalites/nous/EcranAdministration'), 'EcranAdministration')
+const EcranRecherche = paresseux(() => import('@/fonctionnalites/recherche/EcranRecherche'), 'EcranRecherche')
 const EcranCelebrations = paresseux(() => import('@/fonctionnalites/celebrations/EcranCelebrations'), 'EcranCelebrations')
 const EcranVoyages = paresseux(() => import('@/fonctionnalites/voyages/EcranVoyages'), 'EcranVoyages')
 const EcranVoyage = paresseux(() => import('@/fonctionnalites/voyages/EcranVoyage'), 'EcranVoyage')
@@ -54,10 +55,10 @@ function IconeOnglet({ nom }: { nom: string }) {
         </svg>
       )
     case 'gastif':
-      // L'icône de Gastif : ILY 🤟
+      // Le logo de Gastif : les lettres ILY
       return (
-        <span className="text-[20px] leading-none" aria-hidden="true">
-          🤟
+        <span className="badge-ily h-6 w-9 text-[11px]" aria-hidden="true">
+          ILY
         </span>
       )
     default:
@@ -174,6 +175,7 @@ function Interieur() {
             <Route path="/nous" element={<EcranNous />} />
             <Route path="/nous/equilibre" element={<EcranEquilibre />} />
             <Route path="/nous/administration" element={<EcranAdministration />} />
+            <Route path="/recherche" element={<EcranRecherche />} />
             <Route path="/nous/celebrations" element={<EcranCelebrations />} />
             <Route path="/nous/voyages" element={<EcranVoyages />} />
             <Route path="/nous/voyages/:id" element={<EcranVoyage />} />

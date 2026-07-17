@@ -44,6 +44,15 @@ export function EcranGastif() {
     basListe.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, reflechit])
 
+  // Une question posée depuis la recherche globale arrive pré-remplie ici.
+  useEffect(() => {
+    const question = sessionStorage.getItem('question-gastif')
+    if (question) {
+      sessionStorage.removeItem('question-gastif')
+      setSaisie(question)
+    }
+  }, [])
+
   const envoyer = async () => {
     const question = saisie.trim()
     if (!question || !membre || !foyer || reflechit) return
@@ -125,12 +134,12 @@ export function EcranGastif() {
   return (
     <div className="flex min-h-dvh flex-col pb-24">
       <header className="verre verre-clair safe-haut sticky top-0 z-10 flex items-center gap-3 px-5 pb-2 pt-3">
-        {/* L'icône de Gastif : ILY 🤟 — elle respire pendant qu'il réfléchit */}
+        {/* Le logo de Gastif : ILY — il respire pendant qu'il réfléchit */}
         <span
-          className={reflechit ? 'gastif-respire text-titre-2' : 'text-titre-2'}
+          className={`badge-ily h-11 w-14 text-[17px] ${reflechit ? 'gastif-respire' : ''}`}
           aria-hidden="true"
         >
-          🤟
+          ILY
         </span>
         <div>
           <h1 className="text-titre-3 text-encre">Gastif</h1>
@@ -140,7 +149,7 @@ export function EcranGastif() {
         </div>
       </header>
 
-      <div className="flex-1 px-5 pt-3">
+      <div className="flex-1 px-5 pb-36 pt-3">
         {messages.length === 0 && (
           <div className="flex flex-col gap-2 py-6">
             <p className="text-corps-2 text-encre-3">
@@ -170,7 +179,7 @@ export function EcranGastif() {
           ))}
           {reflechit && (
             <div className="self-start rounded-lg bg-fond-eleve px-4 py-2.5 shadow-carte">
-              <span className="gastif-respire inline-block text-corps text-encre-3">🤟 …</span>
+              <span className="badge-ily gastif-respire h-6 w-9 text-[11px]">ILY</span>
             </div>
           )}
           {erreurConfig && (
@@ -183,7 +192,7 @@ export function EcranGastif() {
       </div>
 
       <form
-        className="verre verre-clair fixed inset-x-0 bottom-16 z-20 flex gap-2 border-t border-trait px-4 py-2"
+        className="verre verre-clair au-dessus-onglets fixed inset-x-0 z-20 flex gap-2 border-t border-trait px-4 py-2"
         onSubmit={(e) => {
           e.preventDefault()
           void envoyer()

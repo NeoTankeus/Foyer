@@ -71,18 +71,35 @@ ${corps.contexte}`
     parts: [{ text: m.texte }],
   }))
 
-  const reponseGemini = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${cleGemini}`,
-    {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        system_instruction: { parts: [{ text: systeme }] },
-        contents: contenus,
-        generationConfig: { maxOutputTokens: 1024, temperature: 0.6 },
+  const appeler = (modele: string) =>
+    fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${modele}:generateContent?key=${cleGemini}`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          system_instruction: { parts: [{ text: systeme }] },
+          contents: contenus,
+          generationConfig: { maxOutputTokens: 1024, temperature: 0.6 },
+        }),
+      },
+    )
+
+  // Palier gratuit : en cas de 429 (quota par minute), on bascule sur le
+  // modèle lite (quota plus large), puis on explique calmement s'il sature aussi.
+  let reponseGemini = await appeler('gemini-2.0-flash')
+  if (reponseGemini.status === 429) {
+    reponseGemini = await appeler('gemini-2.0-flash-lite')
+  }
+  if (reponseGemini.status === 429) {
+    return new Response(
+      JSON.stringify({
+        erreur: 'quota',
+        message: 'Gastif a atteint son quota gratuit de la minute. Attends 30 secondes et repose ta question.',
       }),
-    },
-  )
+      { status: 429, headers: { 'content-type': 'application/json' } },
+    )
+  }
 
   if (!reponseGemini.ok) {
     const detail = await reponseGemini.text()

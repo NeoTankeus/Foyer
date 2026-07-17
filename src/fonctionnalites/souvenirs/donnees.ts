@@ -56,7 +56,13 @@ export async function ajouterSouvenir(
   foyerId: string,
   auteurId: string,
   imageDonnees: string,
-  options: { voyage_id: string | null; lieu: string | null; lat: number | null; lng: number | null },
+  options: {
+    voyage_id: string | null
+    lieu: string | null
+    lat: number | null
+    lng: number | null
+    dossier: string | null
+  },
 ) {
   const id = crypto.randomUUID()
   await muter({
@@ -64,7 +70,7 @@ export async function ajouterSouvenir(
     type: 'insert',
     cible_id: id,
     charge: {
-      id, foyer_id: foyerId, auteur_id: auteurId, titre: null,
+      id, foyer_id: foyerId, auteur_id: auteurId, titre: null, commentaire: null,
       pris_le: new Date().toISOString(), image_donnees: imageDonnees, favori: false,
       ...options,
     },

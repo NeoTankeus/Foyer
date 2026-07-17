@@ -326,6 +326,8 @@ export type LigneSouvenir = {
   pris_le: string
   image_donnees: string // JPEG en data-URI, recompressé côté client
   favori: boolean
+  dossier: string | null
+  commentaire: string | null
   cree_le: string
 }
 

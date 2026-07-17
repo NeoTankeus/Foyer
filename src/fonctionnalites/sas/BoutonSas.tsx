@@ -93,8 +93,9 @@ export function BoutonSas() {
         whileTap={{ scale: 0.92 }}
         transition={{ type: 'spring', stiffness: 400, damping: 32 }}
         aria-label="Le Sas — capture rapide"
-        className="fixed bottom-24 right-4 z-30 flex h-14 w-14 items-center justify-center
-          rounded-full bg-encre text-fond shadow-carte"
+        className="degrade-froid fixed right-4 z-30 flex h-14 w-14 items-center justify-center
+          rounded-full text-white shadow-carte"
+        style={{ bottom: 'calc(84px + env(safe-area-inset-bottom))' }}
       >
         <svg width="22" height="22" viewBox="0 0 22 22" aria-hidden="true">
           <path d="M11 4v14M4 11h14" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
