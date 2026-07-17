@@ -1,7 +1,7 @@
 // Un voyage : compte à rebours, météo, valises par personne, checklist maison, réservations.
 import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { utiliserSession } from '@/etat/session'
 import { supabase } from '@/lib/supabase'
 import { muter } from '@/lib/sync'
@@ -13,7 +13,7 @@ import {
   type MeteoJour,
 } from './donnees'
 import { differenceInCalendarDays, maintenantLocal } from '@/lib/dates'
-import type { LigneReservation } from '@/lib/basedonnees.types'
+import type { LigneDepense, LigneReservation } from '@/lib/basedonnees.types'
 import { compresserImage } from '@/fonctionnalites/souvenirs/donnees'
 import { decoderBillet, genererQr } from './billets'
 import { Coche } from '@/design/composants/Coche'
@@ -42,6 +42,63 @@ export function EcranVoyage() {
   const [qrRegenere, setQrRegenere] = useState<string | null>(null)
   const [scanEnCours, setScanEnCours] = useState(false)
   const champBillet = useRef<HTMLInputElement>(null)
+  const champTicket = useRef<HTMLInputElement>(null)
+  const [depenseManuelle, setDepenseManuelle] = useState<Partial<LigneDepense> | null>(null)
+  const [ticketEnCours, setTicketEnCours] = useState(false)
+  const { foyer } = utiliserSession()
+
+  const depenses = useQuery({
+    queryKey: ['depenses', id],
+    queryFn: async (): Promise<LigneDepense[]> => {
+      const { data, error } = await supabase.from('depenses').select('*').eq('voyage_id', id ?? '')
+      if (error) return []
+      return data
+    },
+    enabled: membre?.role === 'adult',
+  })
+
+  const scannerTicket = async (fichiers: FileList | null) => {
+    const fichier = fichiers?.[0]
+    if (!fichier || !voyage || !foyer) return
+    setTicketEnCours(true)
+    try {
+      const image = await compresserImage(fichier)
+      const { data: session } = await supabase.auth.getSession()
+      const reponse = await fetch('/api/analyser-ticket', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${session.session?.access_token ?? ''}`,
+        },
+        body: JSON.stringify({ image }),
+      })
+      const donnees = (await reponse.json()) as {
+        ticket?: { commercant: string | null; montant: number | null; date: string | null; categorie: string | null }
+      }
+      const ticket = donnees.ticket
+      if (ticket?.montant) {
+        const did = crypto.randomUUID()
+        await muter({
+          table: 'depenses', type: 'insert', cible_id: did,
+          charge: {
+            id: did, foyer_id: foyer.id, voyage_id: voyage.id,
+            libelle: ticket.commercant ?? 'Ticket', montant: ticket.montant,
+            categorie: ticket.categorie ?? 'autre', date_depense: ticket.date,
+            image_donnees: image,
+          },
+        })
+        await clientRequetes.invalidateQueries({ queryKey: ['depenses', voyage.id] })
+      } else {
+        // montant illisible : on garde la photo et on demande juste le chiffre
+        setDepenseManuelle({
+          libelle: ticket?.commercant ?? '', categorie: ticket?.categorie ?? 'restaurant',
+          date_depense: ticket?.date ?? null, image_donnees: image,
+        })
+      }
+    } finally {
+      setTicketEnCours(false)
+    }
+  }
 
   const scannerBillet = async (fichiers: FileList | null) => {
     const fichier = fichiers?.[0]
@@ -300,6 +357,63 @@ export function EcranVoyage() {
         )}
       </section>
 
+      {/* Budget du séjour — adultes uniquement (RLS) */}
+      {membre?.role === 'adult' && (
+        <section className="mt-5">
+          <div className="flex items-center justify-between">
+            <h3 className="text-titre-3 text-encre">💶 Budget du séjour</h3>
+            <div className="flex gap-1">
+              <Bouton variante="soleil" onClick={() => champTicket.current?.click()} desactive={ticketEnCours}>
+                {ticketEnCours ? 'Lecture…' : '🧾 Ticket'}
+              </Bouton>
+              <Bouton variante="discret" onClick={() => setDepenseManuelle({})} etiquette="Dépense manuelle">+</Bouton>
+            </div>
+          </div>
+          <input
+            ref={champTicket} type="file" accept="image/*" capture="environment" hidden
+            aria-hidden="true" onChange={(e) => void scannerTicket(e.target.files)}
+          />
+          {(() => {
+            const totalResas = (reservations.data ?? []).reduce((somme, r) => somme + (r.prix ?? 0), 0)
+            const totalSurPlace = (depenses.data ?? []).reduce((somme, d) => somme + d.montant, 0)
+            return (
+              <div className="mt-2 rounded-xl bg-fond-eleve p-4 shadow-carte">
+                <p className="chiffres text-titre-2 text-encre">{(totalResas + totalSurPlace).toFixed(2)} €</p>
+                <p className="chiffres text-note text-encre-3">
+                  Réservations {totalResas.toFixed(2)} € · Sur place {totalSurPlace.toFixed(2)} €
+                </p>
+                {(depenses.data ?? []).length > 0 && (
+                  <ul className="mt-2 border-t border-trait pt-2">
+                    {(depenses.data ?? []).map((d) => (
+                      <li key={d.id} className="flex items-center gap-2 py-0.5">
+                        <span className="flex-1 text-corps-2 text-encre">{d.libelle}</span>
+                        <span className="text-legende text-encre-3">{d.categorie}</span>
+                        <span className="chiffres text-corps-2 font-[590] text-encre">{d.montant.toFixed(2)} €</span>
+                        <button
+                          aria-label={`Supprimer ${d.libelle}`}
+                          className="min-h-[32px] min-w-[32px] text-note text-encre-3"
+                          onClick={() =>
+                            void muter({ table: 'depenses', type: 'delete', cible_id: d.id, charge: {} }).then(() =>
+                              clientRequetes.invalidateQueries({ queryKey: ['depenses', voyage.id] }),
+                            )
+                          }
+                        >
+                          ✕
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <p className="mt-2 text-legende text-encre-3">
+                  Le prix des réservations (hôtel, train…) compte automatiquement. Scanne les tickets sur place —
+                  à la fin du séjour, le total est là.
+                </p>
+              </div>
+            )
+          })()}
+        </section>
+      )}
+
       {/* Checklist maison */}
       <section className="mb-6 mt-5">
         <h3 className="text-titre-3 text-encre">Avant de partir</h3>
@@ -314,6 +428,26 @@ export function EcranVoyage() {
           ))}
         </ul>
       </section>
+
+      <Feuille ouverte={depenseManuelle !== null} onFermer={() => setDepenseManuelle(null)} titre="Dépense du séjour">
+        {depenseManuelle && foyer && (
+          <FormDepense
+            initial={depenseManuelle}
+            surCreation={async (v) => {
+              const did = crypto.randomUUID()
+              await muter({
+                table: 'depenses', type: 'insert', cible_id: did,
+                charge: {
+                  id: did, foyer_id: foyer.id, voyage_id: voyage.id,
+                  image_donnees: depenseManuelle.image_donnees ?? null, ...v,
+                },
+              })
+              await clientRequetes.invalidateQueries({ queryKey: ['depenses', voyage.id] })
+              setDepenseManuelle(null)
+            }}
+          />
+        )}
+      </Feuille>
 
       <Feuille ouverte={billetOuvert !== null} onFermer={() => setBilletOuvert(null)} titre="🎫 Billet">
         {billetOuvert && (
@@ -446,6 +580,53 @@ function FormReservation({
         }
       >
         Ajouter
+      </Bouton>
+    </div>
+  )
+}
+
+
+const CATEGORIES_DEPENSE = ['restaurant', 'courses', 'transport', 'activite', 'hebergement', 'autre'] as const
+
+function FormDepense({
+  initial,
+  surCreation,
+}: {
+  initial: Partial<LigneDepense>
+  surCreation: (v: { libelle: string; montant: number; categorie: string; date_depense: string | null }) => Promise<void>
+}) {
+  const [libelle, setLibelle] = useState(initial.libelle ?? '')
+  const [montant, setMontant] = useState('')
+  const [categorie, setCategorie] = useState(initial.categorie ?? 'restaurant')
+  const [date, setDate] = useState(initial.date_depense ?? '')
+  return (
+    <div className="flex flex-col gap-3">
+      <ChampTexte etiquette="Quoi ?" value={libelle} onChange={(e) => setLibelle(e.target.value)} placeholder="Restaurant du port, hôtel…" />
+      <ChampTexte etiquette="Montant (€)" type="number" inputMode="decimal" value={montant} onChange={(e) => setMontant(e.target.value)} placeholder="42.50" />
+      <div className="flex flex-wrap gap-1">
+        {CATEGORIES_DEPENSE.map((c) => (
+          <button
+            key={c}
+            onClick={() => setCategorie(c)}
+            aria-pressed={categorie === c}
+            className={`min-h-sur-tactile rounded-full px-3 text-note font-[500]
+              ${categorie === c ? 'bg-encre text-fond' : 'bg-fond-sourd text-encre-2'}`}
+          >
+            {c}
+          </button>
+        ))}
+      </div>
+      <ChampTexte etiquette="Date (facultatif)" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+      <Bouton
+        pleineLargeur
+        variante="valider"
+        onClick={() => {
+          const valeur = Number(montant.replace(',', '.'))
+          if (libelle.trim() && valeur > 0)
+            void surCreation({ libelle: libelle.trim(), montant: valeur, categorie, date_depense: date || null })
+        }}
+      >
+        Ajouter au budget
       </Bouton>
     </div>
   )

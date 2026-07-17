@@ -140,6 +140,7 @@ export interface Database {
       souvenirs: Table<LigneSouvenir>
       gastif_conversations: Table<LigneGastifConversation>
       concerts: Table<LigneConcert>
+      depenses: Table<LigneDepense>
     }
     Views: Record<string, never>
     Functions: Record<string, never>
@@ -351,5 +352,17 @@ export type LigneConcert = {
   format: string | null
   image_donnees: string | null
   notes: string | null
+  cree_le: string
+}
+
+export type LigneDepense = {
+  id: string
+  foyer_id: string
+  voyage_id: string | null
+  libelle: string
+  montant: number
+  categorie: string | null
+  date_depense: string | null
+  image_donnees: string | null
   cree_le: string
 }
