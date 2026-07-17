@@ -1,5 +1,5 @@
 // Un voyage : compte à rebours, météo, valises par personne, checklist maison, réservations.
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { utiliserSession } from '@/etat/session'
@@ -14,6 +14,8 @@ import {
 } from './donnees'
 import { differenceInCalendarDays, maintenantLocal } from '@/lib/dates'
 import type { LigneReservation } from '@/lib/basedonnees.types'
+import { compresserImage } from '@/fonctionnalites/souvenirs/donnees'
+import { decoderBillet, genererQr } from './billets'
 import { Coche } from '@/design/composants/Coche'
 import { couleurMembre } from '@/lib/couleurs'
 import { PastilleMembre } from '@/design/composants/PastilleMembre'
@@ -36,6 +38,43 @@ export function EcranVoyage() {
   const [emailColle, setEmailColle] = useState('')
   const [analyseEnCours, setAnalyseEnCours] = useState(false)
   const [resultatAnalyse, setResultatAnalyse] = useState<string | null>(null)
+  const [billetOuvert, setBilletOuvert] = useState<LigneReservation | null>(null)
+  const [qrRegenere, setQrRegenere] = useState<string | null>(null)
+  const [scanEnCours, setScanEnCours] = useState(false)
+  const champBillet = useRef<HTMLInputElement>(null)
+
+  const scannerBillet = async (fichiers: FileList | null) => {
+    const fichier = fichiers?.[0]
+    if (!fichier || !voyage) return
+    setScanEnCours(true)
+    try {
+      const image = await compresserImage(fichier)
+      const decode = await decoderBillet(image)
+      const rid = crypto.randomUUID()
+      await muter({
+        table: 'reservations', type: 'insert', cible_id: rid,
+        charge: {
+          id: rid, voyage_id: voyage.id, type: 'activite',
+          fournisseur: decode ? `🎫 Billet (${decode.format})` : '🎫 Billet (photo)',
+          reference: null, debut_a: null, fin_a: null, adresse: null, prix: null,
+          codes_acces: decode?.texte ?? null, doc_path: image, email_brut: null,
+        },
+      })
+      await clientRequetes.invalidateQueries({ queryKey: ['reservations', voyage.id] })
+    } finally {
+      setScanEnCours(false)
+    }
+  }
+
+  const ouvrirBillet = async (r: LigneReservation) => {
+    setBilletOuvert(r)
+    setQrRegenere(null)
+    // On ne régénère un QR net que si le code d'origine était bien un QR —
+    // un Aztec SNCF régénéré en QR ne passerait pas le portillon.
+    if (r.codes_acces && r.fournisseur?.includes('QR')) {
+      setQrRegenere(await genererQr(r.codes_acces))
+    }
+  }
 
   const analyserEmail = async () => {
     if (!emailColle.trim() || !voyage) return
@@ -210,11 +249,18 @@ export function EcranVoyage() {
           {membre?.role === 'adult' && (
             <div className="flex gap-1">
               <Bouton variante="soleil" onClick={() => setCollerEmail(true)}>
-                📧 Coller un email
+                📧 Email
+              </Bouton>
+              <Bouton variante="valider" onClick={() => champBillet.current?.click()} desactive={scanEnCours}>
+                {scanEnCours ? '…' : '🎫 Scanner'}
               </Bouton>
               <Bouton variante="discret" onClick={() => setAjoutResa(true)} etiquette="Ajouter une réservation">+</Bouton>
             </div>
           )}
+          <input
+            ref={champBillet} type="file" accept="image/*" capture="environment" hidden
+            aria-hidden="true" onChange={(e) => void scannerBillet(e.target.files)}
+          />
         </div>
         {(reservations.data?.length ?? 0) === 0 ? (
           <p className="mt-1 text-corps-2 text-encre-3">
@@ -223,10 +269,20 @@ export function EcranVoyage() {
         ) : (
           <ul className="mt-2 flex flex-col gap-1">
             {(reservations.data ?? []).map((r) => (
-              <li key={r.id} className="rounded-md bg-fond-eleve p-3 shadow-carte">
+              <li
+                key={r.id}
+                className="rounded-md bg-fond-eleve p-3 shadow-carte"
+                onClick={() => {
+                  if (r.doc_path || r.codes_acces) void ouvrirBillet(r)
+                }}
+                style={r.doc_path || r.codes_acces ? { cursor: 'pointer' } : undefined}
+              >
                 <p className="text-corps text-encre">
                   {r.fournisseur ?? r.type}
                   {r.reference && <span className="chiffres ml-2 text-note text-encre-3">{r.reference}</span>}
+                  {(r.doc_path || r.codes_acces) && (
+                    <span className="ml-2 text-note text-ardoise">— voir le billet ›</span>
+                  )}
                 </p>
                 {r.debut_a && (
                   <p className="chiffres text-note text-encre-3">
@@ -258,6 +314,37 @@ export function EcranVoyage() {
           ))}
         </ul>
       </section>
+
+      <Feuille ouverte={billetOuvert !== null} onFermer={() => setBilletOuvert(null)} titre="🎫 Billet">
+        {billetOuvert && (
+          <div className="flex flex-col items-center gap-3">
+            {qrRegenere ? (
+              <>
+                <img src={qrRegenere} alt="QR code du billet" className="w-64 rounded-md bg-white p-2" />
+                <p className="text-legende text-encre-3">QR régénéré net — monte la luminosité à l’entrée.</p>
+              </>
+            ) : billetOuvert.doc_path ? (
+              <img src={billetOuvert.doc_path} alt="Billet scanné" className="w-full rounded-md" />
+            ) : null}
+            {billetOuvert.codes_acces && (
+              <p className="chiffres w-full break-all rounded-md bg-fond-sourd p-3 text-legende text-encre-2">
+                {billetOuvert.codes_acces.slice(0, 300)}
+              </p>
+            )}
+            <Bouton
+              variante="urgent"
+              onClick={() => {
+                void muter({ table: 'reservations', type: 'delete', cible_id: billetOuvert.id, charge: {} }).then(() =>
+                  clientRequetes.invalidateQueries({ queryKey: ['reservations', voyage.id] }),
+                )
+                setBilletOuvert(null)
+              }}
+            >
+              Supprimer ce billet
+            </Bouton>
+          </div>
+        )}
+      </Feuille>
 
       <Feuille ouverte={collerEmail} onFermer={() => setCollerEmail(false)} titre="Coller une confirmation">
         <div className="flex flex-col gap-3">
