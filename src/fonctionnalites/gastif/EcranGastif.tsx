@@ -127,6 +127,8 @@ export function EcranGastif() {
   const SUGGESTIONS = [
     'Qu’est-ce qu’on mange ce soir ?',
     'Résume-moi la semaine',
+    'Où en est la valise du prochain voyage ?',
+    'Quels papiers expirent bientôt ?',
     'Je suis débordé cette semaine',
     'Une idée de sortie avec Gabriel ce week-end ?',
   ]
@@ -153,7 +155,8 @@ export function EcranGastif() {
         {messages.length === 0 && (
           <div className="flex flex-col gap-2 py-6">
             <p className="text-corps-2 text-encre-3">
-              Gastif connaît l’agenda, les tâches, les courses et les menus du foyer. Demande-lui :
+              Gastif connaît tout le foyer : agenda, tâches, courses, menus, voyages, valises,
+              souvenirs, papiers, colis, routines, points de Gabriel. Demande-lui :
             </p>
             {SUGGESTIONS.map((s) => (
               <button
