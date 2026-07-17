@@ -164,7 +164,10 @@ function Interieur() {
 
   return (
     <BrowserRouter>
-      <div className="min-h-dvh bg-fond pb-20">
+      <div
+        className="min-h-dvh bg-fond"
+        style={{ paddingBottom: 'calc(96px + env(safe-area-inset-bottom))' }}
+      >
         <Suspense fallback={<div className="min-h-dvh bg-fond" aria-busy="true" />}>
           <Routes>
             {/* L'app s'ouvre toujours sur Aujourd'hui. */}

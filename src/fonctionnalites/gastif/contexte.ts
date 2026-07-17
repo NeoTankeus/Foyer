@@ -3,11 +3,20 @@
 // Gastif n'en a pas besoin pour répondre, et un enfant peut lire par-dessus l'épaule.
 import { supabase } from '@/lib/supabase'
 import { bornesJourneeLocale, formatHeure, maintenantLocal, addDays, dateIsoJour } from '@/lib/dates'
-import type { LigneMembre } from '@/lib/basedonnees.types'
+import type { LigneFoyer, LigneMembre } from '@/lib/basedonnees.types'
 
-export async function assemblerContexte(membres: LigneMembre[]): Promise<string> {
+export async function assemblerContexte(
+  membres: LigneMembre[],
+  foyer: LigneFoyer | null,
+): Promise<string> {
   const maintenant = maintenantLocal()
   const lignes: string[] = []
+
+  // La mémoire longue : ce que la famille a appris à Gastif, relu à chaque question.
+  const memoire = typeof foyer?.reglages['memoire'] === 'string' ? (foyer.reglages['memoire'] as string) : ''
+  if (memoire.trim()) {
+    lignes.push(`Mémoire du foyer (habitudes et préférences durables) :\n${memoire.trim()}`)
+  }
 
   lignes.push(
     `Date et heure : ${maintenant.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}, ${maintenant.getHours()}h${String(maintenant.getMinutes()).padStart(2, '0')} (Europe/Paris).`,

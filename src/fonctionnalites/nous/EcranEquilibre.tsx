@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase'
 import { utiliserSession } from '@/etat/session'
 import { couleurMembre } from '@/lib/couleurs'
 import type { LigneTache } from '@/lib/basedonnees.types'
+import { BarreRetour } from '@/design/composants/BarreRetour'
 
 export function EcranEquilibre() {
   const { membres } = utiliserSession()
@@ -34,6 +35,7 @@ export function EcranEquilibre() {
 
   return (
     <div className="px-5 pt-3">
+      <BarreRetour vers="/nous" />
       <h2 className="pb-1 text-titre-3 text-encre">Équilibre</h2>
       <p className="mb-3 text-note text-encre-3">
         Minutes d’effort réellement complétées — la charge invisible (« penser à », « prendre RDV ») compte aussi.

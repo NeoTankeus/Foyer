@@ -92,10 +92,16 @@ ${corps.contexte}`
     reponseGemini = await appeler('gemini-2.0-flash-lite')
   }
   if (reponseGemini.status === 429) {
+    // On remonte la vraie raison de Google : quota/minute, quota/jour, ou clé sans accès.
+    let raison = ''
+    try {
+      const detail = (await reponseGemini.json()) as { error?: { message?: string } }
+      raison = detail.error?.message ?? ''
+    } catch { /* corps illisible */ }
     return new Response(
       JSON.stringify({
         erreur: 'quota',
-        message: 'Gastif a atteint son quota gratuit de la minute. Attends 30 secondes et repose ta question.',
+        message: `Le quota gratuit Gemini est atteint. Détail Google : « ${raison.slice(0, 200) || 'aucun'} ». Si ça arrive dès la première question, vérifie la clé sur aistudio.google.com.`,
       }),
       { status: 429, headers: { 'content-type': 'application/json' } },
     )

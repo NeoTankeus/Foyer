@@ -12,6 +12,7 @@ import { Feuille } from '@/design/composants/Feuille'
 import { ChampTexte } from '@/design/composants/ChampTexte'
 import { EtatVide } from '@/design/composants/EtatVide'
 import { Coche } from '@/design/composants/Coche'
+import { BarreRetour } from '@/design/composants/BarreRetour'
 
 function prochaineOccurrence(dateIso: string): Date {
   const date = new Date(dateIso)
@@ -47,6 +48,7 @@ export function EcranCelebrations() {
 
   return (
     <div className="px-5 pt-3">
+      <BarreRetour vers="/nous" />
       <div className="flex items-center justify-between pb-2">
         <h2 className="text-titre-3 text-encre">Célébrations</h2>
         {membre?.role === 'adult' && (

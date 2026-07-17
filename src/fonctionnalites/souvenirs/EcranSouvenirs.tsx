@@ -11,6 +11,7 @@ import type { LigneSouvenir } from '@/lib/basedonnees.types'
 import { Bouton } from '@/design/composants/Bouton'
 import { Feuille } from '@/design/composants/Feuille'
 import { EtatVide } from '@/design/composants/EtatVide'
+import { BarreRetour } from '@/design/composants/BarreRetour'
 
 export function EcranSouvenirs() {
   const { membre, foyer } = utiliserSession()
@@ -85,6 +86,7 @@ export function EcranSouvenirs() {
 
   return (
     <div className="px-5 pt-3">
+      <BarreRetour vers="/nous" />
       <div className="flex items-center justify-between pb-2">
         <h2 className="text-titre-3 text-encre">📷 Souvenirs</h2>
         {filtre.type === 'voyage' && filtres.length > 0 && (

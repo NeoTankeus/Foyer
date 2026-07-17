@@ -11,6 +11,7 @@ import { Carte } from '@/design/composants/Carte'
 import { Feuille } from '@/design/composants/Feuille'
 import { ChampTexte } from '@/design/composants/ChampTexte'
 import { PastilleMembre } from '@/design/composants/PastilleMembre'
+import { BarreRetour } from '@/design/composants/BarreRetour'
 
 const COULEURS: CouleurMembre[] = ['ambre', 'sauge', 'ardoise', 'prune', 'corail', 'or']
 const ROLES: { valeur: RoleMembre; libelle: string }[] = [
@@ -30,6 +31,9 @@ interface LigneJournal {
 export function EcranAdministration() {
   const { membre, membres, foyer } = utiliserSession()
   const [nomFoyer, setNomFoyer] = useState(foyer?.nom ?? '')
+  const [memoire, setMemoire] = useState(
+    typeof foyer?.reglages['memoire'] === 'string' ? (foyer.reglages['memoire'] as string) : '',
+  )
   const [enEdition, setEnEdition] = useState<LigneMembre | null>(null)
   const [creation, setCreation] = useState(false)
   const [journal, setJournal] = useState<LigneJournal[]>([])
@@ -65,6 +69,7 @@ export function EcranAdministration() {
 
   return (
     <div className="flex flex-col gap-4 px-5 pt-3 pb-8">
+      <BarreRetour vers="/nous" />
       <h2 className="text-titre-3 text-encre">🛠️ Administration</h2>
       {message && <p className="text-note font-[590] text-fait">{message}</p>}
 
@@ -78,6 +83,39 @@ export function EcranAdministration() {
             className="min-h-sur-tactile flex-1 rounded-md border border-trait bg-fond-eleve px-3 text-corps"
           />
           <Bouton variante="valider" onClick={() => void enregistrerFoyer()}>OK</Bouton>
+        </div>
+      </Carte>
+
+      <Carte>
+        <h3 className="mb-2 text-note font-[590] uppercase tracking-wide text-encre-3">
+          Mémoire de Gastif
+        </h3>
+        <p className="mb-2 text-note text-encre-3">
+          Ce que Gastif doit savoir pour toujours — il le relit à chaque question.
+          Ex. : « Gabriel ne mange pas de poisson. Les courses se font le samedi matin.
+          Le mercredi est chargé. »
+        </p>
+        <textarea
+          value={memoire}
+          onChange={(e) => setMemoire(e.target.value)}
+          rows={4}
+          aria-label="Mémoire de Gastif"
+          className="w-full rounded-md border border-trait bg-fond-eleve px-3 py-2 text-corps-2"
+        />
+        <div className="mt-2">
+          <Bouton
+            variante="valider"
+            onClick={() => {
+              if (!foyer) return
+              void supabase
+                .from('foyers')
+                .update({ reglages: { ...foyer.reglages, memoire } })
+                .eq('id', foyer.id)
+                .then(() => confirmer('Mémoire de Gastif enregistrée.'))
+            }}
+          >
+            Enregistrer la mémoire
+          </Bouton>
         </div>
       </Carte>
 

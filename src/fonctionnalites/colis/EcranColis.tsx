@@ -11,6 +11,7 @@ import { Bouton } from '@/design/composants/Bouton'
 import { Feuille } from '@/design/composants/Feuille'
 import { ChampTexte } from '@/design/composants/ChampTexte'
 import { EtatVide } from '@/design/composants/EtatVide'
+import { BarreRetour } from '@/design/composants/BarreRetour'
 
 const TRANSPORTEURS: { valeur: LigneColis['transporteur']; libelle: string; suivi: (n: string) => string }[] = [
   { valeur: 'laposte', libelle: 'La Poste / Colissimo', suivi: (n) => `https://www.laposte.fr/outils/suivre-vos-envois?code=${n}` },
@@ -48,6 +49,7 @@ export function EcranColis() {
 
   return (
     <div className="px-5 pt-3">
+      <BarreRetour vers="/nous" />
       <div className="flex items-center justify-between pb-2">
         <h2 className="text-titre-3 text-encre">Colis</h2>
         <Bouton variante="discret" onClick={() => setCreation(true)} etiquette="Nouveau colis">+</Bouton>

@@ -9,6 +9,7 @@ import { Bouton } from '@/design/composants/Bouton'
 import { Feuille } from '@/design/composants/Feuille'
 import { ChampTexte } from '@/design/composants/ChampTexte'
 import { EtatVide } from '@/design/composants/EtatVide'
+import { BarreRetour } from '@/design/composants/BarreRetour'
 
 export function EcranVoyages() {
   const { membre, membres, foyer } = utiliserSession()
@@ -19,6 +20,7 @@ export function EcranVoyages() {
 
   return (
     <div className="px-5 pt-3">
+      <BarreRetour vers="/nous" />
       <div className="flex items-center justify-between pb-2">
         <h2 className="text-titre-3 text-encre">Voyages</h2>
         {membre?.role === 'adult' && (

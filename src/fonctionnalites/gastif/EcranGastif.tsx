@@ -68,7 +68,7 @@ export function EcranGastif() {
     try {
       const [{ data: session }, contexte] = await Promise.all([
         supabase.auth.getSession(),
-        assemblerContexte(membres),
+        assemblerContexte(membres, foyer),
       ])
       const reponse = await fetch('/api/gastif', {
         method: 'POST',

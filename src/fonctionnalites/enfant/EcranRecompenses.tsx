@@ -12,6 +12,7 @@ import { Feuille } from '@/design/composants/Feuille'
 import { ChampTexte } from '@/design/composants/ChampTexte'
 import { EtatVide } from '@/design/composants/EtatVide'
 import { PastilleMembre } from '@/design/composants/PastilleMembre'
+import { BarreRetour } from '@/design/composants/BarreRetour'
 
 export function EcranRecompenses() {
   const { membre, membres, foyer } = utiliserSession()
@@ -46,6 +47,7 @@ export function EcranRecompenses() {
 
   return (
     <div className="px-5 pt-3">
+      <BarreRetour vers="/nous" />
       <div className="flex items-center justify-between pb-2">
         <h2 className="text-titre-3 text-encre">Récompenses</h2>
         {membre?.role === 'adult' && (

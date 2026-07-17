@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabase'
 import { utiliserSession } from '@/etat/session'
 import { Bouton } from '@/design/composants/Bouton'
 import { formatHeure } from '@/lib/dates'
+import { BarreRetour } from '@/design/composants/BarreRetour'
 
 interface Resultat {
   type: string
@@ -82,6 +83,7 @@ export function EcranRecherche() {
 
   return (
     <div className="px-5 pt-3 pb-8">
+      <BarreRetour vers="/" />
       <h2 className="pb-2 text-titre-3 text-encre">🔍 Recherche</h2>
       <input
         value={q}
