@@ -4,16 +4,40 @@ import { muter } from '@/lib/sync'
 import { lireAvecRepli } from '@/lib/lecture'
 import type { LigneSouvenir } from '@/lib/basedonnees.types'
 
-/** Recompresse une photo côté client : max 1600 px, JPEG ~72 % (~250 Ko). */
+/** Recompresse une photo côté client : max 1600 px, JPEG ~72 % (~250 Ko).
+ * Repli <img> pour les formats que createImageBitmap ne lit pas (HEIC iPhone). */
 export async function compresserImage(fichier: File): Promise<string> {
-  const bitmap = await createImageBitmap(fichier)
-  const ratio = Math.min(1, 1600 / Math.max(bitmap.width, bitmap.height))
+  let source: CanvasImageSource
+  let largeur: number
+  let hauteur: number
+  try {
+    const bitmap = await createImageBitmap(fichier)
+    source = bitmap
+    largeur = bitmap.width
+    hauteur = bitmap.height
+  } catch {
+    const url = URL.createObjectURL(fichier)
+    try {
+      const img = new Image()
+      await new Promise<void>((resoudre, rejeter) => {
+        img.onload = () => resoudre()
+        img.onerror = () => rejeter(new Error('Image illisible'))
+        img.src = url
+      })
+      source = img
+      largeur = img.naturalWidth
+      hauteur = img.naturalHeight
+    } finally {
+      URL.revokeObjectURL(url)
+    }
+  }
+  const ratio = Math.min(1, 1600 / Math.max(largeur, hauteur))
   const canvas = document.createElement('canvas')
-  canvas.width = Math.round(bitmap.width * ratio)
-  canvas.height = Math.round(bitmap.height * ratio)
+  canvas.width = Math.round(largeur * ratio)
+  canvas.height = Math.round(hauteur * ratio)
   const contexte = canvas.getContext('2d')
   if (!contexte) throw new Error('Canvas indisponible')
-  contexte.drawImage(bitmap, 0, 0, canvas.width, canvas.height)
+  contexte.drawImage(source, 0, 0, canvas.width, canvas.height)
   return canvas.toDataURL('image/jpeg', 0.72)
 }
 

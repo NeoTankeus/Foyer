@@ -43,6 +43,10 @@ export function EcranVoyage() {
   const [scanEnCours, setScanEnCours] = useState(false)
   const champBillet = useRef<HTMLInputElement>(null)
   const champTicket = useRef<HTMLInputElement>(null)
+  const champPhotoResa = useRef<HTMLInputElement>(null)
+  const [resaPourPhoto, setResaPourPhoto] = useState<string | null>(null)
+  const [nouvelArticleValise, setNouvelArticleValise] = useState('')
+  const [nouvelleTacheMaison, setNouvelleTacheMaison] = useState('')
   const [depenseManuelle, setDepenseManuelle] = useState<Partial<LigneDepense> | null>(null)
   const [ticketEnCours, setTicketEnCours] = useState(false)
   const { foyer } = utiliserSession()
@@ -213,6 +217,41 @@ export function EcranVoyage() {
   const affaires = (valise.data ?? []).filter((v) => v.membre_id === membreActif)
   const restantes = (valise.data ?? []).filter((v) => !v.coche).length
 
+  const ajouterArticleValise = async () => {
+    const libelle = nouvelArticleValise.trim()
+    if (!libelle || !voyage) return
+    const vid = crypto.randomUUID()
+    await muter({
+      table: 'valise', type: 'insert', cible_id: vid,
+      charge: {
+        id: vid, voyage_id: voyage.id, membre_id: membreActif, libelle,
+        categorie: 'divers', position: 999, coche: false,
+      },
+    })
+    setNouvelArticleValise('')
+    await clientRequetes.invalidateQueries({ queryKey: ['valise', voyage.id] })
+  }
+
+  const ajouterTacheMaison = async () => {
+    const libelle = nouvelleTacheMaison.trim()
+    if (!libelle || !voyage) return
+    await muter({
+      table: 'voyages', type: 'update', cible_id: voyage.id,
+      charge: { checklist_maison: [...voyage.checklist_maison, { libelle, coche: false }] },
+    })
+    setNouvelleTacheMaison('')
+    await clientRequetes.invalidateQueries({ queryKey: ['voyages'] })
+  }
+
+  const attacherPhotoResa = async (fichiers: FileList | null) => {
+    const fichier = fichiers?.[0]
+    if (!fichier || !resaPourPhoto || !voyage) return
+    const image = await compresserImage(fichier)
+    await muter({ table: 'reservations', type: 'update', cible_id: resaPourPhoto, charge: { doc_path: image } })
+    setResaPourPhoto(null)
+    await clientRequetes.invalidateQueries({ queryKey: ['reservations', voyage.id] })
+  }
+
   const basculerMaison = async (index: number) => {
     const liste = voyage.checklist_maison.map((c, i) => (i === index ? { ...c, coche: !c.coche } : c))
     await muter({ table: 'voyages', type: 'update', cible_id: voyage.id, charge: { checklist_maison: liste } })
@@ -257,7 +296,7 @@ export function EcranVoyage() {
 
       {/* Valises */}
       <section className="mt-4">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-3">
           <h3 className="text-titre-3 text-encre">Valises</h3>
           <span className="chiffres text-note text-encre-3">
             {restantes === 0 ? 'tout est prêt' : `${restantes} à préparer`}
@@ -297,11 +336,27 @@ export function EcranVoyage() {
             )
           })}
         </ul>
+        <form
+          className="mt-2 flex gap-2"
+          onSubmit={(e) => {
+            e.preventDefault()
+            void ajouterArticleValise()
+          }}
+        >
+          <input
+            value={nouvelArticleValise}
+            onChange={(e) => setNouvelArticleValise(e.target.value)}
+            placeholder="Ajouter à cette valise…"
+            aria-label="Ajouter un élément à la valise"
+            className="min-h-sur-tactile flex-1 rounded-full border border-trait bg-fond-eleve px-4 text-corps-2"
+          />
+          <Bouton type="submit" variante="discret">OK</Bouton>
+        </form>
       </section>
 
       {/* Réservations */}
       <section className="mt-5">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-3">
           <h3 className="text-titre-3 text-encre">Réservations</h3>
           {membre?.role === 'adult' && (
             <div className="flex gap-1">
@@ -334,13 +389,33 @@ export function EcranVoyage() {
                 }}
                 style={r.doc_path || r.codes_acces ? { cursor: 'pointer' } : undefined}
               >
-                <p className="text-corps text-encre">
-                  {r.fournisseur ?? r.type}
-                  {r.reference && <span className="chiffres ml-2 text-note text-encre-3">{r.reference}</span>}
-                  {(r.doc_path || r.codes_acces) && (
-                    <span className="ml-2 text-note text-ardoise">— voir le billet ›</span>
+                <div className="flex items-start gap-3">
+                  {r.doc_path && (
+                    <img src={r.doc_path} alt="" className="h-16 w-16 shrink-0 rounded-md object-cover" />
                   )}
-                </p>
+                  <div className="flex-1">
+                    <p className="text-corps text-encre">
+                      {r.fournisseur ?? r.type}
+                      {r.reference && <span className="chiffres ml-2 text-note text-encre-3">{r.reference}</span>}
+                      {(r.doc_path || r.codes_acces) && (
+                        <span className="ml-2 text-note text-ardoise">— ouvrir ›</span>
+                      )}
+                    </p>
+                  </div>
+                  {membre?.role === 'adult' && !r.doc_path && (
+                    <button
+                      aria-label="Ajouter une photo (chambre, hôtel…)"
+                      className="min-h-[36px] min-w-[36px] rounded-full bg-fond-sourd text-note"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setResaPourPhoto(r.id)
+                        champPhotoResa.current?.click()
+                      }}
+                    >
+                      📷
+                    </button>
+                  )}
+                </div>
                 {r.debut_a && (
                   <p className="chiffres text-note text-encre-3">
                     {new Date(r.debut_a).toLocaleString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
@@ -360,7 +435,7 @@ export function EcranVoyage() {
       {/* Budget du séjour — adultes uniquement (RLS) */}
       {membre?.role === 'adult' && (
         <section className="mt-5">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-3">
             <h3 className="text-titre-3 text-encre">💶 Budget du séjour</h3>
             <div className="flex gap-1">
               <Bouton variante="soleil" onClick={() => champTicket.current?.click()} desactive={ticketEnCours}>
@@ -414,6 +489,11 @@ export function EcranVoyage() {
         </section>
       )}
 
+      <input
+        ref={champPhotoResa} type="file" accept="image/*" hidden aria-hidden="true"
+        onChange={(e) => void attacherPhotoResa(e.target.files)}
+      />
+
       {/* Checklist maison */}
       <section className="mb-6 mt-5">
         <h3 className="text-titre-3 text-encre">Avant de partir</h3>
@@ -427,6 +507,22 @@ export function EcranVoyage() {
             </li>
           ))}
         </ul>
+        <form
+          className="mt-2 flex gap-2"
+          onSubmit={(e) => {
+            e.preventDefault()
+            void ajouterTacheMaison()
+          }}
+        >
+          <input
+            value={nouvelleTacheMaison}
+            onChange={(e) => setNouvelleTacheMaison(e.target.value)}
+            placeholder="Ajouter à la checklist…"
+            aria-label="Ajouter à la checklist maison"
+            className="min-h-sur-tactile flex-1 rounded-full border border-trait bg-fond-eleve px-4 text-corps-2"
+          />
+          <Bouton type="submit" variante="discret">OK</Bouton>
+        </form>
       </section>
 
       <Feuille ouverte={depenseManuelle !== null} onFermer={() => setDepenseManuelle(null)} titre="Dépense du séjour">

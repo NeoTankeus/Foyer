@@ -8,6 +8,7 @@ import { rejouerFileAttente } from '@/lib/sync'
 import { PastilleMembre } from '@/design/composants/PastilleMembre'
 import { Bouton } from '@/design/composants/Bouton'
 import { Carte } from '@/design/composants/Carte'
+import { Feuille } from '@/design/composants/Feuille'
 
 const ROLES: Record<string, string> = {
   adult: 'Adulte',
@@ -20,6 +21,8 @@ export function EcranNous() {
   const { activerModeEnfant } = utiliserUi()
   const naviguer = useNavigate()
   const [enAttente, setEnAttente] = useState(0)
+  const [demandeCode, setDemandeCode] = useState(false)
+  const [code, setCode] = useState('')
 
   useEffect(() => {
     void baseLocale.file_attente.count().then(setEnAttente)
@@ -43,7 +46,7 @@ export function EcranNous() {
   return (
     <div className="pb-4">
       <header className="verre verre-clair safe-haut sticky top-0 z-10 px-5 pb-2 pt-3">
-        <h1 className="text-titre-2 text-encre">Nous</h1>
+        <h1 className="text-titre-2 text-encre">Menu</h1>
       </header>
 
       <div className="flex flex-col gap-3 px-5 pt-3">
@@ -70,12 +73,6 @@ export function EcranNous() {
           </ul>
         </Carte>
 
-        {estAdulte && membres.some((m) => m.role === 'child') && (
-          <Bouton variante="soleil" pleineLargeur onClick={activerModeEnfant}>
-            🧒 Passer en mode enfant
-          </Bouton>
-        )}
-
         <nav aria-label="Modules du foyer" className="overflow-hidden rounded-lg bg-fond-eleve shadow-carte">
           {MODULES.filter((m) => !m.adulte || estAdulte).map((module) => (
             <button
@@ -101,7 +98,61 @@ export function EcranNous() {
               <span aria-hidden="true" className="text-encre-3">›</span>
             </button>
           ))}
+          {estAdulte && membres.some((m) => m.role === 'child') && (
+            <button
+              onClick={() => {
+                navigator.vibrate?.(4)
+                setCode('')
+                setDemandeCode(true)
+              }}
+              className="flex min-h-sur-tactile w-full items-center gap-3 px-4 py-3 text-left active:bg-fond-sourd"
+            >
+              <span
+                aria-hidden="true"
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-[22px]"
+                style={{ background: 'color-mix(in srgb, var(--ambre) 14%, transparent)' }}
+              >
+                🧒
+              </span>
+              <div className="flex-1">
+                <p className="text-corps font-[590] text-encre">Mode enfant</p>
+                <p className="text-legende text-encre-3">verrouillé par code</p>
+              </div>
+              <span aria-hidden="true" className="text-encre-3">›</span>
+            </button>
+          )}
         </nav>
+
+        <Feuille ouverte={demandeCode} onFermer={() => setDemandeCode(false)} titre="Code du mode enfant">
+          <div className="flex flex-col gap-3">
+            <input
+              type="password"
+              inputMode="numeric"
+              value={code}
+              onChange={(e) => setCode(e.target.value)}
+              placeholder="••••••"
+              aria-label="Code de déverrouillage"
+              autoFocus
+              className="chiffres min-h-sur-tactile w-full rounded-md border border-trait bg-fond-eleve
+                px-4 text-center text-titre-3 tracking-[0.4em]"
+            />
+            <Bouton
+              pleineLargeur
+              variante="valider"
+              onClick={() => {
+                if (code === '210712') {
+                  setDemandeCode(false)
+                  activerModeEnfant()
+                } else {
+                  navigator.vibrate?.([30, 40, 30])
+                  setCode('')
+                }
+              }}
+            >
+              Déverrouiller
+            </Bouton>
+          </div>
+        </Feuille>
 
         {enAttente > 0 && (
           <Carte>

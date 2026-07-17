@@ -69,7 +69,7 @@ export function EcranAgenda() {
   return (
     <div className="pb-4">
       <header className="verre verre-clair safe-haut sticky top-0 z-10 px-5 pb-2 pt-3">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-3">
           <h1 className="text-titre-2 capitalize text-encre">
             {mois.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })}
           </h1>

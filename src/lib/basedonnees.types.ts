@@ -181,6 +181,8 @@ export type LigneIdeeCadeau = {
   libelle: string
   note: string | null
   prix: number | null
+  url: string | null
+  image_url: string | null
   offert: boolean
   offert_le: string | null
   cree_par: string | null

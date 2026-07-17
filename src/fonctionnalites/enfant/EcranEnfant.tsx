@@ -37,6 +37,8 @@ export function EcranEnfant({ onQuitter }: Props) {
   const [volet, setVolet] = useState<'journee' | 'missions'>('journee')
   const [routineEnCours, setRoutineEnCours] = useState<LigneRoutine | null>(null)
   const [bravo, setBravo] = useState(false)
+  const [demandeCode, setDemandeCode] = useState(false)
+  const [code, setCode] = useState('')
 
   const gabriel = membres.find((m) => m.role === 'child')
 
@@ -94,7 +96,10 @@ export function EcranEnfant({ onQuitter }: Props) {
           <p className="chiffres text-note text-encre-3">⭐ {gabriel.points} points</p>
         </div>
         <button
-          onClick={onQuitter}
+          onClick={() => {
+            setCode('')
+            setDemandeCode(true)
+          }}
           className="min-h-sur-tactile rounded-xl bg-fond-sourd px-3 text-note text-encre-3"
         >
           Mode parents
@@ -231,6 +236,29 @@ export function EcranEnfant({ onQuitter }: Props) {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {demandeCode && (
+        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-4 bg-fond px-8">
+          <p className="text-titre-3 text-encre">Code des parents</p>
+          <input
+            type="password"
+            inputMode="numeric"
+            value={code}
+            onChange={(e) => {
+              setCode(e.target.value)
+              if (e.target.value === '210712') onQuitter()
+            }}
+            placeholder="••••••"
+            aria-label="Code parents"
+            autoFocus
+            className="chiffres min-h-sur-tactile w-56 rounded-xl border border-trait bg-fond-eleve
+              px-4 text-center text-titre-3 tracking-[0.4em]"
+          />
+          <button onClick={() => setDemandeCode(false)} className="min-h-sur-tactile text-corps-2 text-encre-3">
+            Rester en mode enfant
+          </button>
+        </div>
+      )}
 
       {routineEnCours && (
         <ExecutionRoutine

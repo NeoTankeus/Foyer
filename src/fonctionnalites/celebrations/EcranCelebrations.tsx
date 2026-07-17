@@ -49,7 +49,7 @@ export function EcranCelebrations() {
   return (
     <div className="px-5 pt-3">
       <BarreRetour vers="/nous" />
-      <div className="flex items-center justify-between pb-2">
+      <div className="flex items-center justify-between gap-3 pb-3">
         <h2 className="text-titre-3 text-encre">Célébrations</h2>
         {membre?.role === 'adult' && (
           <Bouton variante="discret" onClick={() => setCreation(true)} etiquette="Nouvelle célébration">+</Bouton>
@@ -130,6 +130,61 @@ function CoffreAIdees({ celebration }: { celebration: LigneCelebration }) {
   const { foyer, membre } = utiliserSession()
   const clientRequetes = useQueryClient()
   const [idee, setIdee] = useState('')
+  const [lien, setLien] = useState('')
+  const [analyseEnCours, setAnalyseEnCours] = useState(false)
+  const [majEnCours, setMajEnCours] = useState(false)
+
+  const analyserLien = async (url: string): Promise<{ titre: string | null; image: string | null; prix: number | null }> => {
+    const { data: session } = await supabase.auth.getSession()
+    const reponse = await fetch('/api/analyser-lien', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${session.session?.access_token ?? ''}`,
+      },
+      body: JSON.stringify({ url }),
+    })
+    const donnees = (await reponse.json()) as { produit?: { titre: string | null; image: string | null; prix: number | null } }
+    return donnees.produit ?? { titre: null, image: null, prix: null }
+  }
+
+  const ajouterDepuisLien = async () => {
+    const url = lien.trim()
+    if (!url || !foyer || !membre) return
+    setAnalyseEnCours(true)
+    try {
+      const produit = await analyserLien(url)
+      const id = crypto.randomUUID()
+      await muter({
+        table: 'idees_cadeaux', type: 'insert', cible_id: id,
+        charge: {
+          id, foyer_id: foyer.id, celebration_id: celebration.id,
+          libelle: produit.titre ?? url.replace(/^https?:\/\//, '').slice(0, 60),
+          note: null, prix: produit.prix, url, image_url: produit.image,
+          offert: false, offert_le: null, cree_par: membre.id,
+        },
+      })
+      setLien('')
+      await clientRequetes.invalidateQueries({ queryKey: ['idees', celebration.id] })
+    } finally {
+      setAnalyseEnCours(false)
+    }
+  }
+
+  const actualiserPrix = async () => {
+    setMajEnCours(true)
+    try {
+      for (const i of (idees.data ?? []).filter((x) => x.url && !x.offert)) {
+        const produit = await analyserLien(i.url ?? '')
+        if (produit.prix !== null) {
+          await muter({ table: 'idees_cadeaux', type: 'update', cible_id: i.id, charge: { prix: produit.prix } })
+        }
+      }
+      await clientRequetes.invalidateQueries({ queryKey: ['idees', celebration.id] })
+    } finally {
+      setMajEnCours(false)
+    }
+  }
 
   const idees = useQuery({
     queryKey: ['idees', celebration.id],
@@ -179,6 +234,31 @@ function CoffreAIdees({ celebration }: { celebration: LigneCelebration }) {
         <Bouton type="submit" variante="discret">Noter</Bouton>
       </form>
 
+      <form
+        className="flex gap-2"
+        onSubmit={(e) => {
+          e.preventDefault()
+          void ajouterDepuisLien()
+        }}
+      >
+        <input
+          value={lien}
+          onChange={(e) => setLien(e.target.value)}
+          placeholder="🔗 Coller le lien du produit (Amazon, Fnac…)"
+          aria-label="Lien du produit"
+          inputMode="url"
+          className="min-h-sur-tactile flex-1 rounded-md border border-trait bg-fond-eleve px-3 text-corps-2"
+        />
+        <Bouton type="submit" variante="valider" desactive={analyseEnCours}>
+          {analyseEnCours ? '…' : 'OK'}
+        </Bouton>
+      </form>
+      {(idees.data ?? []).some((i) => i.url) && (
+        <Bouton variante="discret" pleineLargeur desactive={majEnCours} onClick={() => void actualiserPrix()}>
+          {majEnCours ? 'Mise à jour des prix…' : '🔄 Actualiser les prix'}
+        </Bouton>
+      )}
+
       <ul className="flex flex-col gap-1">
         {(idees.data ?? []).map((i) => (
           <li key={i.id} className="flex items-center gap-1 rounded-md bg-fond-sourd px-2">
@@ -192,8 +272,29 @@ function CoffreAIdees({ celebration }: { celebration: LigneCelebration }) {
               }
               etiquette={`Marquer « ${i.libelle} » comme offert`}
             />
+            {i.image_url && (
+              <img src={i.image_url} alt="" className="h-12 w-12 shrink-0 rounded-md object-cover" />
+            )}
             <span className={`flex-1 py-2 text-corps-2 ${i.offert ? 'text-encre-3 line-through' : 'text-encre'}`}>
               {i.libelle}
+              <span className="block text-legende text-encre-3">
+                {i.prix !== null && <strong className="chiffres text-encre-2">{i.prix.toFixed(2)} € </strong>}
+                {i.url && (
+                  <a href={i.url} target="_blank" rel="noopener" className="text-ardoise underline" onClick={(e) => e.stopPropagation()}>
+                    voir
+                  </a>
+                )}
+                {i.url && ' · '}
+                {i.libelle.length > 3 && (
+                  <a
+                    href={`https://www.google.com/search?tbm=shop&q=${encodeURIComponent(i.libelle)}`}
+                    target="_blank" rel="noopener" className="text-ardoise underline"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    moins cher ?
+                  </a>
+                )}
+              </span>
             </span>
           </li>
         ))}

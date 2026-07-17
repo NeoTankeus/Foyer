@@ -1,13 +1,14 @@
 // Concerts & sorties — le portefeuille de billets hors voyages.
 // Même scan que les voyages : QR, code-barres, Aztec. Compte à rebours J-X.
 import { useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { muter } from '@/lib/sync'
 import { lireAvecRepli } from '@/lib/lecture'
 import { utiliserSession } from '@/etat/session'
 import { differenceInCalendarDays, maintenantLocal } from '@/lib/dates'
-import { compresserImage } from '@/fonctionnalites/souvenirs/donnees'
+import { ajouterSouvenir, compresserImage } from '@/fonctionnalites/souvenirs/donnees'
 import { decoderBillet, genererQr } from '@/fonctionnalites/voyages/billets'
 import type { LigneConcert } from '@/lib/basedonnees.types'
 import { Bouton } from '@/design/composants/Bouton'
@@ -24,6 +25,21 @@ export function EcranConcerts() {
   const [scanEnCours, setScanEnCours] = useState(false)
   const [aCompleter, setACompleter] = useState<LigneConcert | null>(null)
   const champBillet = useRef<HTMLInputElement>(null)
+  const champPhotos = useRef<HTMLInputElement>(null)
+  const naviguer = useNavigate()
+  const [photosEnCours, setPhotosEnCours] = useState(false)
+
+  const ajouterPhotos = async (fichiers: FileList | null) => {
+    if (!fichiers || !membre || !foyer || !ouvert) return
+    setPhotosEnCours(true)
+    for (const fichier of Array.from(fichiers)) {
+      const image = await compresserImage(fichier)
+      await ajouterSouvenir(foyer.id, membre.id, image, {
+        voyage_id: null, dossier: ouvert.titre, lieu: ouvert.lieu, lat: null, lng: null,
+      })
+    }
+    setPhotosEnCours(false)
+  }
 
   const concerts = useQuery({
     queryKey: ['concerts'],
@@ -79,7 +95,7 @@ export function EcranConcerts() {
   return (
     <div className="px-5 pt-3">
       <BarreRetour vers="/nous" />
-      <div className="flex items-center justify-between pb-2">
+      <div className="flex items-center justify-between gap-3 pb-3">
         <h2 className="text-titre-3 text-encre">🎤 Concerts & sorties</h2>
         {estAdulte && (
           <Bouton variante="valider" onClick={() => champBillet.current?.click()} desactive={scanEnCours}>
@@ -167,6 +183,27 @@ export function EcranConcerts() {
             ) : ouvert.image_donnees ? (
               <img src={ouvert.image_donnees} alt="Billet scanné" className="w-full rounded-md" />
             ) : null}
+            <div className="flex w-full gap-2">
+              <Bouton
+                variante="soleil"
+                pleineLargeur
+                desactive={photosEnCours}
+                onClick={() => champPhotos.current?.click()}
+              >
+                {photosEnCours ? 'Ajout…' : '📷 Photos du concert'}
+              </Bouton>
+              <Bouton
+                variante="discret"
+                pleineLargeur
+                onClick={() => naviguer(`/nous/souvenirs?dossier=${encodeURIComponent(ouvert.titre)}`)}
+              >
+                Voir l’album
+              </Bouton>
+            </div>
+            <input
+              ref={champPhotos} type="file" accept="image/*" multiple hidden aria-hidden="true"
+              onChange={(e) => void ajouterPhotos(e.target.files)}
+            />
             {estAdulte && (
               <div className="flex w-full gap-2">
                 <Bouton variante="discret" pleineLargeur onClick={() => { setACompleter(ouvert); setOuvert(null) }}>

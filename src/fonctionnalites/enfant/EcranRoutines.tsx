@@ -36,7 +36,7 @@ export function EcranRoutines() {
   return (
     <div className="px-5 pt-3">
       <BarreRetour vers="/nous" />
-      <div className="flex items-center justify-between pb-2">
+      <div className="flex items-center justify-between gap-3 pb-3">
         <h2 className="text-titre-3 text-encre">Routines</h2>
         {membre?.role === 'adult' && (
           <Bouton variante="discret" onClick={() => setCreation(true)} etiquette="Nouvelle routine">+</Bouton>

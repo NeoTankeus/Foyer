@@ -1,7 +1,7 @@
 // La boîte à souvenirs : photos classées par dossier ET par voyage, géolocalisées,
 // commentées, cherchables. Appareil photo ou pellicule, favoris, album imprimable.
 import { useMemo, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { utiliserSession } from '@/etat/session'
 import { muter } from '@/lib/sync'
@@ -19,11 +19,17 @@ export function EcranSouvenirs() {
   const naviguer = useNavigate()
   const souvenirs = utiliserSouvenirs()
   const voyages = utiliserVoyages()
-  const [filtre, setFiltre] = useState<{ type: 'tous' } | { type: 'voyage'; id: string } | { type: 'dossier'; nom: string }>({ type: 'tous' })
+  const [parametres] = useSearchParams()
+  const [filtre, setFiltre] = useState<{ type: 'tous' } | { type: 'voyage'; id: string } | { type: 'dossier'; nom: string }>(() => {
+    const dossierDemande = parametres.get('dossier')
+    return dossierDemande ? { type: 'dossier', nom: dossierDemande } : { type: 'tous' }
+  })
   const [recherche, setRecherche] = useState('')
   const [ouvert, setOuvert] = useState<LigneSouvenir | null>(null)
   const [commentaire, setCommentaire] = useState('')
   const [ajoutEnCours, setAjoutEnCours] = useState(false)
+  const [progres, setProgres] = useState<{ fait: number; total: number } | null>(null)
+  const [selection, setSelection] = useState<Set<string> | null>(null)
   const champCamera = useRef<HTMLInputElement>(null)
   const champPellicule = useRef<HTMLInputElement>(null)
 
@@ -39,8 +45,12 @@ export function EcranSouvenirs() {
   const importer = async (fichiers: FileList | null) => {
     if (!fichiers || !membre || !foyer) return
     setAjoutEnCours(true)
+    const liste = Array.from(fichiers)
+    setProgres({ fait: 0, total: liste.length })
     const position = await positionActuelle()
-    for (const fichier of Array.from(fichiers)) {
+    for (let i = 0; i < liste.length; i++) {
+      const fichier = liste[i]
+      if (!fichier) continue
       const image = await compresserImage(fichier)
       await ajouterSouvenir(foyer.id, membre.id, image, {
         voyage_id: filtre.type === 'voyage' ? filtre.id : null,
@@ -49,9 +59,11 @@ export function EcranSouvenirs() {
         lat: position?.lat ?? null,
         lng: position?.lng ?? null,
       })
+      setProgres({ fait: i + 1, total: liste.length })
     }
     await rafraichir()
     setAjoutEnCours(false)
+    setProgres(null)
   }
 
   const creerDossier = () => {
@@ -87,8 +99,14 @@ export function EcranSouvenirs() {
   return (
     <div className="px-5 pt-3">
       <BarreRetour vers="/nous" />
-      <div className="flex items-center justify-between pb-2">
+      <div className="flex items-center justify-between gap-3 pb-3">
         <h2 className="text-titre-3 text-encre">📷 Souvenirs</h2>
+        <button
+          onClick={() => setSelection(selection === null ? new Set() : null)}
+          className="min-h-sur-tactile rounded-full bg-fond-sourd px-4 text-note font-[590] text-encre-2"
+        >
+          {selection === null ? 'Sélectionner' : 'Annuler'}
+        </button>
         {filtre.type === 'voyage' && filtres.length > 0 && (
           <Bouton variante="discret" onClick={() => naviguer(`/nous/souvenirs/album/${filtre.id}`)}>
             Album
@@ -166,6 +184,19 @@ export function EcranSouvenirs() {
             ref={champPellicule} type="file" accept="image/*" multiple hidden
             aria-hidden="true" onChange={(e) => void importer(e.target.files)}
           />
+          {progres && (
+            <div className="mb-2">
+              <div className="h-2 overflow-hidden rounded-full bg-fond-sourd">
+                <div
+                  className="h-2 rounded-full transition-all"
+                  style={{ width: `${(progres.fait / progres.total) * 100}%`, background: 'var(--sauge)' }}
+                />
+              </div>
+              <p className="chiffres mt-1 text-legende text-encre-3">
+                {progres.fait}/{progres.total} photo{progres.total > 1 ? 's' : ''} envoyée{progres.fait > 1 ? 's' : ''}…
+              </p>
+            </div>
+          )}
           {filtre.type !== 'tous' && (
             <p className="mb-2 text-legende text-encre-3">
               Les nouvelles photos iront dans {filtre.type === 'dossier' ? `📁 ${filtre.nom}` : 'ce voyage'}.
@@ -179,17 +210,55 @@ export function EcranSouvenirs() {
             />
           )}
 
+          {filtre.type === 'tous' && !recherche && dossiers.length > 0 && (
+            <div className="mb-3 flex gap-2 overflow-x-auto pb-1">
+              {dossiers.map((d) => {
+                const contenu = (souvenirs.data ?? []).filter((x) => x.dossier === d)
+                const couverture = contenu[0]?.image_donnees
+                return (
+                  <button
+                    key={d}
+                    onClick={() => setFiltre({ type: 'dossier', nom: d })}
+                    className="relative h-24 w-24 shrink-0 overflow-hidden rounded-xl bg-fond-sourd shadow-carte"
+                    aria-label={`Ouvrir le dossier ${d}`}
+                  >
+                    {couverture && <img src={couverture} alt="" className="h-full w-full object-cover" />}
+                    <span className="absolute inset-x-0 bottom-0 bg-encre/55 px-1 py-0.5 text-legende font-[590] text-white">
+                      📁 {d} · {contenu.length}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+          )}
           <div className="grid grid-cols-3 gap-1">
             {filtres.map((s) => (
               <button
                 key={s.id}
                 onClick={() => {
+                  if (selection !== null) {
+                    const suivante = new Set(selection)
+                    if (suivante.has(s.id)) suivante.delete(s.id)
+                    else suivante.add(s.id)
+                    setSelection(suivante)
+                    navigator.vibrate?.(4)
+                    return
+                  }
                   setCommentaire(s.commentaire ?? '')
                   setOuvert(s)
                 }}
                 className="relative aspect-square overflow-hidden rounded-md"
+                style={selection?.has(s.id) ? { outline: '3px solid var(--ardoise)', outlineOffset: -3 } : undefined}
               >
                 <img src={s.image_donnees} alt={s.commentaire ?? 'Souvenir'} className="h-full w-full object-cover" />
+                {selection !== null && (
+                  <span
+                    className="absolute left-1 top-1 flex h-6 w-6 items-center justify-center rounded-full text-note"
+                    style={{ background: selection.has(s.id) ? 'var(--ardoise)' : 'rgb(255 255 255 / .7)', color: '#fff' }}
+                  >
+                    {selection.has(s.id) ? '✓' : ''}
+                  </span>
+                )}
                 {s.favori && <span className="absolute right-1 top-1 text-note" aria-label="Favori">⭐</span>}
                 {s.commentaire && (
                   <span className="absolute bottom-0 inset-x-0 truncate bg-encre/50 px-1 text-legende text-white">
@@ -200,6 +269,43 @@ export function EcranSouvenirs() {
             ))}
           </div>
         </>
+      )}
+
+      {selection !== null && selection.size > 0 && (
+        <div className="au-dessus-onglets fixed inset-x-4 z-30 flex gap-2 rounded-2xl bg-fond-eleve p-2 shadow-carte">
+          <Bouton
+            variante="discret"
+            pleineLargeur
+            onClick={() => {
+              const nom = window.prompt('Déplacer vers quel dossier ?')
+              if (!nom?.trim()) return
+              void Promise.all(
+                [...selection].map((idSel) =>
+                  muter({ table: 'souvenirs', type: 'update', cible_id: idSel, charge: { dossier: nom.trim() } }),
+                ),
+              ).then(() => {
+                setSelection(null)
+                void rafraichir()
+              })
+            }}
+          >
+            📁 Dossier
+          </Bouton>
+          <Bouton
+            variante="urgent"
+            pleineLargeur
+            onClick={() => {
+              void Promise.all(
+                [...selection].map((idSel) => muter({ table: 'souvenirs', type: 'delete', cible_id: idSel, charge: {} })),
+              ).then(() => {
+                setSelection(null)
+                void rafraichir()
+              })
+            }}
+          >
+            Supprimer ({selection.size})
+          </Bouton>
+        </div>
       )}
 
       <Feuille ouverte={ouvert !== null} onFermer={() => setOuvert(null)} titre="Souvenir">
