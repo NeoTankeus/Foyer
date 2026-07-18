@@ -23,8 +23,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return
   }
   try {
-    const importes = await importerIcs(base, service)
-    res.status(200).json({ importes })
+    const resultat = await importerIcs(base, service)
+    res.status(200).json(resultat)
   } catch (erreur) {
     res.status(502).json({ erreur: 'import', message: String(erreur).slice(0, 200) })
   }

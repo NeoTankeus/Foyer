@@ -41,6 +41,9 @@ export function EcranAdministration() {
   const [calendriers, setCalendriers] = useState<LigneIntegration[]>([])
   const [urlIcs, setUrlIcs] = useState('')
   const [membresIcs, setMembresIcs] = useState<string[]>([])
+  const [appleId, setAppleId] = useState('')
+  const [mdpApp, setMdpApp] = useState('')
+  const [nomCalendrier, setNomCalendrier] = useState('Family')
   const [importEnCours, setImportEnCours] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
 
@@ -163,9 +166,83 @@ export function EcranAdministration() {
           📅 Calendriers Apple (import automatique chaque matin)
         </h3>
         <p className="mb-2 text-note text-encre-3">
-          Sur iPhone : Calendrier → le calendrier → ⓘ → « Calendrier public » → copie le lien webcal://…
-          Le calendrier « Famille » du Partage familial ne peut pas être publié : passe alors par Google
-          (via SyncGene) et colle son « adresse secrète au format iCal » (https://calendar.google.com/…/basic.ics).
+          🔑 <strong>Connexion directe iCloud</strong> — la voie simple, qui marche AUSSI avec le
+          calendrier « Famille » : sur <strong>appleid.apple.com</strong> → Connexion et sécurité →
+          <strong> Mots de passe d’app</strong> → crée-en un (nomme-le FOYER) et colle-le ici.
+          Lecture seule, révocable quand tu veux.
+        </p>
+        <div className="mb-3 flex flex-col gap-2">
+          <input
+            value={appleId}
+            onChange={(e) => setAppleId(e.target.value)}
+            placeholder="Identifiant Apple (adresse e-mail)"
+            aria-label="Identifiant Apple"
+            inputMode="email"
+            autoCapitalize="none"
+            className="min-h-sur-tactile w-full rounded-md border border-trait bg-fond-eleve px-3 text-note"
+          />
+          <input
+            value={mdpApp}
+            onChange={(e) => setMdpApp(e.target.value)}
+            placeholder="Mot de passe d’app (xxxx-xxxx-xxxx-xxxx)"
+            aria-label="Mot de passe d’application Apple"
+            autoCapitalize="none"
+            className="min-h-sur-tactile w-full rounded-md border border-trait bg-fond-eleve px-3 text-note"
+          />
+          <input
+            value={nomCalendrier}
+            onChange={(e) => setNomCalendrier(e.target.value)}
+            placeholder="Nom du calendrier (vide = tous)"
+            aria-label="Nom du calendrier à importer"
+            className="min-h-sur-tactile w-full rounded-md border border-trait bg-fond-eleve px-3 text-note"
+          />
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-note text-encre-3">Pour :</span>
+            {membres.filter((m) => m.role !== 'guest').map((m) => (
+              <PastilleMembre
+                key={`caldav-${m.id}`}
+                membre={m}
+                taille={30}
+                estompee={membresIcs.length > 0 && !membresIcs.includes(m.id)}
+                onClick={() =>
+                  setMembresIcs((actuels) =>
+                    actuels.includes(m.id) ? actuels.filter((id) => id !== m.id) : [...actuels, m.id],
+                  )
+                }
+              />
+            ))}
+            <Bouton
+              variante="valider"
+              desactive={!appleId.trim() || !mdpApp.trim()}
+              onClick={() => {
+                if (!foyer) return
+                void supabase.from('integrations').insert({
+                  id: crypto.randomUUID(), foyer_id: foyer.id, membre_id: membresIcs[0] ?? null,
+                  fournisseur: 'icloud_caldav', vault_ref: null,
+                  reglages: {
+                    apple_id: appleId.trim(), mdp_app: mdpApp.trim().replace(/\s/g, ''),
+                    nom_calendrier: nomCalendrier.trim(), membre_ids: membresIcs,
+                  },
+                  statut: 'active', derniere_sync: null,
+                } as never).then(({ error }) => {
+                  if (!error) {
+                    setAppleId('')
+                    setMdpApp('')
+                    setMembresIcs([])
+                    confirmer('Connexion iCloud ajoutée — touche « Importer maintenant » pour tester.')
+                    void supabase.from('integrations').select('*').eq('fournisseur', 'icloud_caldav')
+                      .then(({ data }) => setCalendriers(data ?? []))
+                  }
+                })
+              }}
+            >
+              Connecter
+            </Bouton>
+          </div>
+        </div>
+        <p className="mb-2 border-t border-trait pt-2 text-note text-encre-3">
+          Ou par lien public : Calendrier → ⓘ → « Calendrier public » → colle le lien webcal://…
+          (ne marche pas pour « Famille »).
         </p>
         {calendriers.map((c) => (
           <div key={c.id} className="flex items-center gap-2 border-b border-trait py-1.5 last:border-0">
@@ -175,9 +252,12 @@ export function EcranAdministration() {
                 const prenoms = ids
                   .map((id) => membres.find((m) => m.id === id)?.prenom)
                   .filter(Boolean)
-                return prenoms.length > 0 ? prenoms.join(' + ') : 'Tout le foyer'
-              })()}{' '}
-              · {c.reglages.ics_url?.slice(0, 40)}…
+                const qui = prenoms.length > 0 ? prenoms.join(' + ') : 'Tout le foyer'
+                const source = c.reglages.apple_id
+                  ? `🔑 iCloud direct (${c.reglages.nom_calendrier || 'tous les calendriers'})`
+                  : `${c.reglages.ics_url?.slice(0, 36)}…`
+                return `${qui} · ${source}`
+              })()}
             </span>
             <span className="text-legende text-encre-3">
               {c.derniere_sync ? `sync ${new Date(c.derniere_sync).toLocaleDateString('fr-FR')}` : 'jamais'}
@@ -257,8 +337,14 @@ export function EcranAdministration() {
                     method: 'POST',
                     headers: { authorization: `Bearer ${data.session?.access_token ?? ''}` },
                   })
-                    .then((r) => r.json() as Promise<{ importes?: number }>)
-                    .then((r) => confirmer(`${r.importes ?? 0} événement(s) importé(s).`))
+                    .then((r) => r.json() as Promise<{ importes?: number; erreurs?: string[] }>)
+                    .then((r) =>
+                      confirmer(
+                        `${r.importes ?? 0} événement(s) importé(s).${
+                          r.erreurs && r.erreurs.length > 0 ? ` ⚠️ ${r.erreurs[0]}` : ''
+                        }`,
+                      ),
+                    )
                     .finally(() => setImportEnCours(false)),
                 )
               }}

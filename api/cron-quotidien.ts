@@ -268,7 +268,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     envoyer(abonnements.filter((a) => idsAdultes.has(a.membre_id)), titre, corps)
 
   const resultat = { ics: 0, colis: 0, prix: 0, anniversaires: 0, brief: '', notifies: abonnements.length }
-  try { resultat.ics = await importerIcs(URL_SUPABASE, CLE_SERVICE) } catch { /* section suivante */ }
+  try { resultat.ics = (await importerIcs(URL_SUPABASE, CLE_SERVICE)).importes } catch { /* section suivante */ }
   try { resultat.colis = await suivreColis(pousserAdultes) } catch { /* section suivante */ }
   try { resultat.prix = await veillerPrix(pousserAdultes) } catch { /* section suivante */ }
   try { resultat.anniversaires = await rappellerAnniversaires(pousser, pousserAdultes) } catch { /* section suivante */ }
