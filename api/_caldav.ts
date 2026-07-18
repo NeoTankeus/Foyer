@@ -117,10 +117,11 @@ export async function lireIcsDepuisIcloud(
   )
   const calendriers: { url: string; nom: string }[] = []
   for (const bloc of blocsReponse(xmlListe)) {
-    const estCalendrier = /<(?:[\w-]+:)?calendar\s*\/?>/i.test(bloc)
+    // Apple écrit <B:calendar xmlns:B="…"/> — le tag peut porter des attributs.
+    const estCalendrier = /<(?:[\w-]+:)?calendar(?:\s[^>]*)?\/?>/i.test(bloc)
     if (!estCalendrier) continue
-    // On écarte les collections sans VEVENT (rappels, boîte de réception…).
-    if (/supported-calendar-component-set/i.test(bloc) && !/name="VEVENT"/i.test(bloc)) continue
+    // On écarte les boîtes de planification (invitations entrantes/sortantes).
+    if (/schedule-(?:inbox|outbox)|notification/i.test(bloc)) continue
     const href = premierHref(bloc)
     const nom = /<(?:[\w-]+:)?displayname[^>]*>([^<]*)<\/(?:[\w-]+:)?displayname>/i.exec(bloc)?.[1] ?? ''
     if (href) calendriers.push({ url: resoudre(href, urlMaison), nom: desechapperXml(nom) })
