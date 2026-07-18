@@ -19,6 +19,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       res.status(503).json({ erreur: 'SUPABASE_SERVICE_ROLE manquant dans Vercel' })
       return
     }
+    if (/[^\x21-\x7E]/.test(service)) {
+      res.status(200).json({
+        importes: 0,
+        erreurs: [
+          'La clé SUPABASE_SERVICE_ROLE dans Vercel contient des caractères masqués (•) — recopie-la depuis Supabase avec le bouton Copier, puis redéploie.',
+        ],
+        version: 3,
+      })
+      return
+    }
     const verification = await fetch(`${base}/auth/v1/user`, {
       headers: { apikey: anon, authorization: `Bearer ${jeton}` },
     })
