@@ -58,26 +58,56 @@ export async function importerIcs(base: string, cle: string): Promise<number> {
       const aInserer: Record<string, unknown>[] = []
       const ilYA30j = Date.now() - 30 * 86400000
       const dans180j = Date.now() + 180 * 86400000
+      const { RRule } = await import('rrule')
       for (const ligne of lignes) {
         if (ligne === 'BEGIN:VEVENT') evenement = {}
         else if (ligne === 'END:VEVENT' && evenement) {
           const debut = evenement['DTSTART'] ? dateIcs(evenement['DTSTART']) : null
           const fin = evenement['DTEND'] ? dateIcs(evenement['DTEND']) : debut
           const uid = evenement['UID']
-          if (debut && fin && uid && !evenement['RRULE']) {
-            const t = new Date(debut).getTime()
-            if (t > ilYA30j && t < dans180j) {
-              aInserer.push({
-                foyer_id: integration.foyer_id,
-                titre: evenement['SUMMARY'] ?? 'Sans titre',
-                debut_a: debut,
-                fin_a: fin,
-                journee_entiere: /^\d{8}$/.test(evenement['DTSTART'] ?? ''),
-                lieu: evenement['LOCATION'] ?? null,
-                source: 'ics',
-                source_id: uid,
-                participants: integration.membre_id ? [integration.membre_id] : [],
-              })
+          if (debut && fin && uid) {
+            const commun = {
+              foyer_id: integration.foyer_id,
+              titre: evenement['SUMMARY'] ?? 'Sans titre',
+              journee_entiere: /^\d{8}$/.test(evenement['DTSTART'] ?? ''),
+              lieu: evenement['LOCATION'] ?? null,
+              source: 'ics',
+              participants: integration.membre_id ? [integration.membre_id] : [],
+            }
+            if (!evenement['RRULE']) {
+              const t = new Date(debut).getTime()
+              if (t > ilYA30j && t < dans180j) {
+                aInserer.push({ ...commun, debut_a: debut, fin_a: fin, source_id: uid })
+              }
+            } else {
+              // Récurrent (hebdo, mensuel…) : on déplie chaque occurrence de la fenêtre.
+              try {
+                const options = RRule.parseString(evenement['RRULE'])
+                options.dtstart = new Date(debut)
+                const regle = new RRule(options)
+                const duree = new Date(fin).getTime() - new Date(debut).getTime()
+                const exclues = new Set(
+                  (evenement['EXDATE'] ?? '')
+                    .split(',')
+                    .map((v) => dateIcs(v.trim()))
+                    .filter(Boolean),
+                )
+                const occurrences = regle
+                  .between(new Date(ilYA30j), new Date(dans180j), true)
+                  .slice(0, 60)
+                for (const occ of occurrences) {
+                  const debutOcc = occ.toISOString()
+                  if (exclues.has(debutOcc)) continue
+                  aInserer.push({
+                    ...commun,
+                    debut_a: debutOcc,
+                    fin_a: new Date(occ.getTime() + duree).toISOString(),
+                    source_id: `${uid}::${debutOcc.slice(0, 10)}`,
+                  })
+                }
+              } catch {
+                // règle exotique : on ignore cet événement
+              }
             }
           }
           evenement = null

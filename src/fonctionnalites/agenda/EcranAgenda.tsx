@@ -3,7 +3,14 @@
 import { useMemo, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { utiliserSession } from '@/etat/session'
-import { creerEvenement, supprimerEvenement, utiliserEvenementsPeriode } from '@/lib/requetes'
+import {
+  creerEvenement,
+  creerSerieEvenements,
+  serieDe,
+  supprimerEvenement,
+  supprimerSerieEvenements,
+  utiliserEvenementsPeriode,
+} from '@/lib/requetes'
 import {
   addDays,
   bornesJourneeLocale,
@@ -22,6 +29,15 @@ import { ChampTexte } from '@/design/composants/ChampTexte'
 import { PastilleMembre } from '@/design/composants/PastilleMembre'
 
 const JOURS_SEMAINE = ['L', 'M', 'M', 'J', 'V', 'S', 'D']
+
+// Répétitions proposées : générées sur 6 mois, à heure fixe (heure de Paris).
+const RECURRENCES_EVENEMENT: { libelle: string; jours?: number; mois?: number; cap: number }[] = [
+  { libelle: 'Une seule fois', cap: 1 },
+  { libelle: 'Tous les jours', jours: 1, cap: 60 },
+  { libelle: 'Toutes les semaines', jours: 7, cap: 26 },
+  { libelle: 'Toutes les 2 semaines', jours: 14, cap: 13 },
+  { libelle: 'Tous les mois', mois: 1, cap: 6 },
+]
 
 export function EcranAgenda() {
   const { membre, membres, foyer } = utiliserSession()
@@ -69,11 +85,11 @@ export function EcranAgenda() {
   return (
     <div className="pb-4">
       <header className="verre verre-clair safe-haut sticky top-0 z-10 px-5 pb-2 pt-3">
-        <div className="flex items-center justify-between gap-3">
-          <h1 className="text-titre-2 capitalize text-encre">
+        <div className="flex items-center justify-between gap-2">
+          <h1 className="min-w-0 flex-1 truncate text-titre-2 capitalize text-encre">
             {mois.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })}
           </h1>
-          <div className="flex items-center gap-1">
+          <div className="flex shrink-0 items-center gap-1">
             <button
               onClick={() => setMois(new Date(mois.getFullYear(), mois.getMonth() - 1, 1))}
               aria-label="Mois précédent"
@@ -99,9 +115,17 @@ export function EcranAgenda() {
               ›
             </button>
             {membre?.role === 'adult' && (
-              <Bouton variante="discret" onClick={() => setCreationOuverte(true)} etiquette="Nouvel événement">
+              <button
+                onClick={() => {
+                  navigator.vibrate?.(4)
+                  setCreationOuverte(true)
+                }}
+                aria-label="Nouvel événement"
+                className="flex min-h-sur-tactile min-w-sur-tactile shrink-0 items-center justify-center
+                  rounded-full bg-fond-sourd text-titre-3 font-[590] text-encre"
+              >
                 +
-              </Bouton>
+              </button>
             )}
           </div>
         </div>
@@ -175,11 +199,13 @@ export function EcranAgenda() {
                   className="flex min-h-sur-tactile w-full items-center gap-3 rounded-xl bg-fond-eleve px-3 py-2 text-left shadow-carte"
                 >
                   <span className="flex w-1 self-stretch rounded-full" style={{ background: couleursDe(e)[0] }} />
-                  <div className="flex-1">
-                    <p className="text-corps text-encre">{e.titre}</p>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-corps text-encre">{e.titre}</p>
                     <p className="chiffres text-note text-encre-3">
                       {e.journee_entiere ? 'Toute la journée' : `${formatHeure(e.debut_a)} – ${formatHeure(e.fin_a)}`}
                       {e.lieu ? ` · ${e.lieu}` : ''}
+                      {serieDe(e) ? ' · 🔁' : ''}
+                      {e.source === 'ics' ? ' ·  iCloud' : ''}
                     </p>
                   </div>
                   <span className="flex gap-0.5">
@@ -205,6 +231,15 @@ export function EcranAgenda() {
               {evenementOuvert.lieu ? ` · ${evenementOuvert.lieu}` : ''}
             </p>
             {evenementOuvert.notes && <p className="text-corps-2 text-encre-3">{evenementOuvert.notes}</p>}
+            {serieDe(evenementOuvert) && (
+              <p className="text-note text-encre-3">🔁 Ce rendez-vous fait partie d’une série récurrente.</p>
+            )}
+            {evenementOuvert.source === 'ics' && (
+              <p className="text-note text-encre-3">
+                 Importé de ton calendrier Apple — il reviendra à la prochaine synchronisation si tu le
+                supprimes ici sans le supprimer dans Calendrier.
+              </p>
+            )}
             {membre?.role === 'adult' && (
               <Bouton
                 variante="urgent"
@@ -216,7 +251,23 @@ export function EcranAgenda() {
                   setEvenementOuvert(null)
                 }}
               >
-                Supprimer cet événement
+                {serieDe(evenementOuvert) ? 'Supprimer cette occurrence' : 'Supprimer cet événement'}
+              </Bouton>
+            )}
+            {membre?.role === 'adult' && serieDe(evenementOuvert) && (
+              <Bouton
+                variante="discret"
+                pleineLargeur
+                onClick={() => {
+                  const serie = serieDe(evenementOuvert)
+                  if (!serie) return
+                  void supprimerSerieEvenements(serie).then(() =>
+                    clientRequetes.invalidateQueries({ queryKey: ['evenements'] }),
+                  )
+                  setEvenementOuvert(null)
+                }}
+              >
+                🔁 Supprimer toute la série
               </Bouton>
             )}
           </div>
@@ -228,8 +279,15 @@ export function EcranAgenda() {
           ouverte={creationOuverte}
           jourParDefaut={jourChoisi}
           onFermer={() => setCreationOuverte(false)}
-          onCreer={async (brouillon) => {
-            await creerEvenement(foyer.id, membre.id, brouillon)
+          onCreer={async (brouillon, serie) => {
+            if (serie) {
+              const { debut_a, fin_a, ...base } = brouillon
+              void debut_a
+              void fin_a
+              await creerSerieEvenements(foyer.id, membre.id, base, serie.occurrences, serie.libelle)
+            } else {
+              await creerEvenement(foyer.id, membre.id, brouillon)
+            }
             await clientRequetes.invalidateQueries({ queryKey: ['evenements'] })
             setCreationOuverte(false)
           }}
@@ -243,14 +301,17 @@ interface PropsCreation {
   ouverte: boolean
   jourParDefaut: Date
   onFermer: () => void
-  onCreer: (brouillon: {
-    titre: string
-    debut_a: string
-    fin_a: string
-    lieu: string | null
-    participants: string[]
-    journee_entiere: boolean
-  }) => Promise<void>
+  onCreer: (
+    brouillon: {
+      titre: string
+      debut_a: string
+      fin_a: string
+      lieu: string | null
+      participants: string[]
+      journee_entiere: boolean
+    },
+    serie?: { occurrences: { debut_a: string; fin_a: string }[]; libelle: string },
+  ) => Promise<void>
 }
 
 function FeuilleCreation({ ouverte, jourParDefaut, onFermer, onCreer }: PropsCreation) {
@@ -261,22 +322,46 @@ function FeuilleCreation({ ouverte, jourParDefaut, onFermer, onCreer }: PropsCre
   const [duree, setDuree] = useState(60)
   const [lieu, setLieu] = useState('')
   const [participants, setParticipants] = useState<string[]>([])
+  const [recurrence, setRecurrence] = useState(0)
 
   const valider = async () => {
     if (!titre.trim()) return
     const debutLocal = new Date(`${date}T${heure}:00`)
     const finLocal = new Date(debutLocal.getTime() + duree * 60_000)
-    await onCreer({
+    const brouillon = {
       titre: titre.trim(),
       debut_a: versUtc(debutLocal),
       fin_a: versUtc(finLocal),
       lieu: lieu.trim() || null,
       participants,
       journee_entiere: false,
-    })
+    }
+    const regle = RECURRENCES_EVENEMENT[recurrence]
+    if (regle && (regle.jours || regle.mois)) {
+      // On génère les occurrences à heure de mur constante (18h reste 18h,
+      // même après un changement d'heure été/hiver).
+      const [annee, moisNum, jourNum] = date.split('-').map(Number)
+      const [hh, mm] = heure.split(':').map(Number)
+      const occurrences: { debut_a: string; fin_a: string }[] = []
+      const limite = debutLocal.getTime() + 183 * 24 * 3600 * 1000
+      for (let i = 0; i < regle.cap; i++) {
+        const debutOcc = regle.mois
+          ? new Date((annee ?? 2026), (moisNum ?? 1) - 1 + i * regle.mois, jourNum ?? 1, hh ?? 12, mm ?? 0)
+          : new Date((annee ?? 2026), (moisNum ?? 1) - 1, (jourNum ?? 1) + i * (regle.jours ?? 7), hh ?? 12, mm ?? 0)
+        if (debutOcc.getTime() > limite) break
+        occurrences.push({
+          debut_a: versUtc(debutOcc),
+          fin_a: versUtc(new Date(debutOcc.getTime() + duree * 60_000)),
+        })
+      }
+      await onCreer(brouillon, { occurrences, libelle: regle.libelle })
+    } else {
+      await onCreer(brouillon)
+    }
     setTitre('')
     setLieu('')
     setParticipants([])
+    setRecurrence(0)
   }
 
   return (
@@ -300,6 +385,23 @@ function FeuilleCreation({ ouverte, jourParDefaut, onFermer, onCreer }: PropsCre
             <option value={120}>2 h</option>
             <option value={240}>Demi-journée</option>
           </select>
+        </label>
+        <label className="block">
+          <span className="mb-1 block text-note font-[500] text-encre-2">Répétition</span>
+          <select
+            value={recurrence}
+            onChange={(e) => setRecurrence(Number(e.target.value))}
+            className="min-h-sur-tactile w-full rounded-md border border-trait bg-fond-eleve px-3 text-corps text-encre"
+          >
+            {RECURRENCES_EVENEMENT.map((r, i) => (
+              <option key={r.libelle} value={i}>{r.libelle}</option>
+            ))}
+          </select>
+          {recurrence > 0 && (
+            <span className="mt-1 block text-legende text-encre-3">
+              La série est posée sur 6 mois — supprimable d’un coup depuis n’importe quelle occurrence.
+            </span>
+          )}
         </label>
         <ChampTexte etiquette="Lieu (facultatif)" value={lieu} onChange={(e) => setLieu(e.target.value)} />
         <div>

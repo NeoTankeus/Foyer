@@ -95,6 +95,64 @@ export async function supprimerEvenement(id: string) {
   await muter({ table: 'evenements', type: 'delete', cible_id: id, charge: {} })
 }
 
+/**
+ * Un rendez-vous qui revient (toutes les semaines, tous les mois…) : on crée
+ * la série d'occurrences sur 6 mois, reliées par un identifiant de série —
+ * supprimables une par une ou toutes d'un coup. Une seule notification.
+ */
+export async function creerSerieEvenements(
+  foyerId: string,
+  membreId: string,
+  base: Omit<NouvelEvenement, 'debut_a' | 'fin_a'>,
+  occurrences: { debut_a: string; fin_a: string }[],
+  libelleRecurrence: string,
+) {
+  const serieId = crypto.randomUUID()
+  let n = 0
+  for (const occurrence of occurrences) {
+    const id = crypto.randomUUID()
+    await muter({
+      table: 'evenements',
+      type: 'insert',
+      cible_id: id,
+      charge: {
+        id,
+        foyer_id: foyerId,
+        cree_par: membreId,
+        visible_enfant: true,
+        source: 'foyer',
+        source_id: `serie:${serieId}:${n}`,
+        notes: null,
+        categorie: null,
+        ...base,
+        ...occurrence,
+      },
+    })
+    n += 1
+  }
+  const prenom = await prenomDe(membreId)
+  const premiere = occurrences[0]
+  notifierLesAutres(
+    '📅 Nouveau rendez-vous récurrent',
+    `${prenom} a ajouté « ${base.titre} » — ${libelleRecurrence.toLowerCase()}, à partir du ${
+      premiere ? new Date(premiere.debut_a).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' }) : ''
+    }.`,
+    '/agenda',
+  )
+}
+
+/** L'identifiant de série d'un événement récurrent créé dans FOYER, sinon null. */
+export function serieDe(evenement: LigneEvenement): string | null {
+  if (!evenement.source_id?.startsWith('serie:')) return null
+  return evenement.source_id.split(':')[1] ?? null
+}
+
+/** Supprime toutes les occurrences d'une série (réseau requis). */
+export async function supprimerSerieEvenements(serieId: string): Promise<boolean> {
+  const { error } = await supabase.from('evenements').delete().like('source_id', `serie:${serieId}:%`)
+  return !error
+}
+
 // ---------------------------------------------------------------------------
 // Tâches
 // ---------------------------------------------------------------------------
