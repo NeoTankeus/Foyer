@@ -6,11 +6,26 @@ import { supabase } from '@/lib/supabase'
 import { muter } from '@/lib/sync'
 import { utiliserSession } from '@/etat/session'
 import { assemblerContexte } from './contexte'
+import { Feuille } from '@/design/composants/Feuille'
+import { Bouton } from '@/design/composants/Bouton'
 
 interface MessageGastif {
   role: 'utilisateur' | 'gastif'
   texte: string
   a: string
+}
+
+interface ConversationGastif {
+  id: string
+  messages: MessageGastif[]
+  cree_le: string
+  modifie_le: string
+}
+
+/** Le titre d'une discussion : sa première question. */
+function titreDe(c: ConversationGastif): string {
+  const premiere = c.messages.find((m) => m.role === 'utilisateur')
+  return premiere ? premiere.texte.slice(0, 60) : 'Discussion'
 }
 
 export function EcranGastif() {
@@ -20,9 +35,12 @@ export function EcranGastif() {
   const [reflechit, setReflechit] = useState(false)
   const [conversationId, setConversationId] = useState<string | null>(null)
   const [erreurConfig, setErreurConfig] = useState<string | null>(null)
+  const [historiqueOuvert, setHistoriqueOuvert] = useState(false)
+  const [conversations, setConversations] = useState<ConversationGastif[]>([])
+  const [confirmeSuppr, setConfirmeSuppr] = useState<string | null>(null)
   const basListe = useRef<HTMLDivElement>(null)
 
-  // Recharge la conversation du membre (une conversation continue par personne).
+  // À l'arrivée : on reprend la discussion la plus récente (l'historique reste à portée).
   useEffect(() => {
     if (!membre) return
     void supabase
@@ -39,6 +57,48 @@ export function EcranGastif() {
         }
       })
   }, [membre])
+
+  const chargerHistorique = async () => {
+    if (!membre) return
+    const { data } = await supabase
+      .from('gastif_conversations')
+      .select('*')
+      .eq('membre_id', membre.id)
+      .order('modifie_le', { ascending: false })
+      .limit(30)
+    setConversations((data as unknown as ConversationGastif[]) ?? [])
+  }
+
+  const nouvelleDiscussion = () => {
+    navigator.vibrate?.(4)
+    setConversationId(null)
+    setMessages([])
+    setErreurConfig(null)
+    setHistoriqueOuvert(false)
+  }
+
+  const ouvrirDiscussion = (c: ConversationGastif) => {
+    setConversationId(c.id)
+    setMessages(c.messages ?? [])
+    setErreurConfig(null)
+    setHistoriqueOuvert(false)
+  }
+
+  const supprimerDiscussion = async (id: string) => {
+    setConfirmeSuppr(null)
+    // .select() vérifie qu'une ligne a VRAIMENT été supprimée (sinon la
+    // politique SQL de suppression manque côté Supabase).
+    const { data, error } = await supabase.from('gastif_conversations').delete().eq('id', id).select('id')
+    if (error || (data?.length ?? 0) === 0) {
+      setErreurConfig('Suppression impossible — colle la mise à jour SQL « suppression Gastif » dans Supabase (je te l’ai donnée).')
+      return
+    }
+    setConversations((liste) => liste.filter((c) => c.id !== id))
+    if (conversationId === id) {
+      setConversationId(null)
+      setMessages([])
+    }
+  }
 
   useEffect(() => {
     basListe.current?.scrollIntoView({ behavior: 'smooth' })
@@ -143,12 +203,30 @@ export function EcranGastif() {
         >
           ILY
         </span>
-        <div>
+        <div className="min-w-0 flex-1">
           <h1 className="text-titre-3 text-encre">Gastif</h1>
-          <p className="text-legende text-encre-3">
+          <p className="truncate text-legende text-encre-3">
             {reflechit ? 'réfléchit…' : 'l’intendant du foyer'}
           </p>
         </div>
+        <button
+          onClick={() => {
+            navigator.vibrate?.(4)
+            setHistoriqueOuvert(true)
+            void chargerHistorique()
+          }}
+          aria-label="Historique des discussions"
+          className="flex min-h-sur-tactile min-w-sur-tactile shrink-0 items-center justify-center rounded-full bg-fond-sourd text-[17px]"
+        >
+          🕘
+        </button>
+        <button
+          onClick={nouvelleDiscussion}
+          aria-label="Nouvelle discussion"
+          className="flex min-h-sur-tactile min-w-sur-tactile shrink-0 items-center justify-center rounded-full bg-fond-sourd text-titre-3 font-[590] text-encre"
+        >
+          +
+        </button>
       </header>
 
       <div className="flex-1 px-5 pb-36 pt-3">
@@ -193,6 +271,53 @@ export function EcranGastif() {
           <div ref={basListe} />
         </div>
       </div>
+
+      <Feuille ouverte={historiqueOuvert} onFermer={() => setHistoriqueOuvert(false)} titre="Discussions">
+        <div className="flex flex-col gap-2">
+          <Bouton pleineLargeur variante="valider" onClick={nouvelleDiscussion}>
+            ＋ Nouvelle discussion
+          </Bouton>
+          {conversations.length === 0 && (
+            <p className="py-4 text-center text-corps-2 text-encre-3">Aucune discussion enregistrée.</p>
+          )}
+          <ul className="flex flex-col gap-1">
+            {conversations.map((c) => (
+              <li key={c.id} className="flex items-center gap-1 rounded-md bg-fond-sourd px-2">
+                <button
+                  onClick={() => ouvrirDiscussion(c)}
+                  className="min-w-0 flex-1 py-2 text-left"
+                >
+                  <p className={`truncate text-corps-2 ${c.id === conversationId ? 'font-[700]' : ''} text-encre`}>
+                    {titreDe(c)}
+                  </p>
+                  <p className="text-legende text-encre-3">
+                    {new Date(c.modifie_le).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })} ·{' '}
+                    {Math.ceil(c.messages.length / 2)} échange{c.messages.length > 2 ? 's' : ''}
+                    {c.id === conversationId ? ' · en cours' : ''}
+                  </p>
+                </button>
+                <button
+                  onClick={() => {
+                    if (confirmeSuppr === c.id) void supprimerDiscussion(c.id)
+                    else {
+                      navigator.vibrate?.(4)
+                      setConfirmeSuppr(c.id)
+                    }
+                  }}
+                  aria-label={`Supprimer la discussion « ${titreDe(c)} »`}
+                  className={`flex min-h-sur-tactile shrink-0 items-center justify-center rounded-md px-2 text-note
+                    ${confirmeSuppr === c.id ? 'bg-urgent font-[700] text-white' : 'text-encre-3'}`}
+                >
+                  {confirmeSuppr === c.id ? 'Sûr ?' : '🗑'}
+                </button>
+              </li>
+            ))}
+          </ul>
+          <p className="text-legende text-encre-3">
+            L’historique s’efface tout seul après 6 mois — chaque nuit, Gastif fait le ménage.
+          </p>
+        </div>
+      </Feuille>
 
       <form
         className="au-dessus-onglets fixed inset-x-0 z-20 flex items-center gap-2 px-4 pb-1"
