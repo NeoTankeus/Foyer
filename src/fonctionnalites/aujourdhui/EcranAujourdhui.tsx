@@ -24,7 +24,7 @@ import {
 } from '@/lib/dates'
 import { couleurMembre } from '@/lib/couleurs'
 import type { LigneIdeeCadeau, LigneTache } from '@/lib/basedonnees.types'
-import { LeFil } from './fil/LeFil'
+import { ChronologieJour } from './ChronologieJour'
 import { BriefGastif } from './BriefGastif'
 import { Coche } from '@/design/composants/Coche'
 import { Feuille } from '@/design/composants/Feuille'
@@ -42,7 +42,7 @@ const BLOCS: { cle: CleBloc; libelle: string }[] = [
   { cle: 'penser', libelle: '💡 À penser' },
   { cle: 'courses', libelle: '🛒 Courses' },
   { cle: 'menus', libelle: '🍽️ Ce soir on mange' },
-  { cle: 'fil', libelle: '🧶 Le Fil (la journée tissée)' },
+  { cle: 'fil', libelle: '🕐 Chronologie du jour' },
 ]
 
 const DEFAUT: Record<CleBloc, boolean> = {
@@ -445,9 +445,12 @@ export function EcranAujourdhui() {
         )}
 
         {blocs.fil && (
-          <section className="rounded-xl bg-fond-eleve p-3 shadow-carte">
-            <h2 className="mb-1 px-1 text-note font-[700] uppercase tracking-wide text-encre-3">🧶 Le Fil</h2>
-            <LeFil membres={membres} evenements={evenements.data ?? []} />
+          <section className="rounded-xl bg-fond-eleve p-4 shadow-carte">
+            <button onClick={() => naviguer('/agenda')} className="mb-2 flex w-full items-center justify-between">
+              <h2 className="text-note font-[700] uppercase tracking-wide text-encre-3">🕐 Chronologie du jour</h2>
+              <span className="text-encre-3">›</span>
+            </button>
+            <ChronologieJour membres={membres} evenements={evenements.data ?? []} />
           </section>
         )}
       </div>
