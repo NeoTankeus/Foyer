@@ -40,23 +40,8 @@ export function EcranGastif() {
   const [confirmeSuppr, setConfirmeSuppr] = useState<string | null>(null)
   const basListe = useRef<HTMLDivElement>(null)
 
-  // À l'arrivée : on reprend la discussion la plus récente (l'historique reste à portée).
-  useEffect(() => {
-    if (!membre) return
-    void supabase
-      .from('gastif_conversations')
-      .select('*')
-      .eq('membre_id', membre.id)
-      .order('modifie_le', { ascending: false })
-      .limit(1)
-      .then(({ data }) => {
-        const existante = data?.[0]
-        if (existante) {
-          setConversationId(existante.id)
-          setMessages((existante.messages as unknown as MessageGastif[]) ?? [])
-        }
-      })
-  }, [membre])
+  // Chaque ouverture de Gastif démarre une discussion VIERGE. Les précédentes
+  // sont déjà sauvegardées au fil de l'eau — elles attendent dans l'historique 🕘.
 
   const chargerHistorique = async () => {
     if (!membre) return
@@ -314,7 +299,7 @@ export function EcranGastif() {
             ))}
           </ul>
           <p className="text-legende text-encre-3">
-            L’historique s’efface tout seul après 6 mois — chaque nuit, Gastif fait le ménage.
+            Tout est gardé — touche une discussion pour la reprendre où elle en était.
           </p>
         </div>
       </Feuille>

@@ -267,12 +267,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const pousserAdultes = (titre: string, corps: string) =>
     envoyer(abonnements.filter((a) => idsAdultes.has(a.membre_id)), titre, corps)
 
-  // Ménage : les discussions Gastif de plus de 6 mois s'effacent toutes seules.
-  try {
-    const ilYA6Mois = new Date(Date.now() - 183 * 86400000).toISOString()
-    await sb(`gastif_conversations?modifie_le=lt.${ilYA6Mois}`, { method: 'DELETE' })
-  } catch { /* section suivante */ }
-
   const resultat = { ics: 0, colis: 0, prix: 0, anniversaires: 0, brief: '', notifies: abonnements.length }
   try { resultat.ics = await importerIcs(URL_SUPABASE, CLE_SERVICE) } catch { /* section suivante */ }
   try { resultat.colis = await suivreColis(pousserAdultes) } catch { /* section suivante */ }
