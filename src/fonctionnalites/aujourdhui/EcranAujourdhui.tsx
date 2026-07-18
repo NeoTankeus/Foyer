@@ -10,10 +10,12 @@ import {
   completerTache,
   utiliserCelebrationsProches,
   utiliserEvenementsDuJour,
+  utiliserEvenementsPeriode,
   utiliserListeCourses,
   utiliserTachesOuvertes,
 } from '@/lib/requetes'
 import {
+  bornesJourneeLocale,
   dateIsoJour,
   differenceInCalendarDays,
   formatHeure,
@@ -62,8 +64,14 @@ export function EcranAujourdhui() {
   const naviguer = useNavigate()
   const evenements = utiliserEvenementsDuJour()
   const taches = utiliserTachesOuvertes()
-  const celebrations = utiliserCelebrationsProches(7)
+  const celebrations = utiliserCelebrationsProches(365)
   const courses = utiliserListeCourses()
+  // Le prochain événement à venir (14 jours), pour qu'une entrée future se voie tout de suite.
+  const finJournee = bornesJourneeLocale().fin
+  const evenementsAVenir = utiliserEvenementsPeriode(
+    finJournee,
+    new Date(maintenantLocal().getTime() + 14 * 24 * 3600 * 1000).toISOString(),
+  )
   const [blocs, setBlocs] = useState(chargerBlocs)
   const [personnaliser, setPersonnaliser] = useState(false)
 
@@ -115,20 +123,22 @@ export function EcranAujourdhui() {
     enabled: estAdulte,
   })
 
-  const repasCeSoir = useQuery({
-    queryKey: ['repas', 'ce-soir'],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('repas').select('*').eq('date', aujourdHui).eq('creneau', 'soir')
-      if (error) return null
-      const ligne = data[0]
-      if (!ligne) return null
-      if (ligne.notes) return { texte: ligne.notes }
-      if (ligne.recette_id) {
-        const { data: recettes } = await supabase.from('recettes').select('*').eq('id', ligne.recette_id)
-        return { texte: recettes?.[0]?.titre ?? 'Recette prévue' }
+  const repasDuJour = useQuery({
+    queryKey: ['repas', 'du-jour'],
+    queryFn: async (): Promise<{ creneau: string; texte: string }[]> => {
+      const { data, error } = await supabase.from('repas').select('*').eq('date', aujourdHui)
+      if (error || data.length === 0) return []
+      const resultats: { creneau: string; texte: string }[] = []
+      for (const ligne of data) {
+        let texte = ligne.notes ?? ''
+        if (!texte && ligne.recette_id) {
+          const { data: recettes } = await supabase.from('recettes').select('*').eq('id', ligne.recette_id)
+          texte = recettes?.[0]?.titre ?? 'Recette prévue'
+        }
+        if (texte) resultats.push({ creneau: ligne.creneau, texte })
       }
-      return null
+      const ordre = ['matin', 'midi', 'gouter', 'soir']
+      return resultats.sort((a, b) => ordre.indexOf(a.creneau) - ordre.indexOf(b.creneau))
     },
   })
 
@@ -169,8 +179,20 @@ export function EcranAujourdhui() {
     return liste
   }, [taches.data, documents.data, celebrations.data, aujourdHui])
 
-  const tachesDuJour = (taches.data ?? []).filter((t) => t.echeance !== null && t.echeance <= aujourdHui)
+  // TOUT ce qui est ouvert apparaît — pas seulement ce qui est daté d'aujourd'hui.
+  const tachesOuvertes = taches.data ?? []
   const articlesRestants = (courses.data?.articles ?? []).filter((a) => !a.coche)
+  const articlesCoches = (courses.data?.articles ?? []).filter((a) => a.coche)
+
+  const celebrationsTriees = (celebrations.data ?? [])
+    .map((c) => {
+      const date = new Date(c.date)
+      const prochaine = new Date(maintenantLocal().getFullYear(), date.getMonth(), date.getDate())
+      if (prochaine < new Date(maintenantLocal().getFullYear(), maintenantLocal().getMonth(), maintenantLocal().getDate()))
+        prochaine.setFullYear(prochaine.getFullYear() + 1)
+      return { c, dans: differenceInCalendarDays(prochaine, maintenantLocal()) }
+    })
+    .sort((a, b) => a.dans - b.dans)
 
   const evenementsDuJour = (evenements.data ?? [])
     .filter((e) => !e.journee_entiere)
@@ -261,7 +283,7 @@ export function EcranAujourdhui() {
               <span className="text-encre-3">›</span>
             </button>
             {evenementsDuJour.length === 0 ? (
-              <p className="text-corps-2 text-encre-3">Rien au programme — journée libre.</p>
+              <p className="text-corps-2 text-encre-3">Rien au programme aujourd’hui.</p>
             ) : (
               evenementsDuJour.map((e) => (
                 <div key={e.id} className="flex items-center gap-3 border-b border-trait py-1.5 last:border-0">
@@ -278,14 +300,40 @@ export function EcranAujourdhui() {
                 </div>
               ))
             )}
+            {(() => {
+              const prochain = evenementsAVenir.data?.[0]
+              if (!prochain) return null
+              return (
+                <p className="mt-1 border-t border-trait pt-1.5 text-corps-2 text-encre-3">
+                  À venir :{' '}
+                  <span className="capitalize">
+                    {new Date(prochain.debut_a).toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' })}
+                  </span>
+                  {prochain.journee_entiere ? '' : ` · ${formatHeure(prochain.debut_a)}`} — {prochain.titre}
+                </p>
+              )
+            })()}
           </section>
         )}
 
-        {blocs.taches && tachesDuJour.length > 0 && (
+        {blocs.taches && tachesOuvertes.length > 0 && (
           <section className="rounded-xl bg-fond-eleve p-4 shadow-carte">
-            <h2 className="mb-1 text-note font-[700] uppercase tracking-wide text-encre-3">✅ À faire</h2>
-            {tachesDuJour.map((t) => {
+            <button onClick={() => naviguer('/maison')} className="mb-1 flex w-full items-center justify-between">
+              <h2 className="text-note font-[700] uppercase tracking-wide text-encre-3">
+                ✅ À faire — {tachesOuvertes.length}
+              </h2>
+              <span className="text-encre-3">›</span>
+            </button>
+            {tachesOuvertes.slice(0, 8).map((t) => {
               const assignee = membres.find((m) => m.id === t.assignee_id)
+              const echeance =
+                t.echeance === null
+                  ? 'un jour'
+                  : t.echeance < aujourdHui
+                    ? 'retard'
+                    : t.echeance === aujourdHui
+                      ? 'aujourd’hui'
+                      : new Date(`${t.echeance}T12:00:00`).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })
               return (
                 <div key={t.id} className="flex items-center gap-1 border-b border-trait py-0.5 last:border-0">
                   <Coche
@@ -295,30 +343,33 @@ export function EcranAujourdhui() {
                     couleur={assignee ? couleurMembre(assignee.couleur) : undefined}
                   />
                   <span className="flex-1 text-corps text-encre">{t.titre}</span>
-                  {t.echeance !== null && t.echeance < aujourdHui && (
-                    <span className="text-legende font-[700] text-urgent">retard</span>
-                  )}
+                  <span
+                    className={`text-legende ${echeance === 'retard' ? 'font-[700] text-urgent' : 'chiffres text-encre-3'}`}
+                  >
+                    {echeance}
+                  </span>
                 </div>
               )
             })}
+            {tachesOuvertes.length > 8 && (
+              <p className="mt-1 text-legende text-encre-3">et {tachesOuvertes.length - 8} de plus…</p>
+            )}
           </section>
         )}
 
-        {blocs.penser && ((celebrations.data?.length ?? 0) > 0 || (documents.data?.length ?? 0) > 0 || (colis.data?.length ?? 0) > 0) && (
+        {blocs.penser && (celebrationsTriees.length > 0 || (documents.data?.length ?? 0) > 0 || (colis.data?.length ?? 0) > 0) && (
           <section className="rounded-xl bg-fond-eleve p-4 shadow-carte">
             <h2 className="mb-1 text-note font-[700] uppercase tracking-wide text-encre-3">💡 À penser</h2>
-            {(celebrations.data ?? []).map((c) => {
-              const date = new Date(c.date)
-              const prochaine = new Date(maintenantLocal().getFullYear(), date.getMonth(), date.getDate())
-              if (prochaine < new Date(maintenantLocal().getFullYear(), maintenantLocal().getMonth(), maintenantLocal().getDate()))
-                prochaine.setFullYear(prochaine.getFullYear() + 1)
-              const dans = differenceInCalendarDays(prochaine, maintenantLocal())
-              return (
-                <button key={c.id} onClick={() => naviguer('/nous/celebrations')} className="block w-full py-0.5 text-left text-corps-2 text-encre">
-                  🎂 {c.nom} <span className="chiffres text-encre-3">{dans === 0 ? '— aujourd’hui !' : `— J-${dans}`}</span>
-                </button>
-              )
-            })}
+            {celebrationsTriees.slice(0, 4).map(({ c, dans }) => (
+              <button key={c.id} onClick={() => naviguer('/nous/celebrations')} className="block w-full py-0.5 text-left text-corps-2 text-encre">
+                🎂 {c.nom} <span className="chiffres text-encre-3">{dans === 0 ? '— aujourd’hui !' : `— J-${dans}`}</span>
+              </button>
+            ))}
+            {celebrationsTriees.length > 4 && (
+              <button onClick={() => naviguer('/nous/celebrations')} className="block w-full py-0.5 text-left text-legende text-encre-3">
+                et {celebrationsTriees.length - 4} autre{celebrationsTriees.length - 4 > 1 ? 's' : ''} anniversaire{celebrationsTriees.length - 4 > 1 ? 's' : ''}…
+              </button>
+            )}
             {(documents.data ?? []).map((d) => (
               <button key={d.id} onClick={() => naviguer('/nous/coffre')} className="block w-full py-0.5 text-left text-corps-2 text-encre">
                 🗄️ {d.titre} <span className="chiffres text-encre-3">— expire le {new Date(`${d.expire_le}T12:00:00`).toLocaleDateString('fr-FR')}</span>
@@ -332,15 +383,15 @@ export function EcranAujourdhui() {
           </section>
         )}
 
-        {blocs.courses && articlesRestants.length > 0 && (
+        {blocs.courses && (articlesRestants.length > 0 || articlesCoches.length > 0) && (
           <section className="rounded-xl bg-fond-eleve p-4 shadow-carte">
             <button onClick={() => naviguer('/maison?ajout=courses')} className="mb-1 flex w-full items-center justify-between">
               <h2 className="text-note font-[700] uppercase tracking-wide text-encre-3">
-                🛒 Courses — {articlesRestants.length} article{articlesRestants.length > 1 ? 's' : ''}
+                🛒 Courses — {articlesRestants.length} à prendre
               </h2>
               <span className="text-encre-3">›</span>
             </button>
-            {articlesRestants.slice(0, 4).map((a) => (
+            {articlesRestants.slice(0, 8).map((a) => (
               <div key={a.id} className="flex items-center gap-1">
                 <Coche
                   cochee={false}
@@ -352,21 +403,42 @@ export function EcranAujourdhui() {
                 <span className="text-corps-2 text-encre">{a.libelle}</span>
               </div>
             ))}
-            {articlesRestants.length > 4 && (
-              <p className="mt-1 text-legende text-encre-3">et {articlesRestants.length - 4} de plus…</p>
+            {articlesRestants.length > 8 && (
+              <p className="mt-1 text-legende text-encre-3">et {articlesRestants.length - 8} de plus…</p>
             )}
+            {articlesCoches.slice(-3).map((a) => (
+              <div key={a.id} className="flex items-center gap-1 opacity-60">
+                <Coche
+                  cochee
+                  onBascule={() => {
+                    if (membre) void basculerArticle(a, membre.id).then(() => clientRequetes.invalidateQueries({ queryKey: ['courses'] }))
+                  }}
+                  etiquette={`Décocher ${a.libelle}`}
+                />
+                <span className="text-corps-2 text-encre-3 line-through">{a.libelle}</span>
+              </div>
+            ))}
           </section>
         )}
 
         {blocs.menus && (
           <section className="rounded-xl bg-fond-eleve p-4 shadow-carte">
             <button onClick={() => naviguer('/maison')} className="flex w-full items-center justify-between">
-              <h2 className="text-note font-[700] uppercase tracking-wide text-encre-3">🍽️ Ce soir on mange</h2>
+              <h2 className="text-note font-[700] uppercase tracking-wide text-encre-3">🍽️ Aujourd’hui on mange</h2>
               <span className="text-encre-3">›</span>
             </button>
-            <p className="mt-1 text-corps text-encre">
-              {repasCeSoir.data?.texte ?? 'Rien de prévu — tape ici pour poser le menu.'}
-            </p>
+            {(repasDuJour.data?.length ?? 0) === 0 ? (
+              <p className="mt-1 text-corps text-encre">Rien de prévu — tape ici pour poser le menu.</p>
+            ) : (
+              (repasDuJour.data ?? []).map((r) => (
+                <p key={r.creneau} className="mt-1 text-corps text-encre">
+                  <span className="text-note font-[590] uppercase text-encre-3">
+                    {{ matin: 'Matin', midi: 'Midi', gouter: 'Goûter', soir: 'Soir' }[r.creneau] ?? r.creneau}
+                  </span>{' '}
+                  — {r.texte}
+                </p>
+              ))
+            )}
           </section>
         )}
 

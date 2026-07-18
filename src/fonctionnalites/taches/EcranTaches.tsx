@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { utiliserSession } from '@/etat/session'
+import { muter } from '@/lib/sync'
 import { completerTache, creerTache, utiliserTachesOuvertes } from '@/lib/requetes'
 import { RECURRENCES_PROPOSEES } from '@/lib/recurrence'
 import { dateIsoJour, maintenantLocal } from '@/lib/dates'
@@ -20,6 +21,7 @@ export function EcranTaches() {
   const clientRequetes = useQueryClient()
   const taches = utiliserTachesOuvertes()
   const [creationOuverte, setCreationOuverte] = useState(false)
+  const [confirmeSuppr, setConfirmeSuppr] = useState<string | null>(null)
 
   const aujourdHui = dateIsoJour(maintenantLocal())
 
@@ -83,6 +85,24 @@ export function EcranTaches() {
                       </p>
                     </div>
                     {assignee && <PastilleMembre membre={assignee} taille={22} />}
+                    <button
+                      onClick={() => {
+                        if (confirmeSuppr === tache.id) {
+                          setConfirmeSuppr(null)
+                          void muter({ table: 'taches', type: 'delete', cible_id: tache.id, charge: {} }).then(() =>
+                            clientRequetes.invalidateQueries({ queryKey: ['taches'] }),
+                          )
+                        } else {
+                          navigator.vibrate?.(4)
+                          setConfirmeSuppr(tache.id)
+                        }
+                      }}
+                      aria-label={`Supprimer « ${tache.titre} »`}
+                      className={`flex min-h-sur-tactile items-center justify-center rounded-md px-2 text-note
+                        ${confirmeSuppr === tache.id ? 'bg-urgent font-[700] text-white' : 'text-encre-3'}`}
+                    >
+                      {confirmeSuppr === tache.id ? 'Sûr ?' : '🗑'}
+                    </button>
                   </li>
                 )
               })}
