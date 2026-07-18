@@ -163,8 +163,9 @@ export function EcranAdministration() {
           📅 Calendriers Apple (import automatique chaque matin)
         </h3>
         <p className="mb-2 text-note text-encre-3">
-          Sur iPhone : Calendrier → le calendrier → Partager → « Calendrier public » → copie le lien
-          webcal://… et colle-le ici. Ses événements arrivent dans FOYER, reliés au bon membre.
+          Sur iPhone : Calendrier → le calendrier → ⓘ → « Calendrier public » → copie le lien webcal://…
+          Le calendrier « Famille » du Partage familial ne peut pas être publié : passe alors par Google
+          (via SyncGene) et colle son « adresse secrète au format iCal » (https://calendar.google.com/…/basic.ics).
         </p>
         {calendriers.map((c) => (
           <div key={c.id} className="flex items-center gap-2 border-b border-trait py-1.5 last:border-0">
