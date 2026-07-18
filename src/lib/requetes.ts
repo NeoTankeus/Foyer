@@ -177,6 +177,28 @@ export function utiliserTachesOuvertes() {
   })
 }
 
+/** L'historique : tout ce qui a été coché, le plus récent d'abord. */
+export function utiliserTachesFaites() {
+  return useQuery({
+    queryKey: ['taches', 'faites'],
+    queryFn: async (): Promise<LigneTache[]> => {
+      try {
+        const { data, error } = await supabase
+          .from('taches')
+          .select('*')
+          .eq('statut', 'faite')
+          .order('faite_le', { ascending: false })
+          .limit(200)
+        if (error) throw error
+        return data
+      } catch {
+        const locales = await baseLocale.taches.where('statut').equals('faite').toArray()
+        return locales.sort((a, b) => (b.faite_le ?? '').localeCompare(a.faite_le ?? ''))
+      }
+    },
+  })
+}
+
 export interface NouvelleTache {
   titre: string
   assignee_id: string | null

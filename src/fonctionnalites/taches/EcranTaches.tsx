@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { utiliserSession } from '@/etat/session'
 import { muter } from '@/lib/sync'
-import { completerTache, creerTache, utiliserTachesOuvertes } from '@/lib/requetes'
+import { completerTache, creerTache, utiliserTachesFaites, utiliserTachesOuvertes } from '@/lib/requetes'
 import { RECURRENCES_PROPOSEES } from '@/lib/recurrence'
 import { dateIsoJour, maintenantLocal } from '@/lib/dates'
 import { couleurMembre } from '@/lib/couleurs'
@@ -20,8 +20,10 @@ export function EcranTaches() {
   const { membre, membres, foyer } = utiliserSession()
   const clientRequetes = useQueryClient()
   const taches = utiliserTachesOuvertes()
+  const faites = utiliserTachesFaites()
   const [creationOuverte, setCreationOuverte] = useState(false)
   const [confirmeSuppr, setConfirmeSuppr] = useState<string | null>(null)
+  const [vueHistorique, setVueHistorique] = useState(false)
 
   const aujourdHui = dateIsoJour(maintenantLocal())
 
@@ -41,20 +43,50 @@ export function EcranTaches() {
 
   return (
     <div>
-      <div className="flex items-center justify-between px-1 pb-2">
+      <div className="flex items-center justify-between gap-2 px-1 pb-2">
         <h2 className="text-titre-3 text-encre">Tâches</h2>
-        {membre?.role === 'adult' && (
-          <Bouton variante="discret" onClick={() => setCreationOuverte(true)} etiquette="Nouvelle tâche">
-            +
-          </Bouton>
-        )}
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => {
+              navigator.vibrate?.(4)
+              setVueHistorique(!vueHistorique)
+            }}
+            aria-pressed={vueHistorique}
+            className={`min-h-sur-tactile shrink-0 rounded-full px-3 text-note font-[590]
+              ${vueHistorique ? 'bg-encre text-fond' : 'bg-fond-sourd text-encre-2'}`}
+          >
+            🗂 Historique
+          </button>
+          {membre?.role === 'adult' && !vueHistorique && (
+            <Bouton variante="discret" onClick={() => setCreationOuverte(true)} etiquette="Nouvelle tâche">
+              +
+            </Bouton>
+          )}
+        </div>
       </div>
 
-      {(taches.data?.length ?? 0) === 0 && !taches.isLoading && (
+      {vueHistorique && (
+        <HistoriqueTaches
+          taches={faites.data ?? []}
+          surRetour={(tache) => {
+            void muter({
+              table: 'taches', type: 'update', cible_id: tache.id,
+              charge: { statut: 'a_faire', faite_par: null, faite_le: null },
+            }).then(() => clientRequetes.invalidateQueries({ queryKey: ['taches'] }))
+          }}
+          surSuppression={(tache) => {
+            void muter({ table: 'taches', type: 'delete', cible_id: tache.id, charge: {} }).then(() =>
+              clientRequetes.invalidateQueries({ queryKey: ['taches'] }),
+            )
+          }}
+        />
+      )}
+
+      {!vueHistorique && (taches.data?.length ?? 0) === 0 && !taches.isLoading && (
         <EtatVide titre="Rien à faire" message="Ajoute une tâche — elle peut revenir toute seule chaque semaine." />
       )}
 
-      {groupes.map((groupe) => {
+      {!vueHistorique && groupes.map((groupe) => {
         const lignes = (taches.data ?? []).filter(groupe.filtre)
         if (lignes.length === 0) return null
         return (
@@ -122,6 +154,93 @@ export function EcranTaches() {
           }}
         />
       )}
+    </div>
+  )
+}
+
+/** Tout ce qui a été coché — groupé par jour, avec qui l'a fait et quand. */
+function HistoriqueTaches({
+  taches,
+  surRetour,
+  surSuppression,
+}: {
+  taches: LigneTache[]
+  surRetour: (t: LigneTache) => void
+  surSuppression: (t: LigneTache) => void
+}) {
+  const { membres, membre } = utiliserSession()
+  const [confirme, setConfirme] = useState<string | null>(null)
+
+  if (taches.length === 0) {
+    return (
+      <EtatVide titre="Encore rien de coché" message="Chaque tâche validée viendra se ranger ici, avec qui l’a faite et quand." />
+    )
+  }
+
+  const parJour = new Map<string, LigneTache[]>()
+  for (const t of taches) {
+    const jour = (t.faite_le ?? '').slice(0, 10) || 'inconnu'
+    parJour.set(jour, [...(parJour.get(jour) ?? []), t])
+  }
+
+  return (
+    <div>
+      {[...parJour.entries()].map(([jour, lignes]) => (
+        <section key={jour} className="mb-4">
+          <h3 className="mb-1 px-1 text-note font-[590] uppercase tracking-wide text-encre-3">
+            {jour === 'inconnu'
+              ? 'Date inconnue'
+              : new Date(`${jour}T12:00:00`).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}
+          </h3>
+          <ul className="flex flex-col gap-1">
+            {lignes.map((t) => {
+              const auteur = membres.find((m) => m.id === t.faite_par)
+              return (
+                <li key={t.id} className="flex items-center gap-2 rounded-md bg-fond-sourd px-2 py-1">
+                  <Coche
+                    cochee
+                    onBascule={() => surRetour(t)}
+                    etiquette={`Remettre « ${t.titre} » à faire`}
+                    couleur={auteur ? couleurMembre(auteur.couleur) : undefined}
+                  />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-corps-2 text-encre-2 line-through">{t.titre}</p>
+                    <p className="text-legende text-encre-3">
+                      {auteur?.prenom ?? 'quelqu’un'}
+                      {t.faite_le
+                        ? ` · ${new Date(t.faite_le).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`
+                        : ''}
+                      {t.points > 0 ? ` · +${t.points} pts` : ''}
+                    </p>
+                  </div>
+                  {auteur && <PastilleMembre membre={auteur} taille={22} />}
+                  {membre?.role === 'adult' && (
+                    <button
+                      onClick={() => {
+                        if (confirme === t.id) {
+                          setConfirme(null)
+                          surSuppression(t)
+                        } else {
+                          navigator.vibrate?.(4)
+                          setConfirme(t.id)
+                        }
+                      }}
+                      aria-label={`Supprimer définitivement « ${t.titre} »`}
+                      className={`flex min-h-sur-tactile items-center justify-center rounded-md px-2 text-note
+                        ${confirme === t.id ? 'bg-urgent font-[700] text-white' : 'text-encre-3'}`}
+                    >
+                      {confirme === t.id ? 'Sûr ?' : '🗑'}
+                    </button>
+                  )}
+                </li>
+              )
+            })}
+          </ul>
+        </section>
+      ))}
+      <p className="px-1 text-legende text-encre-3">
+        Décocher remet la tâche dans « à faire ». Les 200 dernières validations sont gardées ici.
+      </p>
     </div>
   )
 }
