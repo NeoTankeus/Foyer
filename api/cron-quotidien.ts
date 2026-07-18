@@ -176,10 +176,42 @@ async function composerBrief(): Promise<string> {
   return morceaux.join(' ')
 }
 
+// ————— Rappels d'anniversaires (J-21, J-7, J-1, jour J) —————
+
+interface Celebration { nom: string; date: string; rappels: number[] | null; magie: boolean }
+
+async function rappellerAnniversaires(
+  pousser: (titre: string, corps: string) => Promise<void>,
+  pousserAdultes: (titre: string, corps: string) => Promise<void>,
+): Promise<number> {
+  const celebrations = await sb<Celebration[]>('celebrations?select=*')
+  const { jour } = bornesJourParis()
+  const [annee, moisAuj, jourAuj] = jour.split('-').map(Number)
+  const aujourdHui = Date.UTC(annee ?? 2026, (moisAuj ?? 1) - 1, jourAuj ?? 1)
+  let envoyes = 0
+  for (const c of celebrations) {
+    const [, moisAnniv, jourAnniv] = c.date.split('-').map(Number)
+    if (!moisAnniv || !jourAnniv) continue
+    let prochaine = Date.UTC(annee ?? 2026, moisAnniv - 1, jourAnniv)
+    if (prochaine < aujourdHui) prochaine = Date.UTC((annee ?? 2026) + 1, moisAnniv - 1, jourAnniv)
+    const dans = Math.round((prochaine - aujourdHui) / 86400000)
+    if (!(c.rappels ?? [21, 7, 1, 0]).includes(dans)) continue
+    const corps =
+      dans === 0
+        ? `C’est aujourd’hui : ${c.nom} 🎉`
+        : `${c.nom} — J-${dans}. Un tour au coffre à idées ?`
+    // magie = surprise : seuls les adultes sont prévenus.
+    await (c.magie ? pousserAdultes : pousser)('🎂 Anniversaire', corps)
+    envoyes += 1
+  }
+  return envoyes
+}
+
 // ————— Envoi des notifications —————
 
 interface Abonnement {
   id: string
+  membre_id: string
   endpoint: string
   cles: { p256dh?: string; auth?: string }
 }
@@ -203,8 +235,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     abonnements = await sb<Abonnement[]>('push_abonnements?select=*')
   }
 
-  const pousser = async (titre: string, corps: string) => {
-    for (const abonnement of abonnements) {
+  // Verrou Père Noël : certains pushs (colis, prix des cadeaux, surprises)
+  // ne partent que vers les téléphones des adultes.
+  let idsAdultes = new Set<string>()
+  try {
+    const membres = await sb<{ id: string; role: string }[]>('membres?select=id,role')
+    idsAdultes = new Set(membres.filter((m) => m.role === 'adult').map((m) => m.id))
+  } catch {
+    // sans info de rôle, on n'envoie les pushs sensibles à personne plutôt qu'à l'enfant
+  }
+
+  const envoyer = async (liste: Abonnement[], titre: string, corps: string) => {
+    for (const abonnement of liste) {
       try {
         await webpush.sendNotification(
           {
@@ -221,11 +263,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     }
   }
+  const pousser = (titre: string, corps: string) => envoyer(abonnements, titre, corps)
+  const pousserAdultes = (titre: string, corps: string) =>
+    envoyer(abonnements.filter((a) => idsAdultes.has(a.membre_id)), titre, corps)
 
-  const resultat = { ics: 0, colis: 0, prix: 0, brief: '', notifies: abonnements.length }
+  const resultat = { ics: 0, colis: 0, prix: 0, anniversaires: 0, brief: '', notifies: abonnements.length }
   try { resultat.ics = await importerIcs(URL_SUPABASE, CLE_SERVICE) } catch { /* section suivante */ }
-  try { resultat.colis = await suivreColis(pousser) } catch { /* section suivante */ }
-  try { resultat.prix = await veillerPrix(pousser) } catch { /* section suivante */ }
+  try { resultat.colis = await suivreColis(pousserAdultes) } catch { /* section suivante */ }
+  try { resultat.prix = await veillerPrix(pousserAdultes) } catch { /* section suivante */ }
+  try { resultat.anniversaires = await rappellerAnniversaires(pousser, pousserAdultes) } catch { /* section suivante */ }
   try {
     resultat.brief = await composerBrief()
     if (resultat.brief) await pousser('☀️ Le brief de Gastif', resultat.brief)

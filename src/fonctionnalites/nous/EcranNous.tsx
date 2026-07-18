@@ -162,7 +162,10 @@ export function EcranNous() {
             🔔 Notifications
           </h3>
           {notifications === 'active' ? (
-            <p className="text-corps-2 text-fait">Activées sur ce téléphone — brief du matin à ~7h, colis, baisses de prix.</p>
+            <p className="text-corps-2 text-fait">
+              Activées sur ce téléphone — brief du matin à ~7h, colis, baisses de prix, anniversaires,
+              et en direct ce que l’autre ajoute (tâches, agenda, courses, menus, idées cadeaux).
+            </p>
           ) : notifications === 'refuse' ? (
             <p className="text-corps-2 text-encre-3">
               Refusées dans les réglages du téléphone. Réglages → Notifications → FOYER pour les rouvrir.
@@ -170,7 +173,8 @@ export function EcranNous() {
           ) : (
             <>
               <p className="mb-2 text-corps-2 text-encre-2">
-                Le brief de Gastif à ~7h, les colis livrés et les baisses de prix, directement sur l’écran verrouillé.
+                Le brief de Gastif à ~7h, les colis, les baisses de prix, les anniversaires — et en direct
+                ce que l’autre ajoute (tâches, agenda, courses…), sur l’écran verrouillé.
                 {notificationsPossibles() ? '' : ' Sur iPhone : ajoute d’abord FOYER à l’écran d’accueil.'}
               </p>
               {notificationsPossibles() && (

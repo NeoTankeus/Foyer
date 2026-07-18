@@ -5,6 +5,7 @@ import { lireAvecRepli } from '@/lib/lecture'
 import { addDays, dateIsoJour, maintenantLocal } from '@/lib/dates'
 import type { LigneArticle, LigneRecette, LigneRepas } from '@/lib/basedonnees.types'
 import { devinerRayon } from '@/fonctionnalites/courses/rayons'
+import { notifierLesAutres } from '@/lib/notifications'
 
 export function utiliserRecettes() {
   return useQuery({
@@ -57,6 +58,11 @@ export async function planifierRepas(
     cible_id: id,
     charge: { id, foyer_id: foyerId, date, creneau, ...choix },
   })
+  if (choix.notes) {
+    const quand = new Date(`${date}T12:00:00`).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })
+    const creneaux: Record<string, string> = { matin: 'matin', midi: 'midi', gouter: 'goûter', soir: 'soir' }
+    notifierLesAutres('🍽️ Menu posé', `${quand} ${creneaux[creneau] ?? creneau} : ${choix.notes}.`, '/maison')
+  }
 }
 
 export async function retirerRepas(id: string) {

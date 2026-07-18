@@ -14,6 +14,13 @@ import type {
   LigneTache,
 } from './basedonnees.types'
 import { prochaineOccurrence } from './recurrence'
+import { notifierCoursesAvecReserve, notifierLesAutres } from './notifications'
+
+async function prenomDe(membreId: string | null): Promise<string> {
+  if (!membreId) return 'Quelqu’un'
+  const m = await baseLocale.membres.get(membreId)
+  return m?.prenom ?? 'Quelqu’un'
+}
 
 // ---------------------------------------------------------------------------
 // Événements
@@ -75,6 +82,13 @@ export async function creerEvenement(foyerId: string, membreId: string, brouillo
       ...brouillon,
     },
   })
+  const prenom = await prenomDe(membreId)
+  const quand = brouillon.journee_entiere
+    ? new Date(brouillon.debut_a).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })
+    : new Date(brouillon.debut_a).toLocaleString('fr-FR', {
+        weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit',
+      })
+  notifierLesAutres('📅 Nouvel événement', `${prenom} a ajouté « ${brouillon.titre} » — ${quand}.`, '/agenda')
 }
 
 export async function supprimerEvenement(id: string) {
@@ -131,6 +145,14 @@ export async function creerTache(foyerId: string, membreId: string, brouillon: N
       ...brouillon,
     },
   })
+  const [prenom, assignee] = await Promise.all([prenomDe(membreId), prenomDe(brouillon.assignee_id)])
+  notifierLesAutres(
+    '✅ Nouvelle tâche',
+    `${prenom} a ajouté « ${brouillon.titre} »${brouillon.assignee_id ? ` pour ${assignee}` : ''}${
+      brouillon.echeance ? ` (échéance ${new Date(`${brouillon.echeance}T12:00:00`).toLocaleDateString('fr-FR')})` : ''
+    }.`,
+    '/maison',
+  )
 }
 
 /**
@@ -257,6 +279,7 @@ export async function ajouterArticle(
       unite: null,
     },
   })
+  notifierCoursesAvecReserve(await prenomDe(membreId))
 }
 
 export async function basculerArticle(article: LigneArticle, membreId: string) {

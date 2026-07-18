@@ -13,6 +13,7 @@ import { ChampTexte } from '@/design/composants/ChampTexte'
 import { EtatVide } from '@/design/composants/EtatVide'
 import { Coche } from '@/design/composants/Coche'
 import { BarreRetour } from '@/design/composants/BarreRetour'
+import { notifierLesAutres } from '@/lib/notifications'
 
 function prochaineOccurrence(dateIso: string): Date {
   const date = new Date(dateIso)
@@ -101,6 +102,11 @@ export function EcranCelebrations() {
                 table: 'celebrations', type: 'insert', cible_id: id,
                 charge: { id, foyer_id: foyer.id, rappels: [21, 7, 1, 0], magie: false, membre_id: null, ...brouillon },
               })
+              notifierLesAutres(
+                '🎂 Nouvelle célébration',
+                `${membre?.prenom ?? 'Quelqu’un'} a ajouté ${brouillon.nom} — ${new Date(brouillon.date).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })}.`,
+                '/nous/celebrations',
+              )
               await rafraichir()
               setCreation(false)
             }}
@@ -201,6 +207,12 @@ function CoffreAIdees({
       })
       setLien('')
       setErreurAjout(null)
+      notifierLesAutres(
+        '🎁 Nouvelle idée cadeau',
+        `${membre.prenom} a ajouté « ${(produit.titre ?? url).slice(0, 60)} » pour ${celebration.nom}.`,
+        '/nous/celebrations',
+        true, // adultes seulement — verrou Père Noël
+      )
       await rafraichir()
     } catch {
       setErreurAjout('Impossible d’ajouter ce lien — vérifie l’adresse et le réseau, puis réessaie.')
@@ -332,6 +344,12 @@ function CoffreAIdees({
           })
             .then(() => {
               setErreurAjout(null)
+              notifierLesAutres(
+                '🎁 Nouvelle idée cadeau',
+                `${membre.prenom} a noté « ${idee.trim().slice(0, 60)} » pour ${celebration.nom}.`,
+                '/nous/celebrations',
+                true, // adultes seulement — verrou Père Noël
+              )
               return rafraichir()
             })
             .catch(() => setErreurAjout('L’idée n’a pas pu être enregistrée — réessaie dans un instant.'))
