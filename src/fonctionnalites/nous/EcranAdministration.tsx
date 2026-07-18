@@ -143,7 +143,6 @@ export function EcranAdministration() {
                 <p className="text-legende text-encre-3">
                   {ROLES.find((r) => r.valeur === m.role)?.libelle}
                   {m.email_invitation ? ` · ${m.email_invitation}` : ''}
-                  {m.role === 'child' ? ` · ${m.points} pts` : ''}
                   {m.role === 'guest' && m.actif_jusqu_au
                     ? ` · expire le ${new Date(m.actif_jusqu_au).toLocaleDateString('fr-FR')}`
                     : ''}
@@ -351,7 +350,6 @@ function FormMembre({
   const [couleur, setCouleur] = useState<CouleurMembre>(initial?.couleur ?? 'prune')
   const [email, setEmail] = useState(initial?.email_invitation ?? '')
   const [expiration, setExpiration] = useState(initial?.actif_jusqu_au?.slice(0, 10) ?? '')
-  const [points, setPoints] = useState(initial?.points ?? 0)
   const [enCours, setEnCours] = useState(false)
 
   return (
@@ -407,14 +405,6 @@ function FormMembre({
           onChange={(e) => setExpiration(e.target.value)}
         />
       )}
-      {role === 'child' && (
-        <ChampTexte
-          etiquette="Points"
-          type="number"
-          value={String(points)}
-          onChange={(e) => setPoints(Number(e.target.value))}
-        />
-      )}
       <Bouton
         pleineLargeur
         variante="valider"
@@ -428,7 +418,6 @@ function FormMembre({
             couleur,
             email_invitation: email.trim() || null,
             actif_jusqu_au: role === 'guest' && expiration ? new Date(`${expiration}T23:59:59`).toISOString() : null,
-            points,
           })
         }}
       >

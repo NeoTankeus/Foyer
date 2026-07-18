@@ -253,17 +253,6 @@ export async function completerTache(
     charge: { statut: 'faite', faite_par: faitePar, faite_le: new Date().toISOString() },
   })
 
-  // Mission d'enfant : les points tombent à la complétion.
-  const assignee = membres.find((m) => m.id === tache.assignee_id)
-  if (assignee?.role === 'child' && tache.points > 0) {
-    await muter({
-      table: 'membres',
-      type: 'update',
-      cible_id: assignee.id,
-      charge: { points: assignee.points + tache.points },
-    })
-  }
-
   if (!tache.rrule) return
   const base = tache.echeance ? new Date(`${tache.echeance}T12:00:00`) : maintenantLocal()
   const suivante = await prochaineOccurrence(tache.rrule, base)

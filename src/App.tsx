@@ -1,11 +1,9 @@
 import { Suspense, lazy, useEffect } from 'react'
 import { BrowserRouter, NavLink, Navigate, Route, Routes } from 'react-router-dom'
 import { utiliserSession } from '@/etat/session'
-import { utiliserUi } from '@/etat/ui'
 import { EcranConnexion } from '@/fonctionnalites/auth/EcranConnexion'
 import { EcranAujourdhui } from '@/fonctionnalites/aujourdhui/EcranAujourdhui'
 import { BoutonSas } from '@/fonctionnalites/sas/BoutonSas'
-import { EcranEnfant } from '@/fonctionnalites/enfant/EcranEnfant'
 import { GardeFou } from '@/design/composants/GardeFou'
 import { PopupNouveautes } from '@/design/composants/PopupNouveautes'
 
@@ -31,7 +29,6 @@ const EcranAlbum = paresseux(() => import('@/fonctionnalites/souvenirs/EcranAlbu
 const EcranCoffre = paresseux(() => import('@/fonctionnalites/coffre/EcranCoffre'), 'EcranCoffre')
 const EcranColis = paresseux(() => import('@/fonctionnalites/colis/EcranColis'), 'EcranColis')
 const EcranRoutines = paresseux(() => import('@/fonctionnalites/enfant/EcranRoutines'), 'EcranRoutines')
-const EcranRecompenses = paresseux(() => import('@/fonctionnalites/enfant/EcranRecompenses'), 'EcranRecompenses')
 
 function IconeOnglet({ nom }: { nom: string }) {
   const traits = { fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round' as const }
@@ -158,17 +155,6 @@ export function App() {
 }
 
 function Interieur() {
-  const { modeEnfant, quitterModeEnfant } = utiliserUi()
-
-  // Le mode enfant remplace toute l'app : une autre app, pas l'app adulte en plus gros.
-  if (modeEnfant) {
-    return (
-      <GardeFou>
-        <EcranEnfant onQuitter={quitterModeEnfant} />
-      </GardeFou>
-    )
-  }
-
   return (
     <GardeFou>
     <BrowserRouter>
@@ -196,7 +182,6 @@ function Interieur() {
             <Route path="/nous/coffre" element={<EcranCoffre />} />
             <Route path="/nous/colis" element={<EcranColis />} />
             <Route path="/nous/routines" element={<EcranRoutines />} />
-            <Route path="/nous/recompenses" element={<EcranRecompenses />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </Suspense>

@@ -2,7 +2,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { utiliserSession } from '@/etat/session'
-import { utiliserUi } from '@/etat/ui'
 import { baseLocale } from '@/lib/dexie'
 import { rejouerFileAttente } from '@/lib/sync'
 import { activerNotifications, etatAbonnement, notificationsPossibles } from '@/lib/notifications'
@@ -10,7 +9,6 @@ import { verifierMiseAJour } from '@/lib/maj'
 import { PastilleMembre } from '@/design/composants/PastilleMembre'
 import { Bouton } from '@/design/composants/Bouton'
 import { Carte } from '@/design/composants/Carte'
-import { Feuille } from '@/design/composants/Feuille'
 
 const ROLES: Record<string, string> = {
   adult: 'Adulte',
@@ -20,12 +18,9 @@ const ROLES: Record<string, string> = {
 
 export function EcranNous() {
   const { membre, membres, foyer, deconnecter } = utiliserSession()
-  const { activerModeEnfant } = utiliserUi()
   const naviguer = useNavigate()
   const [enAttente, setEnAttente] = useState(0)
-  const [demandeCode, setDemandeCode] = useState(false)
   const [notifications, setNotifications] = useState<'active' | 'refuse' | 'inactif'>('inactif')
-  const [code, setCode] = useState('')
   const [etatMaj, setEtatMaj] = useState<'repos' | 'verifie' | 'installe' | 'a_jour' | 'indispo'>('repos')
 
   useEffect(() => {
@@ -41,8 +36,7 @@ export function EcranNous() {
     { chemin: '/nous/voyages', libelle: 'Voyages', detail: 'valises, réservations, météo', icone: '✈️', couleur: 'var(--ardoise)' },
     { chemin: '/nous/concerts', libelle: 'Concerts & sorties', detail: 'billets scannés, prêts pour l’entrée', icone: '🎤', couleur: 'var(--corail)' },
     { chemin: '/nous/souvenirs', libelle: 'Souvenirs', detail: 'photos par voyage, album imprimable', icone: '📷', couleur: 'var(--or)' },
-    { chemin: '/nous/routines', libelle: 'Routines', detail: 'les matins et soirs de Gabriel', icone: '⏰', couleur: 'var(--sauge)' },
-    { chemin: '/nous/recompenses', libelle: 'Récompenses', detail: 'points → vraies récompenses', icone: '🎁', couleur: 'var(--prune)' },
+    { chemin: '/nous/routines', libelle: 'Routines', detail: 'les matins et soirs, étape par étape', icone: '⏰', couleur: 'var(--sauge)' },
     { chemin: '/nous/coffre', libelle: 'Le Coffre', detail: 'papiers et échéances', icone: '🗄️', couleur: 'var(--encre-2)', adulte: true },
     { chemin: '/nous/colis', libelle: 'Colis', detail: 'suivis, invisibles pour Gabriel', icone: '📦', couleur: 'var(--ambre)', adulte: true },
     { chemin: '/nous/administration', libelle: 'Administration', detail: 'membres, rôles, journal d’audit', icone: '🛠️', couleur: 'var(--encre-2)', adulte: true },
@@ -70,9 +64,6 @@ export function EcranNous() {
                   </p>
                   <p className="text-legende text-encre-3">{ROLES[m.role] ?? m.role}</p>
                 </div>
-                {m.role === 'child' && (
-                  <span className="chiffres text-note text-encre-3">{m.points} pts</span>
-                )}
               </li>
             ))}
           </ul>
@@ -103,61 +94,7 @@ export function EcranNous() {
               <span aria-hidden="true" className="text-encre-3">›</span>
             </button>
           ))}
-          {estAdulte && membres.some((m) => m.role === 'child') && (
-            <button
-              onClick={() => {
-                navigator.vibrate?.(4)
-                setCode('')
-                setDemandeCode(true)
-              }}
-              className="flex min-h-sur-tactile w-full items-center gap-3 px-4 py-3 text-left active:bg-fond-sourd"
-            >
-              <span
-                aria-hidden="true"
-                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-[22px]"
-                style={{ background: 'color-mix(in srgb, var(--ambre) 14%, transparent)' }}
-              >
-                🧒
-              </span>
-              <div className="flex-1">
-                <p className="text-corps font-[590] text-encre">Mode enfant</p>
-                <p className="text-legende text-encre-3">verrouillé par code</p>
-              </div>
-              <span aria-hidden="true" className="text-encre-3">›</span>
-            </button>
-          )}
         </nav>
-
-        <Feuille ouverte={demandeCode} onFermer={() => setDemandeCode(false)} titre="Code du mode enfant">
-          <div className="flex flex-col gap-3">
-            <input
-              type="password"
-              inputMode="numeric"
-              value={code}
-              onChange={(e) => setCode(e.target.value)}
-              placeholder="••••••"
-              aria-label="Code de déverrouillage"
-              autoFocus
-              className="chiffres min-h-sur-tactile w-full rounded-md border border-trait bg-fond-eleve
-                px-4 text-center text-titre-3 tracking-[0.4em]"
-            />
-            <Bouton
-              pleineLargeur
-              variante="valider"
-              onClick={() => {
-                if (code === '210712') {
-                  setDemandeCode(false)
-                  activerModeEnfant()
-                } else {
-                  navigator.vibrate?.([30, 40, 30])
-                  setCode('')
-                }
-              }}
-            >
-              Déverrouiller
-            </Bouton>
-          </div>
-        </Feuille>
 
         <Carte>
           <h3 className="mb-1 text-note font-[590] uppercase tracking-wide text-encre-3">

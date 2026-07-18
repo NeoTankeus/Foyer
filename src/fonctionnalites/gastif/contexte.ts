@@ -28,7 +28,7 @@ export async function assemblerContexte(
   lignes.push(
     `Membres : ${membres
       .filter((m) => m.role !== 'guest')
-      .map((m) => `${m.prenom} (${m.role === 'child' ? `enfant, ${m.points} points` : 'adulte'})`)
+      .map((m) => `${m.prenom} (${m.role === 'child' ? 'enfant' : 'adulte'})`)
       .join(', ')}.`,
   )
 
@@ -39,7 +39,7 @@ export async function assemblerContexte(
   const [
     evenements, taches, tachesFaites, courses, repas, recettes,
     voyages, reservations, valises, documents, colis, celebrations,
-    souvenirs, mur, routines, recompenses, concerts,
+    souvenirs, mur, routines, concerts,
   ] = await Promise.all([
     supabase.from('evenements').select('*').gt('fin_a', debut).lt('debut_a', fin).order('debut_a'),
     supabase.from('taches').select('*').eq('statut', 'a_faire').order('echeance'),
@@ -56,7 +56,6 @@ export async function assemblerContexte(
     supabase.from('souvenirs').select('id, voyage_id, dossier, commentaire, lieu, pris_le, favori' as '*'),
     supabase.from('mur').select('*').order('cree_le', { ascending: false }).limit(15),
     supabase.from('routines').select('*').eq('active', true),
-    supabase.from('recompenses').select('*').eq('active', true),
     supabase.from('concerts').select('*'),
   ])
 
@@ -75,7 +74,7 @@ export async function assemblerContexte(
   if (taches.data && taches.data.length > 0) {
     lignes.push('Tâches ouvertes :')
     for (const t of taches.data.slice(0, 20))
-      lignes.push(`- ${t.titre} (${prenom(t.assignee_id)}${t.echeance ? `, échéance ${t.echeance}` : ''}, ~${t.effort_minutes} min${t.points > 0 ? `, mission à ${t.points} pts` : ''})`)
+      lignes.push(`- ${t.titre} (${prenom(t.assignee_id)}${t.echeance ? `, échéance ${t.echeance}` : ''}, ~${t.effort_minutes} min)`)
   }
 
   // Équilibre 30 j
@@ -141,11 +140,9 @@ export async function assemblerContexte(
   if (sorties.length > 0)
     lignes.push(`Concerts et sorties : ${sorties.map((s) => `${s.titre}${s.lieu ? ` à ${s.lieu}` : ''}${s.date_evenement ? ` le ${jourCourt(s.date_evenement)}` : ''}`).join(' · ')}.`)
 
-  // Routines & récompenses
+  // Routines
   for (const r of routines.data ?? [])
     lignes.push(`Routine « ${r.nom} » (${prenom(r.membre_id)}, ${r.moment}) : ${r.etapes.map((e) => e.libelle).join(' → ')}.`)
-  if (recompenses.data && recompenses.data.length > 0)
-    lignes.push(`Catalogue de récompenses : ${recompenses.data.map((r) => `${r.libelle} (${r.cout_points} pts)`).join(', ')}.`)
 
   return lignes.join('\n')
 }

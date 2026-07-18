@@ -219,7 +219,7 @@ export function EcranGastif() {
           <div className="flex flex-col gap-2 py-6">
             <p className="text-corps-2 text-encre-3">
               Gastif connaît tout le foyer : agenda, tâches, courses, menus, voyages, valises,
-              souvenirs, papiers, colis, routines, points de Gabriel. Demande-lui :
+              souvenirs, papiers, colis, routines. Demande-lui :
             </p>
             {SUGGESTIONS.map((s) => (
               <button
