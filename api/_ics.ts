@@ -42,7 +42,7 @@ export async function importerIcs(base: string, cle: string): Promise<number> {
     id: string
     foyer_id: string
     membre_id: string | null
-    reglages: { ics_url?: string }
+    reglages: { ics_url?: string; membre_ids?: string[] }
   }
   const integrations = await sb<Integration[]>(base, cle,
     `integrations?fournisseur=eq.icloud_caldav&statut=eq.active&select=*`,
@@ -66,13 +66,20 @@ export async function importerIcs(base: string, cle: string): Promise<number> {
           const fin = evenement['DTEND'] ? dateIcs(evenement['DTEND']) : debut
           const uid = evenement['UID']
           if (debut && fin && uid) {
+            // Calendrier commun (Family) : plusieurs membres possibles.
+            const participants =
+              integration.reglages.membre_ids && integration.reglages.membre_ids.length > 0
+                ? integration.reglages.membre_ids
+                : integration.membre_id
+                  ? [integration.membre_id]
+                  : []
             const commun = {
               foyer_id: integration.foyer_id,
               titre: evenement['SUMMARY'] ?? 'Sans titre',
               journee_entiere: /^\d{8}$/.test(evenement['DTSTART'] ?? ''),
               lieu: evenement['LOCATION'] ?? null,
               source: 'ics',
-              participants: integration.membre_id ? [integration.membre_id] : [],
+              participants,
             }
             if (!evenement['RRULE']) {
               const t = new Date(debut).getTime()

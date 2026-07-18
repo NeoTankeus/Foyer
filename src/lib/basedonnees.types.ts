@@ -379,7 +379,7 @@ export type LigneIntegration = {
   membre_id: string | null
   fournisseur: 'icloud_caldav' | 'laposte' | 'chronodrive' | 'resend_inbound' | 'anthropic'
   vault_ref: string | null
-  reglages: { ics_url?: string }
+  reglages: { ics_url?: string; membre_ids?: string[] }
   statut: 'active' | 'erreur' | 'desactivee'
   derniere_sync: string | null
   cree_le: string

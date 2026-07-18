@@ -40,7 +40,7 @@ export function EcranAdministration() {
   const [journal, setJournal] = useState<LigneJournal[]>([])
   const [calendriers, setCalendriers] = useState<LigneIntegration[]>([])
   const [urlIcs, setUrlIcs] = useState('')
-  const [membreIcs, setMembreIcs] = useState<string | null>(null)
+  const [membresIcs, setMembresIcs] = useState<string[]>([])
   const [importEnCours, setImportEnCours] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
 
@@ -170,7 +170,14 @@ export function EcranAdministration() {
         {calendriers.map((c) => (
           <div key={c.id} className="flex items-center gap-2 border-b border-trait py-1.5 last:border-0">
             <span className="flex-1 truncate text-note text-encre-2">
-              {membres.find((m) => m.id === c.membre_id)?.prenom ?? 'Foyer'} · {c.reglages.ics_url?.slice(0, 40)}…
+              {(() => {
+                const ids = c.reglages.membre_ids ?? (c.membre_id ? [c.membre_id] : [])
+                const prenoms = ids
+                  .map((id) => membres.find((m) => m.id === id)?.prenom)
+                  .filter(Boolean)
+                return prenoms.length > 0 ? prenoms.join(' + ') : 'Tout le foyer'
+              })()}{' '}
+              · {c.reglages.ics_url?.slice(0, 40)}…
             </span>
             <span className="text-legende text-encre-3">
               {c.derniere_sync ? `sync ${new Date(c.derniere_sync).toLocaleDateString('fr-FR')}` : 'jamais'}
@@ -197,15 +204,19 @@ export function EcranAdministration() {
             inputMode="url"
             className="min-h-sur-tactile w-full rounded-md border border-trait bg-fond-eleve px-3 text-note"
           />
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <span className="text-note text-encre-3">Pour :</span>
             {membres.filter((m) => m.role !== 'guest').map((m) => (
               <PastilleMembre
                 key={m.id}
                 membre={m}
                 taille={30}
-                estompee={membreIcs !== null && membreIcs !== m.id}
-                onClick={() => setMembreIcs(membreIcs === m.id ? null : m.id)}
+                estompee={membresIcs.length > 0 && !membresIcs.includes(m.id)}
+                onClick={() =>
+                  setMembresIcs((actuels) =>
+                    actuels.includes(m.id) ? actuels.filter((id) => id !== m.id) : [...actuels, m.id],
+                  )
+                }
               />
             ))}
             <Bouton
@@ -213,12 +224,14 @@ export function EcranAdministration() {
               onClick={() => {
                 if (!foyer || !urlIcs.trim()) return
                 void supabase.from('integrations').insert({
-                  id: crypto.randomUUID(), foyer_id: foyer.id, membre_id: membreIcs,
+                  id: crypto.randomUUID(), foyer_id: foyer.id, membre_id: membresIcs[0] ?? null,
                   fournisseur: 'icloud_caldav', vault_ref: null,
-                  reglages: { ics_url: urlIcs.trim() }, statut: 'active', derniere_sync: null,
+                  reglages: { ics_url: urlIcs.trim(), membre_ids: membresIcs },
+                  statut: 'active', derniere_sync: null,
                 } as never).then(({ error }) => {
                   if (!error) {
                     setUrlIcs('')
+                    setMembresIcs([])
                     confirmer('Calendrier ajouté — import chaque matin.')
                     void supabase.from('integrations').select('*').eq('fournisseur', 'icloud_caldav')
                       .then(({ data }) => setCalendriers(data ?? []))
@@ -229,6 +242,10 @@ export function EcranAdministration() {
               Ajouter
             </Bouton>
           </div>
+          <p className="text-legende text-encre-3">
+            Un calendrier commun (Family) ? Touche PLUSIEURS prénoms — chaque événement portera
+            leurs pastilles partout. Aucun prénom = tout le foyer.
+          </p>
           {calendriers.length > 0 && (
             <Bouton
               variante="discret"
