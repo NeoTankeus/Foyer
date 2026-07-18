@@ -29,6 +29,7 @@ import { BriefGastif } from './BriefGastif'
 import { Coche } from '@/design/composants/Coche'
 import { Feuille } from '@/design/composants/Feuille'
 import { Bouton } from '@/design/composants/Bouton'
+import { BoutonMiseAJour } from '@/design/composants/BoutonMiseAJour'
 
 type CleBloc = 'urgent' | 'brief' | 'prix' | 'agenda' | 'taches' | 'penser' | 'courses' | 'menus' | 'fil'
 
@@ -206,6 +207,7 @@ export function EcranAujourdhui() {
           <p className="text-note text-encre-3">Salut {membre?.prenom} 👋</p>
         </div>
         <div className="flex gap-1">
+          <BoutonMiseAJour />
           <button
             onClick={() => naviguer('/recherche')}
             aria-label="Recherche globale"

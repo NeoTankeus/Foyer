@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { registerSW } from 'virtual:pwa-register'
 import { App } from './App'
 import { demarrerSyncAuRetourDuReseau } from './lib/sync'
+import { retenirEnregistrementSw } from './lib/maj'
 import './design/tokens.css'
 
 // Mise à jour SANS réinstaller : on revérifie la version à chaque retour au
@@ -13,6 +14,7 @@ registerSW({
   immediate: true,
   onRegisteredSW(_url, enregistrement) {
     if (!enregistrement) return
+    retenirEnregistrementSw(enregistrement)
     const verifier = () => void enregistrement.update().catch(() => undefined)
     setInterval(verifier, 15 * 60 * 1000)
     document.addEventListener('visibilitychange', () => {
