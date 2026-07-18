@@ -62,7 +62,15 @@ export async function lireIcsDepuisIcloud(
   mdpApp: string,
   filtreNom: string | null,
 ): Promise<{ ics: string; calendriers: string[] }> {
-  const auth = Buffer.from(`${appleId}:${mdpApp}`).toString('base64')
+  // Les claviers de téléphone glissent parfois des caractères invisibles
+  // (puces, espaces insécables…) — on ne garde que l'ASCII imprimable.
+  const nettoyer = (s: string) => s.normalize('NFKD').replace(/[^\x21-\x7E]/g, '')
+  const identifiant = nettoyer(appleId)
+  const mdp = nettoyer(mdpApp)
+  if (!identifiant.includes('@') || mdp.length < 8) {
+    throw new Error(`identifiant ou mot de passe d’app illisible après nettoyage (« ${identifiant} ») — supprime la connexion et ressaisis-la en tapant à la main`)
+  }
+  const auth = Buffer.from(`${identifiant}:${mdp}`).toString('base64')
 
   // 1. Le principal de l'utilisateur.
   const xmlPrincipal = await requeteDav(

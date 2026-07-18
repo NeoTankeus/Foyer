@@ -228,7 +228,8 @@ export function EcranAdministration() {
                   id: crypto.randomUUID(), foyer_id: foyer.id, membre_id: membresIcs[0] ?? null,
                   fournisseur: 'icloud_caldav', vault_ref: null,
                   reglages: {
-                    apple_id: appleId.trim(), mdp_app: mdpApp.trim().replace(/\s/g, ''),
+                    apple_id: appleId.normalize('NFKD').replace(/[^\x21-\x7E]/g, '').toLowerCase(),
+                    mdp_app: mdpApp.normalize('NFKD').replace(/[^\x21-\x7E]/g, ''),
                     nom_calendrier: nomCalendrier.trim(), membre_ids: membresIcs,
                   },
                   statut: 'active', derniere_sync: null,
