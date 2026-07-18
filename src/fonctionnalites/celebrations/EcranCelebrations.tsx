@@ -24,6 +24,16 @@ function prochaineOccurrence(dateIso: string): Date {
   return prochaine
 }
 
+/** « www.amazon.fr/dp/… » → « amazon.fr » */
+function nomDuSite(url: string | null | undefined): string | null {
+  if (!url) return null
+  try {
+    return new URL(url).hostname.replace(/^www\./, '')
+  } catch {
+    return null
+  }
+}
+
 export function EcranCelebrations() {
   const { membre, foyer } = utiliserSession()
   const clientRequetes = useQueryClient()
@@ -99,7 +109,15 @@ export function EcranCelebrations() {
       </Feuille>
 
       <Feuille ouverte={ouverte !== null} onFermer={() => setOuverte(null)} titre={ouverte?.nom ?? ''}>
-        {ouverte && membre?.role === 'adult' && <CoffreAIdees celebration={ouverte} />}
+        {ouverte && membre?.role === 'adult' && (
+          <CoffreAIdees
+            celebration={ouverte}
+            surSuppression={() => {
+              setOuverte(null)
+              void rafraichir()
+            }}
+          />
+        )}
       </Feuille>
     </div>
   )
@@ -126,13 +144,23 @@ function FormCelebration({
 }
 
 /** Toute l'année on note ce que la personne évoque. En novembre, on n'est pas démuni. */
-function CoffreAIdees({ celebration }: { celebration: LigneCelebration }) {
+function CoffreAIdees({
+  celebration,
+  surSuppression,
+}: {
+  celebration: LigneCelebration
+  surSuppression: () => void
+}) {
   const { foyer, membre } = utiliserSession()
   const clientRequetes = useQueryClient()
   const [idee, setIdee] = useState('')
   const [lien, setLien] = useState('')
   const [analyseEnCours, setAnalyseEnCours] = useState(false)
   const [majEnCours, setMajEnCours] = useState(false)
+  const [majUnitaire, setMajUnitaire] = useState<string | null>(null)
+  const [depliee, setDepliee] = useState<string | null>(null)
+  const [confirmeSuppr, setConfirmeSuppr] = useState<string | null>(null)
+  const [confirmeSupprCeleb, setConfirmeSupprCeleb] = useState(false)
 
   const analyserLien = async (url: string): Promise<{ titre: string | null; image: string | null; prix: number | null }> => {
     const { data: session } = await supabase.auth.getSession()
@@ -148,6 +176,8 @@ function CoffreAIdees({ celebration }: { celebration: LigneCelebration }) {
     return donnees.produit ?? { titre: null, image: null, prix: null }
   }
 
+  const rafraichir = () => clientRequetes.invalidateQueries({ queryKey: ['idees', celebration.id] })
+
   const ajouterDepuisLien = async () => {
     const url = lien.trim()
     if (!url || !foyer || !membre) return
@@ -155,41 +185,70 @@ function CoffreAIdees({ celebration }: { celebration: LigneCelebration }) {
     try {
       const produit = await analyserLien(url)
       const id = crypto.randomUUID()
+      const jour = new Date().toISOString().slice(0, 10)
       await muter({
         table: 'idees_cadeaux', type: 'insert', cible_id: id,
         charge: {
           id, foyer_id: foyer.id, celebration_id: celebration.id,
           libelle: produit.titre ?? url.replace(/^https?:\/\//, '').slice(0, 60),
           note: null, prix: produit.prix, url, image_url: produit.image,
+          historique_prix: produit.prix !== null ? [{ date: jour, prix: produit.prix }] : [],
           offert: false, offert_le: null, cree_par: membre.id,
         },
       })
       setLien('')
-      await clientRequetes.invalidateQueries({ queryKey: ['idees', celebration.id] })
+      await rafraichir()
     } finally {
       setAnalyseEnCours(false)
     }
+  }
+
+  /** Relit la page du produit et ajoute le point du jour à la courbe. */
+  const releverPrix = async (i: LigneIdeeCadeau): Promise<void> => {
+    if (!i.url) return
+    const produit = await analyserLien(i.url)
+    if (produit.prix === null) return
+    const jour = new Date().toISOString().slice(0, 10)
+    const historique = [...(i.historique_prix ?? [])]
+    const dernier = historique[historique.length - 1]
+    if (dernier?.date === jour) {
+      historique[historique.length - 1] = { date: jour, prix: produit.prix }
+    } else {
+      historique.push({ date: jour, prix: produit.prix })
+    }
+    await muter({
+      table: 'idees_cadeaux', type: 'update', cible_id: i.id,
+      charge: { prix: produit.prix, historique_prix: historique.slice(-90) },
+    })
   }
 
   const actualiserPrix = async () => {
     setMajEnCours(true)
     try {
       for (const i of (idees.data ?? []).filter((x) => x.url && !x.offert)) {
-        const produit = await analyserLien(i.url ?? '')
-        if (produit.prix !== null) {
-          const jour = new Date().toISOString().slice(0, 10)
-          const historique = [...(i.historique_prix ?? [])]
-          if (historique[historique.length - 1]?.date !== jour) historique.push({ date: jour, prix: produit.prix })
-          await muter({
-            table: 'idees_cadeaux', type: 'update', cible_id: i.id,
-            charge: { prix: produit.prix, historique_prix: historique.slice(-90) },
-          })
-        }
+        await releverPrix(i)
       }
-      await clientRequetes.invalidateQueries({ queryKey: ['idees', celebration.id] })
+      await rafraichir()
     } finally {
       setMajEnCours(false)
     }
+  }
+
+  const actualiserUnPrix = async (i: LigneIdeeCadeau) => {
+    setMajUnitaire(i.id)
+    try {
+      await releverPrix(i)
+      await rafraichir()
+    } finally {
+      setMajUnitaire(null)
+    }
+  }
+
+  const supprimerIdee = async (id: string) => {
+    await muter({ table: 'idees_cadeaux', type: 'delete', cible_id: id, charge: {} })
+    setConfirmeSuppr(null)
+    setDepliee(null)
+    await rafraichir()
   }
 
   const idees = useQuery({
@@ -206,8 +265,6 @@ function CoffreAIdees({ celebration }: { celebration: LigneCelebration }) {
       return lignes.filter((i) => i.celebration_id === celebration.id)
     },
   })
-
-  const rafraichir = () => clientRequetes.invalidateQueries({ queryKey: ['idees', celebration.id] })
 
   return (
     <div className="flex flex-col gap-3">
@@ -235,7 +292,7 @@ function CoffreAIdees({ celebration }: { celebration: LigneCelebration }) {
           onChange={(e) => setIdee(e.target.value)}
           placeholder="Il/elle a parlé de…"
           aria-label="Nouvelle idée cadeau"
-          className="min-h-sur-tactile flex-1 rounded-md border border-trait bg-fond-eleve px-3 text-corps"
+          className="min-h-sur-tactile w-full min-w-0 flex-1 rounded-md border border-trait bg-fond-eleve px-3 text-corps"
         />
         <Bouton type="submit" variante="discret">Noter</Bouton>
       </form>
@@ -253,90 +310,229 @@ function CoffreAIdees({ celebration }: { celebration: LigneCelebration }) {
           placeholder="🔗 Coller le lien du produit (Amazon, Fnac…)"
           aria-label="Lien du produit"
           inputMode="url"
-          className="min-h-sur-tactile flex-1 rounded-md border border-trait bg-fond-eleve px-3 text-corps-2"
+          className="min-h-sur-tactile w-full min-w-0 flex-1 rounded-md border border-trait bg-fond-eleve px-3 text-corps-2"
         />
         <Bouton type="submit" variante="valider" desactive={analyseEnCours}>
           {analyseEnCours ? '…' : 'OK'}
         </Bouton>
       </form>
       {(idees.data ?? []).some((i) => i.url) && (
-        <Bouton variante="discret" pleineLargeur desactive={majEnCours} onClick={() => void actualiserPrix()}>
-          {majEnCours ? 'Mise à jour des prix…' : '🔄 Actualiser les prix'}
-        </Bouton>
+        <>
+          <Bouton variante="discret" pleineLargeur desactive={majEnCours} onClick={() => void actualiserPrix()}>
+            {majEnCours ? 'Mise à jour des prix…' : '🔄 Actualiser tous les prix'}
+          </Bouton>
+          <p className="-mt-1 text-legende text-encre-3">
+            Les prix sont aussi revérifiés chaque nuit — 💸 notification automatique dès qu’un prix baisse.
+          </p>
+        </>
       )}
 
-      <ul className="flex flex-col gap-1">
-        {(idees.data ?? []).map((i) => (
-          <li key={i.id} className="flex items-center gap-1 rounded-md bg-fond-sourd px-2">
-            <Coche
-              cochee={i.offert}
-              onBascule={() =>
-                void muter({
-                  table: 'idees_cadeaux', type: 'update', cible_id: i.id,
-                  charge: { offert: !i.offert, offert_le: i.offert ? null : new Date().toISOString().slice(0, 10) },
-                }).then(rafraichir)
-              }
-              etiquette={`Marquer « ${i.libelle} » comme offert`}
-            />
-            {i.image_url && (
-              <img src={i.image_url} alt="" className="h-12 w-12 shrink-0 rounded-md object-cover" />
-            )}
-            <span className={`flex-1 py-2 text-corps-2 ${i.offert ? 'text-encre-3 line-through' : 'text-encre'}`}>
-              {i.libelle}
-              <span className="block text-legende text-encre-3">
-                {i.prix !== null && <strong className="chiffres text-encre-2">{i.prix.toFixed(2)} € </strong>}
-                {i.url && (
-                  <a href={i.url} target="_blank" rel="noopener" className="text-ardoise underline" onClick={(e) => e.stopPropagation()}>
-                    voir
-                  </a>
+      <ul className="flex flex-col gap-2">
+        {(idees.data ?? []).map((i) => {
+          const site = nomDuSite(i.url)
+          const historique = i.historique_prix ?? []
+          const valeurs = historique.map((h) => h.prix)
+          const plusHaut = valeurs.length > 0 ? Math.max(...valeurs) : null
+          const baissePct =
+            plusHaut !== null && plusHaut > 0 && i.prix !== null && plusHaut - i.prix > 0.01
+              ? Math.round(((plusHaut - i.prix) / plusHaut) * 100)
+              : null
+          const estDepliee = depliee === i.id
+          return (
+            <li key={i.id} className="overflow-hidden rounded-md bg-fond-sourd">
+              <div className="flex items-center gap-2 px-2 py-2">
+                <Coche
+                  cochee={i.offert}
+                  onBascule={() =>
+                    void muter({
+                      table: 'idees_cadeaux', type: 'update', cible_id: i.id,
+                      charge: { offert: !i.offert, offert_le: i.offert ? null : new Date().toISOString().slice(0, 10) },
+                    }).then(rafraichir)
+                  }
+                  etiquette={`Marquer « ${i.libelle} » comme offert`}
+                />
+                {i.image_url && (
+                  <img src={i.image_url} alt="" className="h-12 w-12 shrink-0 rounded-md object-cover" />
                 )}
-                {i.url && ' · '}
-                {(i.historique_prix?.length ?? 0) >= 2 && (
-                  <CourbePrix historique={i.historique_prix ?? []} />
-                )}
-                {i.libelle.length > 3 && (
-                  <a
-                    href={`https://www.google.com/search?tbm=shop&q=${encodeURIComponent(i.libelle)}`}
-                    target="_blank" rel="noopener" className="text-ardoise underline"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    moins cher ?
-                  </a>
-                )}
-              </span>
-            </span>
-          </li>
-        ))}
+                <button
+                  onClick={() => {
+                    setConfirmeSuppr(null)
+                    setDepliee(estDepliee ? null : i.id)
+                  }}
+                  aria-expanded={estDepliee}
+                  className="flex min-h-sur-tactile min-w-0 flex-1 items-center gap-2 text-left"
+                >
+                  <span className="min-w-0 flex-1">
+                    <span className={`block text-corps-2 ${i.offert ? 'text-encre-3 line-through' : 'text-encre'}`}>
+                      {i.libelle}
+                    </span>
+                    {site && <span className="block text-legende text-encre-3">{site}</span>}
+                  </span>
+                  <span className="shrink-0 text-right">
+                    {i.prix !== null ? (
+                      <span className="chiffres block text-corps font-[590] text-encre">{i.prix.toFixed(2)} €</span>
+                    ) : i.url ? (
+                      <span className="block text-legende text-encre-3">prix à venir</span>
+                    ) : null}
+                    {baissePct !== null && (
+                      <span className="block text-legende font-[590] text-fait">↓ −{baissePct} %</span>
+                    )}
+                  </span>
+                  <span aria-hidden="true" className={`shrink-0 text-encre-3 transition-transform ${estDepliee ? 'rotate-90' : ''}`}>
+                    ›
+                  </span>
+                </button>
+              </div>
+
+              {estDepliee && (
+                <div className="flex flex-col gap-3 border-t border-trait px-3 py-3">
+                  {historique.length >= 2 ? (
+                    <GrandeCourbe historique={historique} site={site} />
+                  ) : i.url ? (
+                    <p className="text-legende text-encre-3">
+                      La courbe se dessinera au fil des relevés — le prix est vérifié chaque nuit
+                      {site ? ` sur ${site}` : ''}.
+                    </p>
+                  ) : (
+                    <p className="text-legende text-encre-3">
+                      Idée notée à la main — colle le lien du produit pour suivre son prix.
+                    </p>
+                  )}
+
+                  <div className="flex flex-wrap gap-2">
+                    {i.url && (
+                      <a
+                        href={i.url}
+                        target="_blank"
+                        rel="noopener"
+                        className="btn-3d btn-ardoise min-h-sur-tactile inline-flex items-center px-5 py-2.5 text-center text-corps-2 leading-tight"
+                      >
+                        Voir {site ?? 'le site'} ↗
+                      </a>
+                    )}
+                    {i.libelle.length > 3 && (
+                      <a
+                        href={`https://www.google.com/search?tbm=shop&q=${encodeURIComponent(i.libelle)}`}
+                        target="_blank"
+                        rel="noopener"
+                        className="btn-3d btn-clair min-h-sur-tactile inline-flex items-center px-5 py-2.5 text-center text-corps-2 leading-tight"
+                      >
+                        Comparer les prix
+                      </a>
+                    )}
+                    {i.url && (
+                      <Bouton
+                        variante="discret"
+                        desactive={majUnitaire === i.id}
+                        onClick={() => void actualiserUnPrix(i)}
+                      >
+                        {majUnitaire === i.id ? 'Relevé…' : '🔄 Relever le prix'}
+                      </Bouton>
+                    )}
+                    <Bouton
+                      variante={confirmeSuppr === i.id ? 'urgent' : 'discret'}
+                      onClick={() => {
+                        if (confirmeSuppr === i.id) void supprimerIdee(i.id)
+                        else setConfirmeSuppr(i.id)
+                      }}
+                    >
+                      {confirmeSuppr === i.id ? 'Confirmer ?' : '🗑 Supprimer'}
+                    </Bouton>
+                  </div>
+                </div>
+              )}
+            </li>
+          )
+        })}
       </ul>
       {(idees.data?.length ?? 0) > 0 && (
-        <p className="text-legende text-encre-3">Coché = offert. Plus jamais de doublon.</p>
+        <p className="text-legende text-encre-3">Coché = offert. Touche une idée pour la courbe et les actions.</p>
       )}
+
+      <div className="mt-2 border-t border-trait pt-3">
+        <Bouton
+          pleineLargeur
+          variante={confirmeSupprCeleb ? 'urgent' : 'discret'}
+          onClick={() => {
+            if (confirmeSupprCeleb) {
+              void muter({ table: 'celebrations', type: 'delete', cible_id: celebration.id, charge: {} }).then(surSuppression)
+            } else {
+              setConfirmeSupprCeleb(true)
+            }
+          }}
+        >
+          {confirmeSupprCeleb ? 'Confirmer la suppression ?' : 'Supprimer cette célébration'}
+        </Bouton>
+        {confirmeSupprCeleb && (
+          <p className="mt-1 text-legende text-encre-3">Les idées de cadeaux associées seront supprimées aussi.</p>
+        )}
+      </div>
     </div>
   )
 }
 
-
-/** Mini-courbe de prix (90 jours max) — la baisse se voit d'un coup d'œil. */
-function CourbePrix({ historique }: { historique: { date: string; prix: number }[] }) {
+/** Courbe de prix pleine largeur : min, max, premier et dernier relevé, site. */
+function GrandeCourbe({ historique, site }: { historique: { date: string; prix: number }[]; site: string | null }) {
   const valeurs = historique.map((h) => h.prix)
   const min = Math.min(...valeurs)
   const max = Math.max(...valeurs)
   const plage = max - min || 1
+  const L = 320
+  const H = 72
+  const marge = 6
   const points = valeurs
-    .map((v, i) => `${(i / (valeurs.length - 1)) * 60},${14 - ((v - min) / plage) * 12}`)
+    .map((v, idx) => {
+      const x = marge + (idx / Math.max(1, valeurs.length - 1)) * (L - marge * 2)
+      const y = marge + (1 - (v - min) / plage) * (H - marge * 2)
+      return `${x.toFixed(1)},${y.toFixed(1)}`
+    })
     .join(' ')
   const dernier = valeurs[valeurs.length - 1] ?? 0
   const premier = valeurs[0] ?? 0
+  const enBaisse = dernier < premier
+  const couleur = enBaisse ? 'var(--fait)' : 'var(--ardoise)'
+  const formatDate = (d: string) =>
+    new Date(d).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })
+  const premierJour = historique[0]?.date
+  const dernierJour = historique[historique.length - 1]?.date
   return (
-    <svg width="64" height="16" viewBox="0 0 64 16" className="ml-1 inline-block align-middle" aria-label="Évolution du prix">
-      <polyline
-        points={points}
-        fill="none"
-        stroke={dernier < premier ? 'var(--fait)' : 'var(--encre-3)'}
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
+    <figure className="m-0">
+      <figcaption className="mb-1 flex items-baseline justify-between gap-2">
+        <span className="text-legende text-encre-3">
+          Prix{site ? ` sur ${site}` : ''} — {historique.length} relevé{historique.length > 1 ? 's' : ''}
+        </span>
+        <span className={`text-legende font-[590] ${enBaisse ? 'text-fait' : 'text-encre-2'}`}>
+          {enBaisse ? `↓ ${premier.toFixed(2)} € → ${dernier.toFixed(2)} €` : `${dernier.toFixed(2)} €`}
+        </span>
+      </figcaption>
+      <svg
+        viewBox={`0 0 ${L} ${H}`}
+        className="w-full rounded-md bg-fond-eleve"
+        role="img"
+        aria-label="Évolution du prix"
+      >
+        <polyline
+          points={`${points} ${L - marge},${H - marge} ${marge},${H - marge}`}
+          fill={couleur}
+          opacity="0.12"
+          stroke="none"
+        />
+        <polyline
+          points={points}
+          fill="none"
+          stroke={couleur}
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+      <div className="mt-1 flex justify-between text-legende text-encre-3">
+        <span>{premierJour ? formatDate(premierJour) : ''}</span>
+        <span className="chiffres">
+          plus bas {min.toFixed(2)} € · plus haut {max.toFixed(2)} €
+        </span>
+        <span>{dernierJour ? formatDate(dernierJour) : ''}</span>
+      </div>
+    </figure>
   )
 }
