@@ -349,7 +349,14 @@ export function EcranAdministration() {
                     method: 'POST',
                     headers: { authorization: `Bearer ${data.session?.access_token ?? ''}` },
                   })
-                    .then((r) => r.json() as Promise<{ importes?: number; erreurs?: string[] }>)
+                    .then(async (r) => {
+                      const texte = await r.text()
+                      try {
+                        return JSON.parse(texte) as { importes?: number; erreurs?: string[] }
+                      } catch {
+                        throw new Error(`serveur ${r.status}`)
+                      }
+                    })
                     .then((r) =>
                       confirmer(
                         `${r.importes ?? 0} événement(s) importé(s).${
@@ -357,7 +364,9 @@ export function EcranAdministration() {
                         }`,
                       ),
                     )
-                    .catch(() => confirmer('⚠️ Import impossible — vérifie le réseau et réessaie.'))
+                    .catch((e) =>
+                      confirmer(`⚠️ Import impossible (${e instanceof Error ? e.message : 'réseau'}) — réessaie.`),
+                    )
                     .finally(() => setImportEnCours(false)),
                 )
               }}

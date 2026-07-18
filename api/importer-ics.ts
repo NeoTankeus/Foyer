@@ -2,6 +2,10 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { importerIcs } from './_ics'
 
+// La lecture directe iCloud enchaîne plusieurs requêtes CalDAV : il faut
+// plus que les 10 s par défaut, sinon Vercel coupe en plein vol.
+export const config = { maxDuration: 60 }
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const base = process.env.VITE_SUPABASE_URL ?? ''
   const service = process.env.SUPABASE_SERVICE_ROLE ?? ''
