@@ -27,7 +27,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return
     }
     // Import dynamique : même une erreur de chargement du module remonte proprement.
-    const { importerIcs } = await import('./_ics')
+    const { importerIcs } = await import('./_ics.js')
     const resultat = await importerIcs(base, service)
     res.status(200).json(resultat)
   } catch (erreur) {

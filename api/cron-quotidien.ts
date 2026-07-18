@@ -3,7 +3,7 @@
 // 3. surveille les prix des cadeaux, 4. pousse le brief du matin en notification.
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import webpush from 'web-push'
-import { importerIcs } from './_ics'
+import { importerIcs } from './_ics.js'
 
 export const config = { maxDuration: 60 }
 

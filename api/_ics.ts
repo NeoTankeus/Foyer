@@ -2,7 +2,7 @@
 // 1. lien public ICS (webcal://…), 2. connexion directe iCloud (CalDAV,
 // identifiant Apple + mot de passe d'app — la seule voie pour « Famille »).
 // Partagé entre le cron quotidien et le bouton « Importer maintenant ».
-import { lireIcsDepuisIcloud } from './_caldav'
+import { lireIcsDepuisIcloud } from './_caldav.js'
 
 async function sb<T>(base: string, cle: string, chemin: string, options?: RequestInit): Promise<T> {
   const reponse = await fetch(`${base}/rest/v1/${chemin}`, {
