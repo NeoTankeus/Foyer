@@ -71,7 +71,7 @@ export function EcranAdministration() {
 
   const confirmer = (texte: string) => {
     setMessage(texte)
-    setTimeout(() => setMessage(null), 3000)
+    setTimeout(() => setMessage(null), 7000)
   }
 
   const enregistrerFoyer = async () => {
@@ -84,7 +84,15 @@ export function EcranAdministration() {
     <div className="flex flex-col gap-4 px-5 pt-3 pb-8">
       <BarreRetour vers="/nous" />
       <h2 className="text-titre-3 text-encre">🛠️ Administration</h2>
-      {message && <p className="text-note font-[590] text-fait">{message}</p>}
+      {message && (
+        <p
+          role="status"
+          className="au-dessus-onglets fixed inset-x-4 z-50 rounded-lg bg-encre px-4 py-3 text-center
+            text-note font-[590] text-fond shadow-feuille"
+        >
+          {message}
+        </p>
+      )}
 
       <Carte>
         <h3 className="mb-2 text-note font-[590] uppercase tracking-wide text-encre-3">Le foyer</h3>
@@ -225,14 +233,16 @@ export function EcranAdministration() {
                   },
                   statut: 'active', derniere_sync: null,
                 } as never).then(({ error }) => {
-                  if (!error) {
-                    setAppleId('')
-                    setMdpApp('')
-                    setMembresIcs([])
-                    confirmer('Connexion iCloud ajoutée — touche « Importer maintenant » pour tester.')
-                    void supabase.from('integrations').select('*').eq('fournisseur', 'icloud_caldav')
-                      .then(({ data }) => setCalendriers(data ?? []))
+                  if (error) {
+                    confirmer(`⚠️ Connexion refusée : ${error.message}`)
+                    return
                   }
+                  setAppleId('')
+                  setMdpApp('')
+                  setMembresIcs([])
+                  confirmer('✓ Connexion iCloud ajoutée — touche « Importer maintenant » pour tester.')
+                  void supabase.from('integrations').select('*').eq('fournisseur', 'icloud_caldav')
+                    .then(({ data }) => setCalendriers(data ?? []))
                 })
               }}
             >
@@ -309,13 +319,15 @@ export function EcranAdministration() {
                   reglages: { ics_url: urlIcs.trim(), membre_ids: membresIcs },
                   statut: 'active', derniere_sync: null,
                 } as never).then(({ error }) => {
-                  if (!error) {
-                    setUrlIcs('')
-                    setMembresIcs([])
-                    confirmer('Calendrier ajouté — import chaque matin.')
-                    void supabase.from('integrations').select('*').eq('fournisseur', 'icloud_caldav')
-                      .then(({ data }) => setCalendriers(data ?? []))
+                  if (error) {
+                    confirmer(`⚠️ Ajout refusé : ${error.message}`)
+                    return
                   }
+                  setUrlIcs('')
+                  setMembresIcs([])
+                  confirmer('✓ Calendrier ajouté — import chaque matin.')
+                  void supabase.from('integrations').select('*').eq('fournisseur', 'icloud_caldav')
+                    .then(({ data }) => setCalendriers(data ?? []))
                 })
               }}
             >
@@ -345,6 +357,7 @@ export function EcranAdministration() {
                         }`,
                       ),
                     )
+                    .catch(() => confirmer('⚠️ Import impossible — vérifie le réseau et réessaie.'))
                     .finally(() => setImportEnCours(false)),
                 )
               }}
