@@ -15,7 +15,7 @@ import {
 import { differenceInCalendarDays, maintenantLocal } from '@/lib/dates'
 import type { LigneDepense, LigneReservation } from '@/lib/basedonnees.types'
 import { compresserImage } from '@/fonctionnalites/souvenirs/donnees'
-import { decoderBillet, genererQr } from './billets'
+import { decoderBillet, genererCodeVisuel } from './billets'
 import { Coche } from '@/design/composants/Coche'
 import { couleurMembre } from '@/lib/couleurs'
 import { PastilleMembre } from '@/design/composants/PastilleMembre'
@@ -110,7 +110,7 @@ export function EcranVoyage() {
     setScanEnCours(true)
     try {
       const image = await compresserImage(fichier)
-      const decode = await decoderBillet(image)
+      const decode = await decoderBillet(fichier)
       const rid = crypto.randomUUID()
       await muter({
         table: 'reservations', type: 'insert', cible_id: rid,
@@ -132,8 +132,9 @@ export function EcranVoyage() {
     setQrRegenere(null)
     // On ne régénère un QR net que si le code d'origine était bien un QR —
     // un Aztec SNCF régénéré en QR ne passerait pas le portillon.
-    if (r.codes_acces && r.fournisseur?.includes('QR')) {
-      setQrRegenere(await genererQr(r.codes_acces))
+    const format = /\(([A-Z0-9_]+)\)/.exec(r.fournisseur ?? '')?.[1]
+    if (r.codes_acces && format) {
+      setQrRegenere(await genererCodeVisuel(r.codes_acces, format))
     }
   }
 

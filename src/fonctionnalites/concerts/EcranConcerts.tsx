@@ -9,7 +9,7 @@ import { lireAvecRepli } from '@/lib/lecture'
 import { utiliserSession } from '@/etat/session'
 import { differenceInCalendarDays, maintenantLocal } from '@/lib/dates'
 import { ajouterSouvenir, compresserImage } from '@/fonctionnalites/souvenirs/donnees'
-import { decoderBillet, genererQr } from '@/fonctionnalites/voyages/billets'
+import { decoderBillet, genererCodeVisuel } from '@/fonctionnalites/voyages/billets'
 import type { LigneConcert } from '@/lib/basedonnees.types'
 import { Bouton } from '@/design/composants/Bouton'
 import { Feuille } from '@/design/composants/Feuille'
@@ -55,18 +55,45 @@ export function EcranConcerts() {
   const rafraichir = () => clientRequetes.invalidateQueries({ queryKey: ['concerts'] })
   const estAdulte = membre?.role === 'adult'
 
+  const lireInfos = async (image: string) => {
+    try {
+      const { data: session } = await supabase.auth.getSession()
+      const reponse = await fetch('/api/analyser-photo', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${session.session?.access_token ?? ''}`,
+        },
+        body: JSON.stringify({ image }),
+      })
+      const donnees = (await reponse.json()) as {
+        proposition?: { evenement: { titre: string; date: string; heure: string | null; lieu: string | null } | null; resume?: string }
+      }
+      return donnees.proposition ?? null
+    } catch {
+      return null
+    }
+  }
+
   const scanner = async (fichiers: FileList | null) => {
     const fichier = fichiers?.[0]
     if (!fichier || !foyer) return
     setScanEnCours(true)
     try {
+      // Le code se décode sur l'image ORIGINALE (pleine résolution, multi-passes) ;
+      // la version compressée ne sert qu'au stockage et à la lecture des infos.
       const image = await compresserImage(fichier)
-      const decode = await decoderBillet(image)
+      const [decode, infos] = await Promise.all([decoderBillet(fichier), lireInfos(image)])
+      const evenement = infos?.evenement
+      const dateEvenement = evenement?.date
+        ? new Date(`${evenement.date}T${evenement.heure ?? '20:00'}:00`).toISOString()
+        : null
       const id = crypto.randomUUID()
       const nouveau: Record<string, unknown> = {
-        id, foyer_id: foyer.id, titre: 'Nouveau billet', lieu: null,
-        date_evenement: null, codes_acces: decode?.texte ?? null,
-        format: decode?.format ?? null, image_donnees: image, notes: null,
+        id, foyer_id: foyer.id, titre: evenement?.titre ?? 'Nouveau billet',
+        lieu: evenement?.lieu ?? null, date_evenement: dateEvenement,
+        codes_acces: decode?.texte ?? null, format: decode?.format ?? null,
+        image_donnees: image, notes: infos?.resume ?? null,
       }
       await muter({ table: 'concerts', type: 'insert', cible_id: id, charge: nouveau })
       await rafraichir()
@@ -79,8 +106,9 @@ export function EcranConcerts() {
   const ouvrir = async (c: LigneConcert) => {
     setOuvert(c)
     setQrRegenere(null)
-    if (c.codes_acces && c.format?.includes('QR')) {
-      setQrRegenere(await genererQr(c.codes_acces))
+    // Régénération dans le format d'origine : QR, Aztec SNCF, code-barres…
+    if (c.codes_acces && c.format) {
+      setQrRegenere(await genererCodeVisuel(c.codes_acces, c.format))
     }
   }
 
@@ -175,14 +203,38 @@ export function EcranConcerts() {
       <Feuille ouverte={ouvert !== null} onFermer={() => setOuvert(null)} titre={ouvert?.titre ?? 'Billet'}>
         {ouvert && (
           <div className="flex flex-col items-center gap-3">
-            {qrRegenere ? (
-              <>
-                <img src={qrRegenere} alt="QR code du billet" className="w-64 rounded-md bg-white p-2" />
-                <p className="text-legende text-encre-3">QR régénéré net — monte la luminosité à l’entrée.</p>
-              </>
-            ) : ouvert.image_donnees ? (
-              <img src={ouvert.image_donnees} alt="Billet scanné" className="w-full rounded-md" />
-            ) : null}
+            {/* La carte billet — dématérialisée, prête pour le scanner */}
+            <div className="w-full overflow-hidden rounded-2xl shadow-carte">
+              <div className="degrade-froid p-4 text-white">
+                <p className="text-note uppercase tracking-widest opacity-80">Billet</p>
+                <p className="text-titre-3 font-[700]">{ouvert.titre}</p>
+                <p className="chiffres text-corps-2 opacity-90">
+                  {ouvert.date_evenement
+                    ? new Date(ouvert.date_evenement).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })
+                    : 'date à préciser'}
+                </p>
+                {ouvert.lieu && <p className="text-note opacity-80">📍 {ouvert.lieu}</p>}
+              </div>
+              <div className="relative border-t-2 border-dashed border-trait bg-white p-4">
+                <span className="absolute -left-3 -top-3 h-6 w-6 rounded-full bg-fond" aria-hidden="true" />
+                <span className="absolute -right-3 -top-3 h-6 w-6 rounded-full bg-fond" aria-hidden="true" />
+                {qrRegenere ? (
+                  <div className="flex flex-col items-center gap-1">
+                    <img src={qrRegenere} alt="Code du billet, régénéré" className="max-h-64 w-auto max-w-full" />
+                    <p className="chiffres text-legende text-encre-3">
+                      {ouvert.format} — régénéré net, monte la luminosité à l’entrée
+                    </p>
+                  </div>
+                ) : ouvert.image_donnees ? (
+                  <div className="flex flex-col items-center gap-1">
+                    <img src={ouvert.image_donnees} alt="Billet scanné" className="w-full rounded-md" />
+                    <p className="text-legende text-encre-3">
+                      Code non détecté sur la photo — reprends-la bien à plat, sans reflet, le code plein cadre.
+                    </p>
+                  </div>
+                ) : null}
+              </div>
+            </div>
             <div className="flex w-full gap-2">
               <Bouton
                 variante="soleil"
