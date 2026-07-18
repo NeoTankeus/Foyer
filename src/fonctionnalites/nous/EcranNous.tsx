@@ -6,6 +6,7 @@ import { utiliserUi } from '@/etat/ui'
 import { baseLocale } from '@/lib/dexie'
 import { rejouerFileAttente } from '@/lib/sync'
 import { activerNotifications, etatAbonnement, notificationsPossibles } from '@/lib/notifications'
+import { verifierMiseAJour } from '@/lib/maj'
 import { PastilleMembre } from '@/design/composants/PastilleMembre'
 import { Bouton } from '@/design/composants/Bouton'
 import { Carte } from '@/design/composants/Carte'
@@ -25,6 +26,7 @@ export function EcranNous() {
   const [demandeCode, setDemandeCode] = useState(false)
   const [notifications, setNotifications] = useState<'active' | 'refuse' | 'inactif'>('inactif')
   const [code, setCode] = useState('')
+  const [etatMaj, setEtatMaj] = useState<'repos' | 'verifie' | 'installe' | 'a_jour' | 'indispo'>('repos')
 
   useEffect(() => {
     void baseLocale.file_attente.count().then(setEnAttente)
@@ -189,6 +191,41 @@ export function EcranNous() {
               )}
             </>
           )}
+        </Carte>
+
+        <Carte>
+          <h3 className="mb-1 text-note font-[590] uppercase tracking-wide text-encre-3">
+            ☁️ Mise à jour de l’app
+          </h3>
+          <p className="mb-2 text-corps-2 text-encre-2">
+            {etatMaj === 'installe'
+              ? 'Nouvelle version trouvée — installation… l’app va se recharger toute seule.'
+              : etatMaj === 'a_jour'
+                ? '✓ Tu as déjà la dernière version.'
+                : etatMaj === 'indispo'
+                  ? 'Vérification impossible ici — réessaie depuis l’app installée sur l’écran d’accueil.'
+                  : `Version du ${__DATE_VERSION__}. Les mises à jour s’installent toutes seules — ce bouton force la vérification tout de suite.`}
+          </p>
+          <Bouton
+            variante="valider"
+            desactive={etatMaj === 'verifie' || etatMaj === 'installe'}
+            onClick={() => {
+              setEtatMaj('verifie')
+              void verifierMiseAJour().then((resultat) => {
+                if (resultat === 'nouvelle') {
+                  setEtatMaj('installe')
+                  window.setTimeout(() => window.location.reload(), 8000)
+                } else if (resultat === 'a_jour') {
+                  setEtatMaj('a_jour')
+                  window.setTimeout(() => setEtatMaj('repos'), 4000)
+                } else {
+                  setEtatMaj('indispo')
+                }
+              })
+            }}
+          >
+            {etatMaj === 'verifie' ? 'Vérification…' : etatMaj === 'installe' ? 'Installation…' : '🔄 Rechercher une mise à jour'}
+          </Bouton>
         </Carte>
 
         {enAttente > 0 && (

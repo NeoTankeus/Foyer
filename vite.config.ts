@@ -4,6 +4,12 @@ import { VitePWA } from 'vite-plugin-pwa'
 import { fileURLToPath } from 'node:url'
 
 export default defineConfig({
+  // La date de compilation, affichée dans Menu → Mise à jour.
+  define: {
+    __DATE_VERSION__: JSON.stringify(
+      new Date().toLocaleString('fr-FR', { timeZone: 'Europe/Paris', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }),
+    ),
+  },
   plugins: [
     react(),
     VitePWA({
