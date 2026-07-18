@@ -7,6 +7,7 @@ import { EcranAujourdhui } from '@/fonctionnalites/aujourdhui/EcranAujourdhui'
 import { BoutonSas } from '@/fonctionnalites/sas/BoutonSas'
 import { EcranEnfant } from '@/fonctionnalites/enfant/EcranEnfant'
 import { GardeFou } from '@/design/composants/GardeFou'
+import { PopupNouveautes } from '@/design/composants/PopupNouveautes'
 
 // Aujourd'hui charge en premier ; le reste arrive en différé (< 1,5 s au premier écran utile).
 const paresseux = <T extends Record<string, unknown>>(
@@ -201,6 +202,7 @@ function Interieur() {
         </Suspense>
         <BoutonSas />
         <BarreOnglets />
+        <PopupNouveautes />
       </div>
     </BrowserRouter>
     </GardeFou>
