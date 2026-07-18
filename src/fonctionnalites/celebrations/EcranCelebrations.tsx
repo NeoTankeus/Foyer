@@ -1,5 +1,5 @@
 // Anniversaires & coffre à idées. Les idées sont invisibles au rôle enfant — RLS.
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { muter } from '@/lib/sync'
@@ -161,6 +161,9 @@ function CoffreAIdees({
   const [depliee, setDepliee] = useState<string | null>(null)
   const [confirmeSuppr, setConfirmeSuppr] = useState<string | null>(null)
   const [confirmeSupprCeleb, setConfirmeSupprCeleb] = useState(false)
+  const [noteBrouillon, setNoteBrouillon] = useState('')
+  const [erreurAjout, setErreurAjout] = useState<string | null>(null)
+  const dejaReleve = useRef(false)
 
   const analyserLien = async (url: string): Promise<{ titre: string | null; image: string | null; prix: number | null }> => {
     const { data: session } = await supabase.auth.getSession()
@@ -193,11 +196,14 @@ function CoffreAIdees({
           libelle: produit.titre ?? url.replace(/^https?:\/\//, '').slice(0, 60),
           note: null, prix: produit.prix, url, image_url: produit.image,
           historique_prix: produit.prix !== null ? [{ date: jour, prix: produit.prix }] : [],
-          offert: false, offert_le: null, cree_par: membre.id,
+          offert: false, offert_le: null, cree_par: membre.id, cree_le: new Date().toISOString(),
         },
       })
       setLien('')
+      setErreurAjout(null)
       await rafraichir()
+    } catch {
+      setErreurAjout('Impossible d’ajouter ce lien — vérifie l’adresse et le réseau, puis réessaie.')
     } finally {
       setAnalyseEnCours(false)
     }
@@ -262,9 +268,48 @@ function CoffreAIdees({
         if (error) throw error
         return data
       })
-      return lignes.filter((i) => i.celebration_id === celebration.id)
+      return lignes
+        .filter((i) => i.celebration_id === celebration.id)
+        .sort((a, b) => {
+          if (a.offert !== b.offert) return a.offert ? 1 : -1
+          return (b.cree_le ?? '').localeCompare(a.cree_le ?? '')
+        })
     },
   })
+
+  // À l'ouverture du coffre : on relève automatiquement les prix pas encore
+  // vérifiés aujourd'hui — la courbe se construit toute seule, jour après jour.
+  useEffect(() => {
+    if (dejaReleve.current) return
+    const liste = idees.data
+    if (!liste) return
+    dejaReleve.current = true
+    const jour = new Date().toISOString().slice(0, 10)
+    const enRetard = liste
+      .filter((i) => i.url && !i.offert)
+      .filter((i) => {
+        const h = i.historique_prix ?? []
+        return h[h.length - 1]?.date !== jour
+      })
+      .slice(0, 8)
+    if (enRetard.length === 0) return
+    void (async () => {
+      setMajEnCours(true)
+      try {
+        for (const i of enRetard) {
+          try {
+            await releverPrix(i)
+          } catch {
+            // page injoignable — on retentera au prochain passage
+          }
+        }
+        await rafraichir()
+      } finally {
+        setMajEnCours(false)
+      }
+    })()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [idees.data])
 
   return (
     <div className="flex flex-col gap-3">
@@ -281,20 +326,26 @@ function CoffreAIdees({
             table: 'idees_cadeaux', type: 'insert', cible_id: id,
             charge: {
               id, foyer_id: foyer.id, celebration_id: celebration.id, libelle: idee.trim(),
-              note: null, prix: null, offert: false, offert_le: null, cree_par: membre.id,
+              note: null, prix: null, offert: false, offert_le: null,
+              cree_par: membre.id, cree_le: new Date().toISOString(),
             },
-          }).then(rafraichir)
+          })
+            .then(() => {
+              setErreurAjout(null)
+              return rafraichir()
+            })
+            .catch(() => setErreurAjout('L’idée n’a pas pu être enregistrée — réessaie dans un instant.'))
           setIdee('')
         }}
       >
         <input
           value={idee}
           onChange={(e) => setIdee(e.target.value)}
-          placeholder="Il/elle a parlé de…"
+          placeholder="✏️ Noter une idée : « il/elle a parlé de… »"
           aria-label="Nouvelle idée cadeau"
           className="min-h-sur-tactile w-full min-w-0 flex-1 rounded-md border border-trait bg-fond-eleve px-3 text-corps"
         />
-        <Bouton type="submit" variante="discret">Noter</Bouton>
+        <Bouton type="submit" variante="discret" desactive={!idee.trim()}>Ajouter</Bouton>
       </form>
 
       <form
@@ -312,10 +363,11 @@ function CoffreAIdees({
           inputMode="url"
           className="min-h-sur-tactile w-full min-w-0 flex-1 rounded-md border border-trait bg-fond-eleve px-3 text-corps-2"
         />
-        <Bouton type="submit" variante="valider" desactive={analyseEnCours}>
+        <Bouton type="submit" variante="valider" desactive={analyseEnCours || !lien.trim()}>
           {analyseEnCours ? '…' : 'OK'}
         </Bouton>
       </form>
+      {erreurAjout && <p className="-mt-1 text-legende text-urgent">{erreurAjout}</p>}
       {(idees.data ?? []).some((i) => i.url) && (
         <>
           <Bouton variante="discret" pleineLargeur desactive={majEnCours} onClick={() => void actualiserPrix()}>
@@ -357,6 +409,7 @@ function CoffreAIdees({
                 <button
                   onClick={() => {
                     setConfirmeSuppr(null)
+                    setNoteBrouillon(i.note ?? '')
                     setDepliee(estDepliee ? null : i.id)
                   }}
                   aria-expanded={estDepliee}
@@ -366,7 +419,13 @@ function CoffreAIdees({
                     <span className={`block text-corps-2 ${i.offert ? 'text-encre-3 line-through' : 'text-encre'}`}>
                       {i.libelle}
                     </span>
-                    {site && <span className="block text-legende text-encre-3">{site}</span>}
+                    {(site || i.note) && (
+                      <span className="block text-legende text-encre-3">
+                        {site}
+                        {site && i.note ? ' · ' : ''}
+                        {i.note ? '📝' : ''}
+                      </span>
+                    )}
                   </span>
                   <span className="shrink-0 text-right">
                     {i.prix !== null ? (
@@ -399,13 +458,40 @@ function CoffreAIdees({
                     </p>
                   )}
 
+                  <div>
+                    <label htmlFor={`note-${i.id}`} className="mb-1 block text-legende font-[590] text-encre-3">
+                      📝 Note
+                    </label>
+                    <textarea
+                      id={`note-${i.id}`}
+                      value={noteBrouillon}
+                      onChange={(e) => setNoteBrouillon(e.target.value)}
+                      rows={2}
+                      placeholder="taille, couleur, où l’acheter, qui offre quoi…"
+                      className="w-full rounded-md border border-trait bg-fond-eleve px-3 py-2 text-corps-2 text-encre"
+                    />
+                    {noteBrouillon.trim() !== (i.note ?? '').trim() && (
+                      <Bouton
+                        variante="valider"
+                        onClick={() =>
+                          void muter({
+                            table: 'idees_cadeaux', type: 'update', cible_id: i.id,
+                            charge: { note: noteBrouillon.trim() || null },
+                          }).then(rafraichir)
+                        }
+                      >
+                        Enregistrer la note
+                      </Bouton>
+                    )}
+                  </div>
+
                   <div className="flex flex-wrap gap-2">
                     {i.url && (
                       <a
                         href={i.url}
                         target="_blank"
                         rel="noopener"
-                        className="btn-3d btn-ardoise min-h-sur-tactile inline-flex items-center px-5 py-2.5 text-center text-corps-2 leading-tight"
+                        className="btn-3d btn-ardoise min-h-sur-tactile inline-flex items-center justify-center px-4 py-2.5 text-center text-corps-2 leading-tight"
                       >
                         Voir {site ?? 'le site'} ↗
                       </a>
@@ -415,7 +501,7 @@ function CoffreAIdees({
                         href={`https://www.google.com/search?tbm=shop&q=${encodeURIComponent(i.libelle)}`}
                         target="_blank"
                         rel="noopener"
-                        className="btn-3d btn-clair min-h-sur-tactile inline-flex items-center px-5 py-2.5 text-center text-corps-2 leading-tight"
+                        className="btn-3d btn-clair min-h-sur-tactile inline-flex items-center justify-center px-4 py-2.5 text-center text-corps-2 leading-tight"
                       >
                         Comparer les prix
                       </a>

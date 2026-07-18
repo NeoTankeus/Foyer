@@ -40,7 +40,8 @@ export function Bouton({
       aria-label={etiquette}
       whileTap={{ scale: 0.98 }}
       transition={{ type: 'spring', stiffness: 400, damping: 32 }}
-      className={`min-h-sur-tactile min-w-sur-tactile shrink-0 px-5 py-2.5 text-center text-corps-2 leading-tight
+      className={`inline-flex min-h-sur-tactile min-w-sur-tactile shrink-0 items-center justify-center
+        px-4 py-2.5 text-center text-corps-2 leading-tight
         disabled:opacity-40 ${styles[variante]} ${pleineLargeur ? 'w-full' : ''}`}
     >
       {children}

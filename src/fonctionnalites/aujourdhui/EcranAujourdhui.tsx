@@ -21,18 +21,19 @@ import {
   maintenantLocal,
 } from '@/lib/dates'
 import { couleurMembre } from '@/lib/couleurs'
-import type { LigneTache } from '@/lib/basedonnees.types'
+import type { LigneIdeeCadeau, LigneTache } from '@/lib/basedonnees.types'
 import { LeFil } from './fil/LeFil'
 import { BriefGastif } from './BriefGastif'
 import { Coche } from '@/design/composants/Coche'
 import { Feuille } from '@/design/composants/Feuille'
 import { Bouton } from '@/design/composants/Bouton'
 
-type CleBloc = 'urgent' | 'brief' | 'agenda' | 'taches' | 'penser' | 'courses' | 'menus' | 'fil'
+type CleBloc = 'urgent' | 'brief' | 'prix' | 'agenda' | 'taches' | 'penser' | 'courses' | 'menus' | 'fil'
 
 const BLOCS: { cle: CleBloc; libelle: string }[] = [
   { cle: 'urgent', libelle: '🔴 Relances urgentes' },
   { cle: 'brief', libelle: 'ILY Le brief de Gastif' },
+  { cle: 'prix', libelle: '💸 Baisses de prix (cadeaux)' },
   { cle: 'agenda', libelle: '📅 La journée' },
   { cle: 'taches', libelle: '✅ À faire' },
   { cle: 'penser', libelle: '💡 À penser' },
@@ -42,7 +43,7 @@ const BLOCS: { cle: CleBloc; libelle: string }[] = [
 ]
 
 const DEFAUT: Record<CleBloc, boolean> = {
-  urgent: true, brief: true, agenda: true, taches: true,
+  urgent: true, brief: true, prix: true, agenda: true, taches: true,
   penser: true, courses: true, menus: true, fil: false,
 }
 
@@ -78,6 +79,27 @@ export function EcranAujourdhui() {
         .not('expire_le', 'is', null).lte('expire_le', limite).order('expire_le')
       if (error) return []
       return data
+    },
+    enabled: estAdulte,
+  })
+
+  // 💸 Les cadeaux suivis dont le prix est sous leur plus haut relevé.
+  const baissesPrix = useQuery({
+    queryKey: ['idees', 'baisses'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('idees_cadeaux').select('*').eq('offert', false).not('url', 'is', null)
+      if (error) return []
+      const bonsPlans: { idee: LigneIdeeCadeau; plusHaut: number }[] = []
+      for (const i of data) {
+        const valeurs = (i.historique_prix ?? []).map((h) => h.prix)
+        if (valeurs.length === 0 || i.prix === null) continue
+        const plusHaut = Math.max(...valeurs)
+        if (plusHaut - i.prix > 0.01) bonsPlans.push({ idee: i, plusHaut })
+      }
+      return bonsPlans.sort(
+        (a, b) => (b.plusHaut - (b.idee.prix ?? 0)) - (a.plusHaut - (a.idee.prix ?? 0)),
+      )
     },
     enabled: estAdulte,
   })
@@ -198,6 +220,37 @@ export function EcranAujourdhui() {
         {blocs.brief && (
           <section className="rounded-xl bg-fond-eleve p-4 shadow-carte">
             <BriefGastif evenements={evenements.data ?? []} taches={taches.data ?? []} />
+          </section>
+        )}
+
+        {/* 💸 Baisses de prix — les cadeaux suivis passés sous leur plus haut */}
+        {blocs.prix && estAdulte && (baissesPrix.data?.length ?? 0) > 0 && (
+          <section
+            className="rounded-xl p-4 text-white shadow-carte"
+            style={{ background: 'linear-gradient(135deg, var(--sauge), #4f7d5e)' }}
+          >
+            <button onClick={() => naviguer('/nous/celebrations')} className="flex w-full items-center justify-between text-left">
+              <h2 className="text-note font-[700] uppercase tracking-wide opacity-90">
+                💸 Baisses de prix — {baissesPrix.data?.length}
+              </h2>
+              <span aria-hidden="true">›</span>
+            </button>
+            {(baissesPrix.data ?? []).slice(0, 4).map(({ idee, plusHaut }) => (
+              <button
+                key={idee.id}
+                onClick={() => naviguer('/nous/celebrations')}
+                className="mt-1 block w-full text-left text-corps-2 font-[590]"
+              >
+                • {idee.libelle}{' '}
+                <span className="chiffres opacity-90">
+                  <s>{plusHaut.toFixed(2)} €</s> → {(idee.prix ?? 0).toFixed(2)} €
+                  {' '}(−{Math.round(((plusHaut - (idee.prix ?? 0)) / plusHaut) * 100)} %)
+                </span>
+              </button>
+            ))}
+            {(baissesPrix.data?.length ?? 0) > 4 && (
+              <p className="mt-1 text-legende opacity-90">et {(baissesPrix.data?.length ?? 0) - 4} de plus…</p>
+            )}
           </section>
         )}
 
