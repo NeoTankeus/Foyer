@@ -152,7 +152,9 @@ export async function importerIcs(base: string, cle: string): Promise<ResultatIm
         )
         brut = lecture.ics
       } else {
-        const url = integration.reglages.ics_url?.replace(/^webcal:\/\//, 'https://')
+        const url = integration.reglages.ics_url
+          ?.replace(/^webcal:\/\//, 'https://')
+          .replace(/[^\x21-\x7E]/g, '')
         if (!url) continue
         brut = await (await fetch(url)).text()
       }

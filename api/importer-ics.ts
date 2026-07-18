@@ -29,10 +29,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Import dynamique : même une erreur de chargement du module remonte proprement.
     const { importerIcs } = await import('./_ics.js')
     const resultat = await importerIcs(base, service)
-    res.status(200).json(resultat)
+    res.status(200).json({ ...resultat, version: 3 })
   } catch (erreur) {
     // Jamais de plantage muet : la cause exacte remonte jusqu'au téléphone.
     const detail = erreur instanceof Error ? `${erreur.message}` : String(erreur)
-    res.status(200).json({ importes: 0, erreurs: [detail.slice(0, 200)] })
+    res.status(200).json({ importes: 0, erreurs: [detail.slice(0, 200)], version: 3 })
   }
 }

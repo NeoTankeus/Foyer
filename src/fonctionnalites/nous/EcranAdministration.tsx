@@ -353,7 +353,7 @@ export function EcranAdministration() {
                     .then(async (r) => {
                       const texte = await r.text()
                       try {
-                        return JSON.parse(texte) as { importes?: number; erreurs?: string[] }
+                        return JSON.parse(texte) as { importes?: number; erreurs?: string[]; version?: number }
                       } catch {
                         throw new Error(`serveur ${r.status}`)
                       }
@@ -362,7 +362,7 @@ export function EcranAdministration() {
                       confirmer(
                         `${r.importes ?? 0} événement(s) importé(s).${
                           r.erreurs && r.erreurs.length > 0 ? ` ⚠️ ${r.erreurs[0]}` : ''
-                        }`,
+                        } · serveur v${r.version ?? '1'}`,
                       ),
                     )
                     .catch((e) =>
