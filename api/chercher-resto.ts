@@ -137,32 +137,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         res.status(200).json({ elements: [], erreur: 'position invalide' })
         return
       }
-      const requeteOsm = `[out:json][timeout:20];(node(around:${ra},${la},${lo})[amenity~"restaurant|bistro|brasserie"][name];way(around:${ra},${la},${lo})[amenity~"restaurant|bistro|brasserie"][name];);out center 80;`
+      // Toutes les sources sont interrogées EN MÊME TEMPS — la première qui
+      // répond avec des tables gagne. Fini l'attente en cascade.
+      const requeteOsm = `[out:json][timeout:10];(node(around:${ra},${la},${lo})[amenity~"restaurant|bistro|brasserie"][name];way(around:${ra},${la},${lo})[amenity~"restaurant|bistro|brasserie"][name];);out center 80;`
       const miroirs = [
         'https://overpass.kumi.systems/api/interpreter',
         'https://overpass.private.coffee/api/interpreter',
         'https://overpass-api.de/api/interpreter',
       ]
-      const motifs: string[] = []
-      for (const miroir of miroirs) {
-        try {
-          const r = await fetch(miroir, {
-            method: 'POST',
-            body: `data=${encodeURIComponent(requeteOsm)}`,
-            headers: { 'content-type': 'application/x-www-form-urlencoded', 'user-agent': UA },
-            signal: AbortSignal.timeout(12000),
-          })
-          if (r.ok) {
-            res.status(200).json(await r.json())
-            return
-          }
-          motifs.push(`${r.status}`)
-        } catch (e) {
-          motifs.push(String(e instanceof Error ? e.message : e).slice(0, 40))
-        }
-      }
-      // Plan C : Nominatim en zone délimitée — moins complet, jamais saturé.
-      try {
+      const viaOverpass = miroirs.map(async (miroir) => {
+        const r = await fetch(miroir, {
+          method: 'POST',
+          body: `data=${encodeURIComponent(requeteOsm)}`,
+          headers: { 'content-type': 'application/x-www-form-urlencoded', 'user-agent': UA },
+          signal: AbortSignal.timeout(12000),
+        })
+        if (!r.ok) throw new Error(`overpass ${r.status}`)
+        return (await r.json()) as { elements?: unknown[] }
+      })
+      const viaNominatim = (async () => {
         const dLat = ra / 111320
         const dLon = ra / (111320 * Math.cos((la * Math.PI) / 180))
         const viewbox = `${lo - dLon},${la + dLat},${lo + dLon},${la - dLat}`
@@ -170,45 +163,50 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           `https://nominatim.openstreetmap.org/search?q=restaurant&format=jsonv2&limit=50&bounded=1&viewbox=${viewbox}&extratags=1&accept-language=fr`,
           {
             headers: { accept: 'application/json', 'user-agent': 'StiGa-app-famille/1.0' },
-            signal: AbortSignal.timeout(15000),
+            signal: AbortSignal.timeout(12000),
           },
         )
-        if (r.ok) {
-          const liste = (await r.json()) as {
-            place_id: number
-            lat: string
-            lon: string
-            display_name: string
-            name?: string
-            extratags?: Record<string, string>
-          }[]
-          const elements = liste
-            .map((x) => {
-              const nom = x.name || x.display_name.split(',')[0] || ''
-              const cuisine = x.extratags?.['cuisine']
-              const phone = x.extratags?.['phone'] ?? x.extratags?.['contact:phone']
-              const website = x.extratags?.['website'] ?? x.extratags?.['contact:website']
-              return {
-                id: x.place_id,
-                lat: Number(x.lat),
-                lon: Number(x.lon),
-                tags: {
-                  name: nom,
-                  ...(cuisine ? { cuisine } : {}),
-                  ...(phone ? { phone } : {}),
-                  ...(website ? { website } : {}),
-                },
-              }
-            })
-            .filter((x) => x.tags.name)
-          res.status(200).json({ elements })
-          return
-        }
-        motifs.push(`nominatim ${r.status}`)
+        if (!r.ok) throw new Error(`nominatim ${r.status}`)
+        const liste = (await r.json()) as {
+          place_id: number
+          lat: string
+          lon: string
+          display_name: string
+          name?: string
+          extratags?: Record<string, string>
+        }[]
+        const elements = liste
+          .map((x) => {
+            const nomLieu = x.name || x.display_name.split(',')[0] || ''
+            const cuisine = x.extratags?.['cuisine']
+            const phone = x.extratags?.['phone'] ?? x.extratags?.['contact:phone']
+            const website = x.extratags?.['website'] ?? x.extratags?.['contact:website']
+            return {
+              id: x.place_id,
+              lat: Number(x.lat),
+              lon: Number(x.lon),
+              tags: {
+                name: nomLieu,
+                ...(cuisine ? { cuisine } : {}),
+                ...(phone ? { phone } : {}),
+                ...(website ? { website } : {}),
+              },
+            }
+          })
+          .filter((x) => x.tags.name)
+        // Vide = on laisse sa chance à Overpass (plus complet) plutôt que de gagner à tort.
+        if (elements.length === 0) throw new Error('nominatim vide')
+        return { elements }
+      })()
+      try {
+        const donnees = await Promise.any([...viaOverpass, viaNominatim])
+        res.status(200).json(donnees)
       } catch (e) {
-        motifs.push(`nominatim ${String(e instanceof Error ? e.message : e).slice(0, 40)}`)
+        const motifs = (e instanceof AggregateError ? e.errors : [e]).map((x) =>
+          String(x instanceof Error ? x.message : x).slice(0, 40),
+        )
+        res.status(200).json({ elements: [], erreur: `serveurs cartes : ${motifs.join(' / ')}` })
       }
-      res.status(200).json({ elements: [], erreur: `serveurs cartes : ${motifs.join(' / ')}` })
       return
     }
 

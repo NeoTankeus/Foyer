@@ -143,22 +143,17 @@ async function chercherAutour(lat: number, lon: number, rayonM: number): Promise
       clearTimeout(minuteur)
     }
   })
+  // Le relais StiGa part EN MÊME TEMPS que les appels directs : le premier
+  // qui répond gagne — plus aucune attente en cascade.
+  const relais = chercherAutourViaStiga(lat, lon, rayonM)
   let donnees: ReponseOverpass
   try {
-    donnees = await Promise.any(essais)
-    // Le plus rapide a répondu — on coupe les autres.
+    donnees = await Promise.any([...essais, relais])
     for (const c of controleurs) c.abort()
   } catch (e) {
-    // Safari bloque l'appel direct (« Load failed ») — le serveur de StiGa
-    // interroge les cartes à notre place.
-    try {
-      donnees = await chercherAutourViaStiga(lat, lon, rayonM)
-    } catch (relais) {
-      const premiere = e instanceof AggregateError ? e.errors[0] : e
-      const motifDirect = String(premiere instanceof Error ? premiere.message : premiere).slice(0, 50)
-      const motifRelais = String(relais instanceof Error ? relais.message : relais).slice(0, 50)
-      throw new Error(`direct : ${motifDirect} · relais StiGa : ${motifRelais}`)
-    }
+    const motifs = (e instanceof AggregateError ? e.errors : [e])
+      .map((x) => String(x instanceof Error ? x.message : x).slice(0, 60))
+    throw new Error(motifs.join(' · ').slice(0, 160))
   }
   const versRad = (d: number) => (d * Math.PI) / 180
   const distance = (la: number, lo: number) => {
@@ -295,8 +290,8 @@ export function EcranRestaurants() {
                   {r.favori ? '⭐' : '☆'}
                 </button>
                 <button onClick={() => setOuvert(r)} className="min-w-0 flex-1 py-1 text-left">
-                  <p className="truncate text-corps font-[590] text-encre">{r.nom}</p>
-                  <p className="truncate text-legende text-encre-3">
+                  <p className="break-words text-corps font-[590] leading-snug text-encre">{r.nom}</p>
+                  <p className="break-words text-legende text-encre-3">
                     {[r.ville, r.cuisine].filter(Boolean).join(' · ')}
                   </p>
                   {r.note !== null && <Etoiles note={r.note} />}
@@ -313,7 +308,7 @@ export function EcranRestaurants() {
       {vue === 'autour' && foyer && (
         <AutourDeMoi
           mesRestos={restaurants.data ?? []}
-          surAjout={async (decouvert) => {
+          surAjout={async (decouvert, favori = false) => {
             const id = crypto.randomUUID()
             await muter({
               table: 'restaurants', type: 'insert', cible_id: id,
@@ -321,7 +316,7 @@ export function EcranRestaurants() {
                 id, foyer_id: foyer.id, nom: decouvert.nom, ville: null, adresse: null,
                 latitude: decouvert.latitude, longitude: decouvert.longitude,
                 telephone: decouvert.telephone, site: decouvert.site, cuisine: decouvert.cuisine,
-                note: null, avis: null, favori: false, carte_photos: [],
+                note: null, avis: null, favori, carte_photos: [],
                 cree_le: new Date().toISOString(),
               },
             })
@@ -769,7 +764,7 @@ function AutourDeMoi({
   surAjout,
 }: {
   mesRestos: LigneRestaurant[]
-  surAjout: (r: RestoAutour) => Promise<void>
+  surAjout: (r: RestoAutour, favori?: boolean) => Promise<void>
 }) {
   const [rayon, setRayon] = useState(2000)
   const [etat, setEtat] = useState<'attente' | 'geoloc' | 'recherche' | 'pret' | 'erreur'>('attente')
@@ -780,6 +775,7 @@ function AutourDeMoi({
   const [ici, setIci] = useState<[number, number] | null>(null)
   const [gouts, setGouts] = useState(false)
   const [ajoutes, setAjoutes] = useState<Set<string>>(new Set())
+  const [favorisAjoutes, setFavorisAjoutes] = useState<Set<string>>(new Set())
   const [avisStiga, setAvisStiga] = useState<string | null>(null)
   const [reflechit, setReflechit] = useState(false)
 
@@ -848,7 +844,9 @@ function AutourDeMoi({
         setDiagnostic(detail)
         setEtat('erreur')
       },
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 },
+      // Précision « ville » suffit pour des restaurants — et une position
+      // d'il y a moins de 5 min est réutilisée telle quelle : réponse immédiate.
+      { enableHighAccuracy: false, timeout: 15000, maximumAge: 300000 },
     )
   }
 
@@ -925,10 +923,12 @@ function AutourDeMoi({
         />
       )}
       {etat === 'geoloc' && <p className="py-6 text-center text-corps-2 text-encre-3">📍 Localisation…</p>}
+      {/* La carte s'ouvre dès que la position est connue — les tables s'y épinglent à l'arrivée. */}
+      {ici && (etat === 'recherche' || etat === 'pret') && (
+        <CarteAutour ici={ici} resultats={visibles.slice(0, 30)} enGout={dansNosGouts} />
+      )}
       {etat === 'recherche' && (
-        <p className="py-6 text-center text-corps-2 text-encre-3">
-          🔎 Recherche des tables autour de toi… (jusqu’à ~20 s si les serveurs de cartes sont chargés)
-        </p>
+        <p className="py-2 text-center text-corps-2 text-encre-3">🔎 Les tables arrivent…</p>
       )}
       {etat === 'erreur' && (
         <div className="flex flex-col gap-3 rounded-xl bg-fond-sourd p-4">
@@ -976,9 +976,6 @@ function AutourDeMoi({
 
       {etat === 'pret' && (
         <>
-          {ici && (
-            <CarteAutour ici={ici} resultats={visibles.slice(0, 30)} enGout={dansNosGouts} />
-          )}
           {resultats.length === 0 ? (
             <EtatVide
               titre="Aucune table ici"
@@ -1005,15 +1002,28 @@ function AutourDeMoi({
               <li key={r.id} className="rounded-xl bg-fond-eleve p-3 shadow-carte">
                 <div className="flex items-center gap-2">
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-corps font-[590] text-encre">
+                    <p className="break-words text-corps font-[590] leading-snug text-encre">
                       {dansNosGouts(r) ? '💛 ' : ''}{r.nom}
                     </p>
-                    <p className="truncate text-legende text-encre-3">
+                    <p className="break-words text-legende text-encre-3">
                       {[r.cuisine, r.distanceM < 1000 ? `${r.distanceM} m` : `${(r.distanceM / 1000).toFixed(1)} km`]
                         .filter(Boolean)
                         .join(' · ')}
                     </p>
                   </div>
+                  <button
+                    aria-label={`Mettre ${r.nom} en favori`}
+                    disabled={ajoutes.has(r.id)}
+                    onClick={() => {
+                      navigator.vibrate?.(4)
+                      setFavorisAjoutes((s) => new Set(s).add(r.id))
+                      setAjoutes((s) => new Set(s).add(r.id))
+                      void surAjout(r, true)
+                    }}
+                    className="flex min-h-sur-tactile min-w-sur-tactile items-center justify-center rounded-full bg-fond-sourd text-[18px]"
+                  >
+                    {favorisAjoutes.has(r.id) ? '⭐' : '☆'}
+                  </button>
                   <a
                     href={`https://www.google.com/maps/dir/?api=1&destination=${r.latitude},${r.longitude}&travelmode=walking`}
                     target="_blank"
@@ -1030,7 +1040,7 @@ function AutourDeMoi({
                     aria-label={`Avis Google de ${r.nom}`}
                     className="flex min-h-sur-tactile min-w-sur-tactile items-center justify-center rounded-full bg-fond-sourd text-[16px]"
                   >
-                    ⭐
+                    💬
                   </a>
                   <Bouton
                     variante="discret"
