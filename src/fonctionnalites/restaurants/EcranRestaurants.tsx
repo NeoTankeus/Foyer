@@ -24,12 +24,10 @@ interface ResultatOsm {
   address?: Record<string, string>
 }
 
-/** Cherche le restaurant sur OpenStreetMap : adresse, GPS, téléphone, site. */
-async function chercherSurOsm(nom: string, ville: string): Promise<ResultatOsm | null> {
+async function chercherNominatim(q: string): Promise<ResultatOsm | null> {
   try {
-    const q = encodeURIComponent(`${nom} ${ville}`.trim())
     const reponse = await fetch(
-      `https://nominatim.openstreetmap.org/search?q=${q}&format=jsonv2&limit=1&extratags=1&addressdetails=1&accept-language=fr`,
+      `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=jsonv2&limit=3&extratags=1&addressdetails=1&accept-language=fr`,
       { headers: { accept: 'application/json' } },
     )
     if (!reponse.ok) return null
@@ -38,6 +36,45 @@ async function chercherSurOsm(nom: string, ville: string): Promise<ResultatOsm |
   } catch {
     return null
   }
+}
+
+/** Recherche floue (Photon) — tolère fautes de frappe et noms approximatifs. */
+async function chercherPhoton(q: string): Promise<ResultatOsm | null> {
+  try {
+    const reponse = await fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&limit=5&lang=fr`)
+    if (!reponse.ok) return null
+    const donnees = (await reponse.json()) as {
+      features?: { geometry?: { coordinates?: [number, number] }; properties?: Record<string, unknown> }[]
+    }
+    const lieux = donnees.features ?? []
+    const choisi =
+      lieux.find((f) =>
+        /restaurant|bistro|brasserie|cafe|fast_food|pub|bar/.test(String(f.properties?.['osm_value'] ?? '')),
+      ) ?? lieux[0]
+    const coords = choisi?.geometry?.coordinates
+    if (!choisi || !coords) return null
+    const p = choisi.properties ?? {}
+    const morceaux = [p['name'], p['street'], p['postcode'], p['city'], p['country']].filter(Boolean)
+    return {
+      display_name: morceaux.join(', '),
+      lat: String(coords[1]),
+      lon: String(coords[0]),
+      address: { city: String(p['city'] ?? '') },
+    }
+  } catch {
+    return null
+  }
+}
+
+/** Cherche le restaurant sur OpenStreetMap : adresse, GPS, téléphone, site.
+ *  Trois tentatives, de la plus précise à la plus tolérante. */
+async function chercherSurOsm(nom: string, ville: string): Promise<ResultatOsm | null> {
+  const complet = `${nom} ${ville}`.trim()
+  return (
+    (await chercherNominatim(complet)) ??
+    (await chercherNominatim(`restaurant ${complet}`)) ??
+    (await chercherPhoton(complet))
+  )
 }
 
 interface RestoAutour {
@@ -51,22 +88,25 @@ interface RestoAutour {
   distanceM: number
 }
 
-// Les serveurs Overpass (OpenStreetMap) — le premier est souvent saturé,
-// on essaie chaque miroir à tour de rôle jusqu'à obtenir une réponse.
+// Les serveurs Overpass (OpenStreetMap) — souvent saturés un par un,
+// alors on les interroge TOUS EN MÊME TEMPS : le plus rapide gagne.
 const MIROIRS_OVERPASS = [
   'https://overpass-api.de/api/interpreter',
   'https://overpass.kumi.systems/api/interpreter',
   'https://overpass.private.coffee/api/interpreter',
 ]
 
+interface ReponseOverpass {
+  elements?: { id: number; lat?: number; lon?: number; center?: { lat: number; lon: number }; tags?: Record<string, string> }[]
+}
+
 /** Les restaurants autour d'un point (Overpass / OpenStreetMap, gratuit). */
 async function chercherAutour(lat: number, lon: number, rayonM: number): Promise<RestoAutour[]> {
-  const requete = `[out:json][timeout:15];(node(around:${rayonM},${lat},${lon})[amenity~"restaurant|bistro|brasserie"][name];way(around:${rayonM},${lat},${lon})[amenity~"restaurant|bistro|brasserie"][name];);out center 80;`
-  let reponse: Response | null = null
-  let derniereErreur = 'aucun serveur joignable'
-  for (const miroir of MIROIRS_OVERPASS) {
-    const coupure = new AbortController()
-    const minuteur = setTimeout(() => coupure.abort(), 20000)
+  const requete = `[out:json][timeout:20];(node(around:${rayonM},${lat},${lon})[amenity~"restaurant|bistro|brasserie"][name];way(around:${rayonM},${lat},${lon})[amenity~"restaurant|bistro|brasserie"][name];);out center 80;`
+  const controleurs = MIROIRS_OVERPASS.map(() => new AbortController())
+  const essais = MIROIRS_OVERPASS.map(async (miroir, i) => {
+    const coupure = controleurs[i]!
+    const minuteur = setTimeout(() => coupure.abort(), 25000)
     try {
       const essai = await fetch(miroir, {
         method: 'POST',
@@ -74,23 +114,27 @@ async function chercherAutour(lat: number, lon: number, rayonM: number): Promise
         headers: { 'content-type': 'application/x-www-form-urlencoded' },
         signal: coupure.signal,
       })
-      if (essai.ok) {
-        reponse = essai
-        break
-      }
-      derniereErreur = `serveur cartes : ${essai.status}`
+      if (!essai.ok) throw new Error(`serveur cartes : ${essai.status}`)
+      return (await essai.json()) as ReponseOverpass
     } catch (e) {
-      derniereErreur = coupure.signal.aborted
-        ? 'serveur cartes trop lent (20 s)'
-        : `serveur cartes injoignable (${String(e instanceof Error ? e.message : e).slice(0, 60)})`
+      throw new Error(
+        coupure.signal.aborted
+          ? 'serveur cartes trop lent (25 s)'
+          : String(e instanceof Error ? e.message : e).slice(0, 70),
+      )
     } finally {
       clearTimeout(minuteur)
     }
+  })
+  let donnees: ReponseOverpass
+  try {
+    donnees = await Promise.any(essais)
+  } catch (e) {
+    const premiere = e instanceof AggregateError ? e.errors[0] : e
+    throw new Error(String(premiere instanceof Error ? premiere.message : 'aucun serveur cartes joignable'))
   }
-  if (!reponse) throw new Error(derniereErreur)
-  const donnees = (await reponse.json()) as {
-    elements?: { id: number; lat?: number; lon?: number; center?: { lat: number; lon: number }; tags?: Record<string, string> }[]
-  }
+  // Le plus rapide a répondu — on coupe les autres.
+  for (const c of controleurs) c.abort()
   const versRad = (d: number) => (d * Math.PI) / 180
   const distance = (la: number, lo: number) => {
     const R = 6371000
@@ -355,6 +399,7 @@ function FicheRestaurant({
   const [choixCarte, setChoixCarte] = useState(false)
   const [photoEnCours, setPhotoEnCours] = useState(false)
   const [localisation, setLocalisation] = useState<'repos' | 'en-cours' | 'echec'>('repos')
+  const [adresseManuelle, setAdresseManuelle] = useState('')
   const [pageTheFork, setPageTheFork] = useState<string | null | 'cherche'>('cherche')
   const [pageMenu, setPageMenu] = useState<string | null>(null)
 
@@ -410,6 +455,23 @@ function FicheRestaurant({
     }
   }
 
+  // Dernier recours : l'adresse postale tapée à la main, toujours localisable.
+  const localiserParAdresse = async () => {
+    if (!adresseManuelle.trim()) return
+    setLocalisation('en-cours')
+    const osm = (await chercherNominatim(adresseManuelle)) ?? (await chercherPhoton(adresseManuelle))
+    if (osm) {
+      await surMaj({
+        latitude: Number(osm.lat),
+        longitude: Number(osm.lon),
+        adresse: adresseManuelle.trim(),
+      })
+      setLocalisation('repos')
+    } else {
+      setLocalisation('echec')
+    }
+  }
+
   const q = encodeURIComponent(`${resto.nom} ${resto.ville ?? ''}`.trim())
 
   const ajouterPhotoCarte = async (fichier: File) => {
@@ -445,10 +507,29 @@ function FicheRestaurant({
             {localisation === 'en-cours' ? 'Localisation…' : '📍 Localiser sur la carte (par l’adresse)'}
           </Bouton>
           {localisation === 'echec' && (
-            <p className="mt-1 text-legende text-encre-3">
-              Adresse introuvable — précise la ville dans le nom (ex. « Chez Louise Lille ») et réessaie,
-              ou ajoute-le depuis « Autour de moi » (position exacte garantie).
-            </p>
+            <div className="mt-2 flex flex-col gap-2">
+              <p className="text-legende text-encre-3">
+                Introuvable par le nom — colle son adresse postale complète, ça marche à tous les coups :
+              </p>
+              <form
+                className="flex gap-2"
+                onSubmit={(e) => {
+                  e.preventDefault()
+                  void localiserParAdresse()
+                }}
+              >
+                <input
+                  value={adresseManuelle}
+                  onChange={(e) => setAdresseManuelle(e.target.value)}
+                  placeholder="12 rue de la Paix, 75002 Paris"
+                  aria-label="Adresse du restaurant"
+                  className="min-h-sur-tactile w-full min-w-0 flex-1 rounded-md border border-trait bg-fond-eleve px-3 text-corps-2"
+                />
+                <Bouton type="submit" variante="valider" desactive={!adresseManuelle.trim()}>
+                  📍
+                </Bouton>
+              </form>
+            </div>
           )}
         </div>
       )}
@@ -819,7 +900,11 @@ function AutourDeMoi({
         />
       )}
       {etat === 'geoloc' && <p className="py-6 text-center text-corps-2 text-encre-3">📍 Localisation…</p>}
-      {etat === 'recherche' && <p className="py-6 text-center text-corps-2 text-encre-3">🔎 Recherche des tables autour de toi…</p>}
+      {etat === 'recherche' && (
+        <p className="py-6 text-center text-corps-2 text-encre-3">
+          🔎 Recherche des tables autour de toi… (jusqu’à ~20 s si les serveurs de cartes sont chargés)
+        </p>
+      )}
       {etat === 'erreur' && (
         <div className="flex flex-col gap-3 rounded-xl bg-fond-sourd p-4">
           {refusPosition ? (
@@ -869,10 +954,17 @@ function AutourDeMoi({
           {ici && (
             <CarteAutour ici={ici} resultats={visibles.slice(0, 30)} enGout={dansNosGouts} />
           )}
-          <p className="text-legende text-encre-3">
-            {visibles.length} table{visibles.length > 1 ? 's' : ''} trouvée{visibles.length > 1 ? 's' : ''}
-            {cuisinesAimees.length > 0 ? ` — vos goûts : ${cuisinesAimees.slice(0, 4).join(', ')}` : ''}
-          </p>
+          {resultats.length === 0 ? (
+            <EtatVide
+              titre="Aucune table ici"
+              message="Le serveur de cartes n’a rien trouvé dans ce rayon — élargis à 2 ou 10 km, ou réessaie dans un instant."
+            />
+          ) : (
+            <p className="text-legende text-encre-3">
+              {visibles.length} table{visibles.length > 1 ? 's' : ''} trouvée{visibles.length > 1 ? 's' : ''}
+              {cuisinesAimees.length > 0 ? ` — vos goûts : ${cuisinesAimees.slice(0, 4).join(', ')}` : ''}
+            </p>
+          )}
           {resultats.length > 0 && (
             <Bouton pleineLargeur variante="primaire" desactive={reflechit} onClick={() => void demanderAvis()}>
               {reflechit ? 'StiGa réfléchit…' : '✨ StiGa, recommande-moi les bonnes tables'}
