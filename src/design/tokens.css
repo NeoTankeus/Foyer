@@ -134,6 +134,16 @@ body::before {
     radial-gradient(55% 40% at 50% 100%, color-mix(in srgb, var(--sauge) 8%, transparent), transparent);
 }
 
+/* Le trait rouge du scanner (façon Yuka) : il balaie de haut en bas */
+.scan-ligne {
+  box-shadow: 0 0 12px rgb(230 62 17 / 0.8);
+  animation: scan-balayage 1.8s ease-in-out infinite;
+}
+@keyframes scan-balayage {
+  0%, 100% { top: 12%; }
+  50% { top: 86%; }
+}
+
 /* Bouton 3D : relief, lumière en haut, socle en bas, il s'enfonce quand on appuie */
 .btn-3d {
   position: relative;

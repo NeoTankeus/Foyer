@@ -9,6 +9,7 @@ import { utiliserSession } from '@/etat/session'
 import { decoderBillet } from '@/fonctionnalites/voyages/billets'
 import { ficheParCodeBarres } from '@/lib/openfoodfacts'
 import type { LigneInventaire } from '@/lib/basedonnees.types'
+import { ScannerYuka } from '@/fonctionnalites/courses/ScannerYuka'
 import { Bouton } from '@/design/composants/Bouton'
 import { ChampTexte } from '@/design/composants/ChampTexte'
 import { Feuille } from '@/design/composants/Feuille'
@@ -26,6 +27,7 @@ export function EcranInventaire() {
   const clientRequetes = useQueryClient()
   const [zone, setZone] = useState('congelo')
   const [ajoutOuvert, setAjoutOuvert] = useState(false)
+  const [scannerOuvert, setScannerOuvert] = useState(false)
   const [scanEnCours, setScanEnCours] = useState(false)
   const [nom, setNom] = useState('')
   const [dlc, setDlc] = useState('')
@@ -98,10 +100,13 @@ export function EcranInventaire() {
   return (
     <div className="px-5 pb-6 pt-3">
       <BarreRetour vers="/nous" />
-      <div className="flex items-center justify-between gap-3 pb-1">
-        <h2 className="text-titre-3 text-encre">🧊 Placards & congélo</h2>
+      <div className="flex items-center justify-between gap-2 pb-1">
+        <h2 className="min-w-0 flex-1 truncate text-titre-3 text-encre">🧊 Placards & congélo</h2>
+        <Bouton variante="primaire" onClick={() => setScannerOuvert(true)} etiquette="Scanner un produit">📷</Bouton>
         <Bouton variante="valider" onClick={() => setAjoutOuvert(true)} etiquette="Ajouter un produit">+</Bouton>
       </div>
+
+      <ScannerYuka ouverte={scannerOuvert} onFermer={() => setScannerOuvert(false)} onAjout={() => void rafraichir()} />
       <p className="pb-3 text-note text-encre-3">
         Scanne à l’entrée, décompte à la sortie — les DLC proches remontent toutes seules.
       </p>

@@ -330,6 +330,7 @@ export async function ajouterArticle(
   membreId: string,
   libelle: string,
   rayon: string,
+  imageConnue?: string,
 ) {
   const id = crypto.randomUUID()
   await muter({
@@ -346,17 +347,20 @@ export async function ajouterArticle(
       ajoute_par: membreId,
       quantite: null,
       unite: null,
+      ...(imageConnue ? { image_url: imageConnue } : {}),
     },
   })
   notifierCoursesAvecReserve(await prenomDe(membreId))
-  // Visuel automatique : une image internet arrive toute seule sur l'article.
-  void import('./images')
-    .then(({ chercherVisuels }) => chercherVisuels([libelle]))
-    .then((images) => {
-      const image = images[libelle]
-      if (image) return muter({ table: 'articles', type: 'update', cible_id: id, charge: { image_url: image } })
-    })
-    .catch(() => undefined)
+  // Visuel automatique si on n'en a pas déjà un (scan → photo officielle du produit).
+  if (!imageConnue) {
+    void import('./images')
+      .then(({ chercherVisuels }) => chercherVisuels([libelle]))
+      .then((images) => {
+        const image = images[libelle]
+        if (image) return muter({ table: 'articles', type: 'update', cible_id: id, charge: { image_url: image } })
+      })
+      .catch(() => undefined)
+  }
 }
 
 export async function basculerArticle(article: LigneArticle, membreId: string) {
