@@ -1,5 +1,5 @@
 // 💌 Les Capsules temporelles : un mot ou une photo d'aujourd'hui, scellé
-// jusqu'à la date choisie. StiGa le garde secret et prévient le jour J.
+// jusqu'à la date choisie. STG le garde secret et prévient le jour J.
 // « Message de Stéphane pour les 10 ans de Gabriel »… frissons garantis.
 import { useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -91,7 +91,7 @@ export function EcranCapsules() {
         {!capsules.isLoading && toutes.length === 0 && (
           <EtatVide
             titre="Aucune capsule"
-            message="Écris un mot pour les 10 ans de Gabriel, votre prochain anniversaire de mariage, le réveillon… StiGa le garde secret et le délivre le jour J."
+            message="Écris un mot pour les 10 ans de Gabriel, votre prochain anniversaire de mariage, le réveillon… STG le garde secret et le délivre le jour J."
           />
         )}
 

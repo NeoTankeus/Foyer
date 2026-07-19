@@ -1,6 +1,6 @@
 // 🩺 Le Carnet santé famille : vaccins, ordonnances photographiées, mesures
 // (taille/poids), notes — par personne, avec rappels automatiques poussés
-// par StiGa (« rappel vaccin dans 3 semaines »). Tout sous la main chez le
+// par STG (« rappel vaccin dans 3 semaines »). Tout sous la main chez le
 // médecin. Adultes uniquement.
 import { useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -107,7 +107,7 @@ export function EcranSante() {
                 {new Date(`${r.rappel_le}T12:00:00`).toLocaleDateString('fr-FR')} — {r.personne} : {r.libelle}
               </p>
             ))}
-            <p className="mt-1 text-legende text-encre-3">StiGa enverra une notification le jour même.</p>
+            <p className="mt-1 text-legende text-encre-3">STG enverra une notification le jour même.</p>
           </Carte>
         )}
 

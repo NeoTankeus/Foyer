@@ -100,7 +100,7 @@ interface ReponseOverpass {
   elements?: { id: number; lat?: number; lon?: number; center?: { lat: number; lon: number }; tags?: Record<string, string> }[]
 }
 
-/** Le serveur de StiGa interroge les cartes à notre place (contourne Safari). */
+/** Le serveur de STG interroge les cartes à notre place (contourne Safari). */
 async function chercherAutourViaStiga(lat: number, lon: number, rayonM: number): Promise<ReponseOverpass> {
   const { data: session } = await supabase.auth.getSession()
   const reponse = await fetch('/api/chercher-resto', {
@@ -143,7 +143,7 @@ async function chercherAutour(lat: number, lon: number, rayonM: number): Promise
       clearTimeout(minuteur)
     }
   })
-  // Le relais StiGa part EN MÊME TEMPS que les appels directs : le premier
+  // Le relais STG part EN MÊME TEMPS que les appels directs : le premier
   // qui répond gagne — plus aucune attente en cascade.
   const relais = chercherAutourViaStiga(lat, lon, rayonM)
   let donnees: ReponseOverpass
@@ -875,7 +875,7 @@ function AutourDeMoi({
         body: JSON.stringify({ messages: [{ role: 'utilisateur', texte: question }], contexte: '', role_membre: 'adult' }),
       })
       const donnees = (await reponse.json()) as { reponse?: string; message?: string }
-      setAvisStiga(donnees.reponse ?? donnees.message ?? 'StiGa n’a pas répondu — réessaie.')
+      setAvisStiga(donnees.reponse ?? donnees.message ?? 'STG n’a pas répondu — réessaie.')
     } catch {
       setAvisStiga('Pas de réseau — réessaie.')
     } finally {
@@ -919,7 +919,7 @@ function AutourDeMoi({
       {etat === 'attente' && (
         <EtatVide
           titre="Où es-tu ?"
-          message="Choisis un rayon — l’iPhone te demandera alors l’autorisation de position : accepte, et StiGa cherche les tables autour de toi."
+          message="Choisis un rayon — l’iPhone te demandera alors l’autorisation de position : accepte, et STG cherche les tables autour de toi."
         />
       )}
       {etat === 'geoloc' && <p className="py-6 text-center text-corps-2 text-encre-3">📍 Localisation…</p>}
@@ -934,7 +934,7 @@ function AutourDeMoi({
         <div className="flex flex-col gap-3 rounded-xl bg-fond-sourd p-4">
           {refusPosition ? (
             <>
-              <p className="text-corps-2 font-[590] text-encre">📍 L’iPhone bloque la position de StiGa.</p>
+              <p className="text-corps-2 font-[590] text-encre">📍 L’iPhone bloque la position de STG.</p>
               <ol className="list-decimal space-y-1 pl-5 text-corps-2 text-encre-2">
                 <li>
                   <strong>Réglages → Confidentialité et sécurité → Service de localisation</strong> : vérifie
@@ -947,15 +947,15 @@ function AutourDeMoi({
                   <strong> « Demander »</strong> (surtout pas « Refuser »).
                 </li>
                 <li>
-                  <strong>Ferme complètement StiGa</strong> (balaye vers le haut depuis le bas de l’écran, puis
-                  pousse StiGa vers le haut) et <strong>rouvre-la</strong> — puis touche « Réessayer » et accepte la
+                  <strong>Ferme complètement STG</strong> (balaye vers le haut depuis le bas de l’écran, puis
+                  pousse STG vers le haut) et <strong>rouvre-la</strong> — puis touche « Réessayer » et accepte la
                   demande.
                 </li>
               </ol>
               {essais >= 2 && (
                 <p className="rounded-lg bg-ambre/15 p-3 text-corps-2 text-encre-2">
-                  Toujours rien après tout ça ? L’iPhone a mémorisé un vieux « non » pour StiGa. Dernier recours :
-                  supprime l’icône StiGa de l’écran d’accueil, rouvre le site dans Safari et refais « Ajouter à
+                  Toujours rien après tout ça ? L’iPhone a mémorisé un vieux « non » pour STG. Dernier recours :
+                  supprime l’icône STG de l’écran d’accueil, rouvre le site dans Safari et refais « Ajouter à
                   l’écran d’accueil » — toutes tes données sont dans le nuage, tu ne perds rien.
                 </p>
               )}
@@ -966,7 +966,7 @@ function AutourDeMoi({
             </p>
           )}
           {diagnostic && (
-            <p className="text-legende text-encre-3">Diagnostic pour StiGa : {diagnostic}</p>
+            <p className="text-legende text-encre-3">Diagnostic pour STG : {diagnostic}</p>
           )}
           <Bouton pleineLargeur variante="primaire" onClick={() => lancer(rayon)}>
             📍 Réessayer
@@ -989,7 +989,7 @@ function AutourDeMoi({
           )}
           {resultats.length > 0 && (
             <Bouton pleineLargeur variante="primaire" desactive={reflechit} onClick={() => void demanderAvis()}>
-              {reflechit ? 'StiGa réfléchit…' : '✨ StiGa, recommande-moi les bonnes tables'}
+              {reflechit ? 'STG réfléchit…' : '✨ STG, recommande-moi les bonnes tables'}
             </Bouton>
           )}
           {avisStiga && (

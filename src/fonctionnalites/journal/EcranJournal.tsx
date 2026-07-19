@@ -1,4 +1,4 @@
-// 📔 Le Journal du Foyer : chaque jour, StiGa compile tout seul ce qui s'est
+// 📔 Le Journal du Foyer : chaque jour, STG compile tout seul ce qui s'est
 // passé (repas, photos, mur, restos, tâches, sorties…) — et la vue Année
 // raconte votre année sans que personne n'ait rien rédigé.
 import { useState } from 'react'
@@ -138,7 +138,7 @@ export function EcranJournal() {
               </button>
             </div>
 
-            {duJour.isLoading && <p className="py-6 text-center text-corps-2 text-encre-3">StiGa feuillette le journal…</p>}
+            {duJour.isLoading && <p className="py-6 text-center text-corps-2 text-encre-3">STG feuillette le journal…</p>}
             {duJour.isError && <p className="py-6 text-center text-corps-2 text-encre-3">Le journal a besoin de réseau pour se relire.</p>}
             {vide && <EtatVide titre="Page blanche" message="Rien d'enregistré ce jour-là — c'était peut-être un dimanche parfait à ne rien faire." />}
 
@@ -223,7 +223,7 @@ export function EcranJournal() {
 
         {vue === 'annee' && (
           <>
-            {deLAnnee.isLoading && <p className="py-6 text-center text-corps-2 text-encre-3">StiGa relit votre année…</p>}
+            {deLAnnee.isLoading && <p className="py-6 text-center text-corps-2 text-encre-3">STG relit votre année…</p>}
             {deLAnnee.data && (
               <>
                 <div className="grid grid-cols-2 gap-2">
@@ -258,7 +258,7 @@ export function EcranJournal() {
                   </>
                 )}
                 <p className="text-legende text-encre-3">
-                  Le Journal s'écrit tout seul : tout ce que vous faites dans StiGa devient une page. Au 31 décembre, cette vue devient votre rétrospective.
+                  Le Journal s'écrit tout seul : tout ce que vous faites dans STG devient une page. Au 31 décembre, cette vue devient votre rétrospective.
                 </p>
               </>
             )}

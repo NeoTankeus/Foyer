@@ -247,7 +247,7 @@ export function EcranVoyage() {
     await clientRequetes.invalidateQueries({ queryKey: ['voyages'] })
   }
 
-  // « Une liste par ligne » renvoyée par StiGa → éléments propres et dédupliqués.
+  // « Une liste par ligne » renvoyée par STG → éléments propres et dédupliqués.
   const lignesDeListe = (texte: string, dejaLa: string[]): string[] => {
     const connus = new Set(dejaLa.map((x) => x.toLowerCase()))
     return texte
@@ -258,7 +258,7 @@ export function EcranVoyage() {
       .slice(0, 20)
   }
 
-  // ✨ StiGa remplit la valise du membre actif selon la destination et la météo.
+  // ✨ STG remplit la valise du membre actif selon la destination et la météo.
   const remplirValiseIA = async () => {
     if (!voyage) return
     setValiseIA(true)
@@ -293,7 +293,7 @@ export function EcranVoyage() {
     }
   }
 
-  // ✨ StiGa propose la checklist avant-départ (maison + anti-gaspi frigo).
+  // ✨ STG propose la checklist avant-départ (maison + anti-gaspi frigo).
   const proposerChecklistIA = async () => {
     if (!voyage) return
     setChecklistIA(true)
@@ -431,8 +431,8 @@ export function EcranVoyage() {
         <div className="mt-2">
           <Bouton pleineLargeur variante="soleil" desactive={valiseIA} onClick={() => void remplirValiseIA()}>
             {valiseIA
-              ? 'StiGa fait la valise…'
-              : `✨ StiGa remplit la valise de ${filants.find((m) => m.id === membreActif)?.prenom ?? ''} (selon la météo)`}
+              ? 'STG fait la valise…'
+              : `✨ STG remplit la valise de ${filants.find((m) => m.id === membreActif)?.prenom ?? ''} (selon la météo)`}
           </Bouton>
         </div>
       </section>
@@ -608,7 +608,7 @@ export function EcranVoyage() {
         </form>
         <div className="mt-2">
           <Bouton pleineLargeur variante="soleil" desactive={checklistIA} onClick={() => void proposerChecklistIA()}>
-            {checklistIA ? 'StiGa fait le tour de la maison…' : '✨ StiGa propose la checklist avant-départ'}
+            {checklistIA ? 'STG fait le tour de la maison…' : '✨ STG propose la checklist avant-départ'}
           </Bouton>
         </div>
       </section>

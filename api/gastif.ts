@@ -1,10 +1,10 @@
-// Le cerveau de StiGa — fonction serveur Vercel (Edge).
+// Le cerveau de STG — fonction serveur Vercel (Edge).
 // La clé Gemini vit dans les variables d'environnement Vercel, jamais dans le navigateur.
 // Modèle : Gemini 2.0 Flash (palier gratuit Google AI Studio).
 
 export const config = { runtime: 'edge' }
 
-const IDENTITE = `Tu es StiGa, l'intendant du foyer de la famille : Tiphaine (adulte), Stéphane (adulte) et Gabriel (enfant, né le 27/06/2019).
+const IDENTITE = `Tu es STG, l'intendant du foyer de la famille : Tiphaine (adulte), Stéphane (adulte) et Gabriel (enfant, né le 27/06/2019).
 
 Ta personnalité, non négociable :
 - Tu tutoies. Toujours. Tu réponds en français.

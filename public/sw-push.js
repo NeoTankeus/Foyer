@@ -1,5 +1,5 @@
 // Réception des notifications push (brief du matin, colis livré, baisse de prix…)
-// + pastille rouge sur l'icône StiGa (iOS 16.4+) : chaque push l'incrémente,
+// + pastille rouge sur l'icône STG (iOS 16.4+) : chaque push l'incrémente,
 // l'app remet le vrai compte à l'ouverture.
 
 const BADGE_DB = 'stiga-badge'
@@ -41,7 +41,7 @@ function ecrireCompteur(n) {
 }
 
 self.addEventListener('push', (evenement) => {
-  let donnees = { titre: 'StiGa', corps: '' }
+  let donnees = { titre: 'STG', corps: '' }
   try {
     donnees = evenement.data.json()
   } catch {
@@ -49,7 +49,7 @@ self.addEventListener('push', (evenement) => {
   }
   evenement.waitUntil(
     (async () => {
-      await self.registration.showNotification(donnees.titre || 'StiGa', {
+      await self.registration.showNotification(donnees.titre || 'STG', {
         body: donnees.corps || '',
         icon: '/icones/icone-192.png',
         badge: '/icones/icone-192.png',

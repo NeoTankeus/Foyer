@@ -1,4 +1,4 @@
-// Poser une question à StiGa (Gemini via /api/gastif) depuis n'importe quel
+// Poser une question à STG (Gemini via /api/gastif) depuis n'importe quel
 // écran — hors conversation : une question, une réponse texte.
 import { supabase } from './supabase'
 
@@ -18,7 +18,7 @@ export async function demanderAStiga(question: string): Promise<string> {
   })
   const donnees = (await reponse.json()) as { reponse?: string; message?: string; erreur?: string }
   if (!reponse.ok || !donnees.reponse) {
-    throw new Error(donnees.message ?? donnees.erreur ?? 'StiGa n’a pas répondu')
+    throw new Error(donnees.message ?? donnees.erreur ?? 'STG n’a pas répondu')
   }
   return donnees.reponse
 }

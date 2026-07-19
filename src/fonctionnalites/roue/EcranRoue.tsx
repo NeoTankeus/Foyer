@@ -1,6 +1,6 @@
 // 🎲 La Roue des décisions : pour tous les « on mange quoi ? / on va où ? ».
 // Elle tourne avec VOS options — restos favoris (pondérés), vos plats, ou
-// une liste perso — et StiGa tranche. Plus de débat.
+// une liste perso — et STG tranche. Plus de débat.
 import { useEffect, useMemo, useState } from 'react'
 import { motion, useAnimationControls } from 'framer-motion'
 import { useQuery } from '@tanstack/react-query'

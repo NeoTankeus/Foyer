@@ -1,5 +1,5 @@
 // 💰 Le Trésorier : le budget du foyer sans saisie pénible — tu photographies
-// le ticket de caisse, StiGa lit le montant et classe tout seul. Graphique du
+// le ticket de caisse, STG lit le montant et classe tout seul. Graphique du
 // mois par catégorie, et alerte douce quand un poste s'emballe.
 import { useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -148,7 +148,7 @@ export function EcranBudget() {
             desactive={scanEnCours}
             onClick={() => fichierRef.current?.click()}
           >
-            {scanEnCours ? 'StiGa lit le ticket…' : '📸 Scanner un ticket'}
+            {scanEnCours ? 'STG lit le ticket…' : '📸 Scanner un ticket'}
           </Bouton>
           <Bouton pleineLargeur variante="discret" onClick={() => setSaisie(true)}>
             ✍️ À la main
@@ -199,7 +199,7 @@ export function EcranBudget() {
         )}
 
         {!depenses.isLoading && lignes.length === 0 && (
-          <EtatVide titre="Rien ce mois-ci" message="Scanne ton premier ticket — StiGa lit le montant, le commerçant et la date tout seul." />
+          <EtatVide titre="Rien ce mois-ci" message="Scanne ton premier ticket — STG lit le montant, le commerçant et la date tout seul." />
         )}
 
         <ul className="flex flex-col gap-2">

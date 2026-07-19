@@ -1,4 +1,4 @@
-// 🎬 La Soirée parfaite : un seul bouton, zéro décision fatigante — StiGa
+// 🎬 La Soirée parfaite : un seul bouton, zéro décision fatigante — STG
 // propose le film (et où le voir), le plat qui va avec, et l'option resto
 // piochée dans VOS favoris avec le téléphone pour réserver.
 import { useState } from 'react'
@@ -122,7 +122,7 @@ export function EcranSoiree() {
         </div>
 
         <Bouton pleineLargeur variante="primaire" desactive={enCours} onClick={() => void organiser()}>
-          {enCours ? 'StiGa prépare la soirée…' : proposition ? '🔄 Une autre proposition' : '✨ Organise notre soirée'}
+          {enCours ? 'STG prépare la soirée…' : proposition ? '🔄 Une autre proposition' : '✨ Organise notre soirée'}
         </Bouton>
 
         {erreur && <p className="text-corps-2 text-urgent">{erreur}</p>}
@@ -143,7 +143,7 @@ export function EcranSoiree() {
 
         {!proposition && !enCours && (
           <p className="text-legende text-encre-3">
-            StiGa croise vos restos favoris, la météo du soir et le jour de la semaine. Plus vous notez de tables et de goûts, plus il vise juste.
+            STG croise vos restos favoris, la météo du soir et le jour de la semaine. Plus vous notez de tables et de goûts, plus il vise juste.
           </p>
         )}
       </div>

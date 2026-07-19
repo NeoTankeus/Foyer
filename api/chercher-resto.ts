@@ -128,7 +128,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     // Relais Overpass : Safari bloque parfois l'appel direct depuis l'app,
-    // alors le serveur de StiGa interroge les cartes à sa place.
+    // alors le serveur de STG interroge les cartes à sa place.
     if (mode === 'autour') {
       const la = Number(lat)
       const lo = Number(lon)
@@ -162,7 +162,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const r = await fetch(
           `https://nominatim.openstreetmap.org/search?q=restaurant&format=jsonv2&limit=50&bounded=1&viewbox=${viewbox}&extratags=1&accept-language=fr`,
           {
-            headers: { accept: 'application/json', 'user-agent': 'StiGa-app-famille/1.0' },
+            headers: { accept: 'application/json', 'user-agent': 'STG-app-famille/1.0' },
             signal: AbortSignal.timeout(12000),
           },
         )

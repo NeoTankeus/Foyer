@@ -216,7 +216,7 @@ export function BoutonSas() {
             <motion.div key="saisie" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col gap-3">
               {proposition ? (
                 <div className="flex flex-col gap-3">
-                  <p className="text-corps font-[590] text-encre">StiGa a lu :</p>
+                  <p className="text-corps font-[590] text-encre">STG a lu :</p>
                   <p className="text-corps-2 text-encre-2">{proposition.resume}</p>
                   <div className="rounded-xl bg-fond-sourd p-3 text-corps-2 text-encre">
                     {proposition.evenement && (
@@ -285,7 +285,7 @@ export function BoutonSas() {
                 desactive={lectureEnCours}
                 onClick={() => champPhoto.current?.click()}
               >
-                {lectureEnCours ? 'StiGa lit la photo…' : '📷 Photographier un document'}
+                {lectureEnCours ? 'STG lit la photo…' : '📷 Photographier un document'}
               </Bouton>
               <input
                 ref={champPhoto} type="file" accept="image/*" capture="environment" hidden

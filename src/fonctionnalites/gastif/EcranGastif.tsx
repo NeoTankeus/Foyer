@@ -132,10 +132,10 @@ export function EcranGastif() {
       if (!reponse.ok) {
         if (donnees.erreur === 'cle_absente') {
           setErreurConfig(
-            'Le cerveau de StiGa n’est pas encore branché : ajoute la variable GEMINI_API_KEY dans Vercel (clé gratuite sur aistudio.google.com), puis redéploie.',
+            'Le cerveau de STG n’est pas encore branché : ajoute la variable GEMINI_API_KEY dans Vercel (clé gratuite sur aistudio.google.com), puis redéploie.',
           )
         } else {
-          setErreurConfig(donnees.message ?? 'StiGa n’a pas pu répondre. Réessaie.')
+          setErreurConfig(donnees.message ?? 'STG n’a pas pu répondre. Réessaie.')
         }
         setMessages(messages)
         return
@@ -162,7 +162,7 @@ export function EcranGastif() {
         })
       }
     } catch {
-      setErreurConfig('Pas de réseau — StiGa a besoin d’internet pour réfléchir.')
+      setErreurConfig('Pas de réseau — STG a besoin d’internet pour réfléchir.')
       setMessages(messages)
     } finally {
       setReflechit(false)
@@ -189,7 +189,7 @@ export function EcranGastif() {
           ILY
         </span>
         <div className="min-w-0 flex-1">
-          <h1 className="text-titre-3 text-encre">StiGa</h1>
+          <h1 className="text-titre-3 text-encre">STG</h1>
           <p className="truncate text-legende text-encre-3">
             {reflechit ? 'réfléchit…' : 'l’intendant du foyer'}
           </p>
@@ -218,7 +218,7 @@ export function EcranGastif() {
         {messages.length === 0 && (
           <div className="flex flex-col gap-2 py-6">
             <p className="text-corps-2 text-encre-3">
-              StiGa connaît tout le foyer : agenda, tâches, courses, menus, voyages, valises,
+              STG connaît tout le foyer : agenda, tâches, courses, menus, voyages, valises,
               souvenirs, papiers, colis, routines. Demande-lui :
             </p>
             {SUGGESTIONS.map((s) => (
@@ -314,8 +314,8 @@ export function EcranGastif() {
         <input
           value={saisie}
           onChange={(e) => setSaisie(e.target.value)}
-          placeholder="Demande à StiGa…"
-          aria-label="Message à StiGa"
+          placeholder="Demande à STG…"
+          aria-label="Message à STG"
           className="verre verre-clair min-h-[52px] flex-1 rounded-full border border-trait px-5
             text-corps text-encre shadow-carte placeholder:text-encre-3"
         />
@@ -323,7 +323,7 @@ export function EcranGastif() {
         <motion.button
           type="submit"
           disabled={reflechit || !saisie.trim()}
-          aria-label="Envoyer à StiGa"
+          aria-label="Envoyer à STG"
           whileTap={{ scale: 0.88 }}
           animate={{ scale: saisie.trim() ? 1 : 0.92, opacity: saisie.trim() ? 1 : 0.55 }}
           transition={{ type: 'spring', stiffness: 400, damping: 32 }}

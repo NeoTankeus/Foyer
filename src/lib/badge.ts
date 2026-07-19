@@ -1,4 +1,4 @@
-// La pastille rouge sur l'icône StiGa (iOS 16.4+, app installée).
+// La pastille rouge sur l'icône STG (iOS 16.4+, app installée).
 // L'app pousse le VRAI compte (relances + mots du Mur non lus) ; le service
 // worker garde le même chiffre pour les pushs reçus app fermée.
 

@@ -1,5 +1,5 @@
 // 🚗 Le Radar de départ : pour chaque rendez-vous du jour (et de demain) qui
-// a un lieu, StiGa calcule l'heure exacte à laquelle il faut partir de la
+// a un lieu, STG calcule l'heure exacte à laquelle il faut partir de la
 // maison — trajet réel + 10 min de marge. L'heure de départ arrive aussi
 // dans le brief du matin.
 import { useState } from 'react'
@@ -209,7 +209,7 @@ export function EcranRadar() {
               )
             })}
             <p className="text-legende text-encre-3">
-              Chaque matin, le brief de StiGa inclut ces heures de départ. Les trajets sont recalculés à chaque ouverture de cet écran.
+              Chaque matin, le brief de STG inclut ces heures de départ. Les trajets sont recalculés à chaque ouverture de cet écran.
             </p>
           </>
         )}

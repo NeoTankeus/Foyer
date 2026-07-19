@@ -163,7 +163,7 @@ async function heuresDeDepart(
     try {
       const g = await fetch(
         `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(e.lieu ?? '')}&format=jsonv2&limit=1`,
-        { headers: { accept: 'application/json', 'user-agent': 'StiGa-app-famille/1.0' } },
+        { headers: { accept: 'application/json', 'user-agent': 'STG-app-famille/1.0' } },
       )
       if (!g.ok) continue
       const [cible] = (await g.json()) as { lat: string; lon: string }[]
@@ -363,7 +363,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   } catch { /* section suivante */ }
   try {
     resultat.brief = await composerBrief()
-    if (resultat.brief) await pousser('☀️ Le brief de StiGa', resultat.brief)
+    if (resultat.brief) await pousser('☀️ Le brief de STG', resultat.brief)
   } catch { /* fin */ }
 
   res.status(200).json(resultat)

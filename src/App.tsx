@@ -93,7 +93,7 @@ const ONGLETS = [
   { chemin: '/', libelle: 'Aujourd’hui', icone: 'aujourdhui', couleur: 'var(--ambre)' },
   { chemin: '/agenda', libelle: 'Agenda', icone: 'agenda', couleur: 'var(--ardoise)' },
   { chemin: '/maison', libelle: 'Maison', icone: 'maison', couleur: 'var(--sauge)' },
-  { chemin: '/gastif', libelle: 'StiGa', icone: 'gastif', couleur: 'var(--or)' },
+  { chemin: '/gastif', libelle: 'STG', icone: 'gastif', couleur: 'var(--or)' },
   { chemin: '/nous', libelle: 'Menu', icone: 'nous', couleur: 'var(--prune)' },
 ]
 

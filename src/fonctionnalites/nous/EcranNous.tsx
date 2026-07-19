@@ -38,7 +38,7 @@ export function EcranNous() {
     { chemin: '/nous/journal', libelle: 'Le Journal', detail: 'votre vie s’écrit toute seule', icone: '📔', couleur: 'var(--or)' },
     { chemin: '/nous/jardin', libelle: 'Le Jardin', detail: 'vos habitudes poussent chaque jour', icone: '🌱', couleur: 'var(--sauge)', adulte: true },
     { chemin: '/nous/capsules', libelle: 'Capsules temporelles', detail: 'des mots d’aujourd’hui pour plus tard', icone: '💌', couleur: 'var(--corail)', adulte: true },
-    { chemin: '/nous/budget', libelle: 'Le Trésorier', detail: 'scanne le ticket, StiGa classe tout', icone: '💰', couleur: 'var(--or)', adulte: true },
+    { chemin: '/nous/budget', libelle: 'Le Trésorier', detail: 'scanne le ticket, STG classe tout', icone: '💰', couleur: 'var(--or)', adulte: true },
     { chemin: '/nous/sante', libelle: 'Carnet santé', detail: 'vaccins, ordonnances, rappels', icone: '🩺', couleur: 'var(--ardoise)', adulte: true },
     { chemin: '/nous/equilibre', libelle: 'Équilibre', detail: 'la répartition réelle, en minutes', icone: '⚖️', couleur: 'var(--ardoise)', adulte: true },
     { chemin: '/nous/celebrations', libelle: 'Célébrations', detail: 'anniversaires et coffre à idées', icone: '🎂', couleur: 'var(--corail)' },
@@ -122,14 +122,14 @@ export function EcranNous() {
             </p>
           ) : notifications === 'refuse' ? (
             <p className="text-corps-2 text-encre-3">
-              Refusées dans les réglages du téléphone. Réglages → Notifications → StiGa pour les rouvrir.
+              Refusées dans les réglages du téléphone. Réglages → Notifications → STG pour les rouvrir.
             </p>
           ) : (
             <>
               <p className="mb-2 text-corps-2 text-encre-2">
-                Le brief de StiGa à ~7h, les colis, les baisses de prix, les anniversaires — et en direct
+                Le brief de STG à ~7h, les colis, les baisses de prix, les anniversaires — et en direct
                 ce que l’autre ajoute (tâches, agenda, courses…), sur l’écran verrouillé.
-                {notificationsPossibles() ? '' : ' Sur iPhone : ajoute d’abord StiGa à l’écran d’accueil.'}
+                {notificationsPossibles() ? '' : ' Sur iPhone : ajoute d’abord STG à l’écran d’accueil.'}
               </p>
               {notificationsPossibles() && (
                 <Bouton

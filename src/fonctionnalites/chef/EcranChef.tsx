@@ -1,4 +1,4 @@
-// 🧑‍🍳 Le Chef StiGa : le menu du soir avec ce qu'on a DÉJÀ dans les
+// 🧑‍🍳 Le Chef STG : le menu du soir avec ce qu'on a DÉJÀ dans les
 // placards (anti-gaspi DLC), adapté à la météo — et ce qui manque part
 // direct dans la liste de courses. Le samedi : menu de la semaine complet.
 import { useState } from 'react'
