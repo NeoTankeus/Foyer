@@ -40,6 +40,57 @@ async function chercherSurOsm(nom: string, ville: string): Promise<ResultatOsm |
   }
 }
 
+interface RestoAutour {
+  id: string
+  nom: string
+  cuisine: string | null
+  telephone: string | null
+  site: string | null
+  latitude: number
+  longitude: number
+  distanceM: number
+}
+
+/** Les restaurants autour d'un point (Overpass / OpenStreetMap, gratuit). */
+async function chercherAutour(lat: number, lon: number, rayonM: number): Promise<RestoAutour[]> {
+  const requete = `[out:json][timeout:15];(node(around:${rayonM},${lat},${lon})[amenity~"restaurant|bistro|brasserie"][name];way(around:${rayonM},${lat},${lon})[amenity~"restaurant|bistro|brasserie"][name];);out center 80;`
+  const reponse = await fetch('https://overpass-api.de/api/interpreter', {
+    method: 'POST',
+    body: `data=${encodeURIComponent(requete)}`,
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+  })
+  if (!reponse.ok) throw new Error('overpass')
+  const donnees = (await reponse.json()) as {
+    elements?: { id: number; lat?: number; lon?: number; center?: { lat: number; lon: number }; tags?: Record<string, string> }[]
+  }
+  const versRad = (d: number) => (d * Math.PI) / 180
+  const distance = (la: number, lo: number) => {
+    const R = 6371000
+    const dLat = versRad(la - lat)
+    const dLon = versRad(lo - lon)
+    const a = Math.sin(dLat / 2) ** 2 + Math.cos(versRad(lat)) * Math.cos(versRad(la)) * Math.sin(dLon / 2) ** 2
+    return Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)))
+  }
+  const resultats: RestoAutour[] = []
+  for (const e of donnees.elements ?? []) {
+    const la = e.lat ?? e.center?.lat
+    const lo = e.lon ?? e.center?.lon
+    const nom = e.tags?.['name']
+    if (la === undefined || lo === undefined || !nom) continue
+    resultats.push({
+      id: String(e.id),
+      nom,
+      cuisine: e.tags?.['cuisine']?.replace(/_/g, ' ').replace(/;/g, ', ') ?? null,
+      telephone: e.tags?.['phone'] ?? e.tags?.['contact:phone'] ?? null,
+      site: e.tags?.['website'] ?? e.tags?.['contact:website'] ?? null,
+      latitude: la,
+      longitude: lo,
+      distanceM: distance(la, lo),
+    })
+  }
+  return resultats.sort((a, b) => a.distanceM - b.distanceM)
+}
+
 function Etoiles({ note, surNote }: { note: number | null; surNote?: (n: number) => void }) {
   return (
     <span className="inline-flex">
@@ -64,7 +115,7 @@ function Etoiles({ note, surNote }: { note: number | null; surNote?: (n: number)
 export function EcranRestaurants() {
   const { foyer } = utiliserSession()
   const clientRequetes = useQueryClient()
-  const [vue, setVue] = useState<'liste' | 'carte'>('liste')
+  const [vue, setVue] = useState<'liste' | 'carte' | 'autour'>('liste')
   const [filtre, setFiltre] = useState('')
   const [favorisSeuls, setFavorisSeuls] = useState(false)
   const [creation, setCreation] = useState(false)
@@ -95,14 +146,21 @@ export function EcranRestaurants() {
       <BarreRetour vers="/nous" />
       <div className="flex items-center justify-between gap-2 pb-1">
         <h2 className="min-w-0 flex-1 truncate text-titre-3 text-encre">🍴 Restaurants</h2>
-        <Bouton variante="discret" onClick={() => setVue(vue === 'liste' ? 'carte' : 'liste')}>
-          {vue === 'liste' ? '🗺 Carte' : '📋 Liste'}
-        </Bouton>
         <Bouton variante="valider" onClick={() => setCreation(true)} etiquette="Ajouter un restaurant">+</Bouton>
       </div>
-      <p className="pb-3 text-note text-encre-3">
-        Nos adresses, nos notes, la carte du menu — et la carte du monde pour les retrouver.
-      </p>
+      <div className="mb-3 flex gap-1 rounded-lg bg-fond-sourd p-1">
+        {([['liste', '📋 Nos adresses'], ['autour', '📍 Autour de moi'], ['carte', '🗺 Carte']] as const).map(([cle, libelle]) => (
+          <button
+            key={cle}
+            onClick={() => setVue(cle)}
+            aria-pressed={vue === cle}
+            className={`min-h-sur-tactile flex-1 rounded-md text-note font-[590]
+              ${vue === cle ? 'bg-fond-eleve text-encre shadow-carte' : 'text-encre-3'}`}
+          >
+            {libelle}
+          </button>
+        ))}
+      </div>
 
       {vue === 'liste' && (
         <>
@@ -154,6 +212,26 @@ export function EcranRestaurants() {
       )}
 
       {vue === 'carte' && <CarteMonde restaurants={restaurants.data ?? []} surChoix={(r) => setOuvert(r)} />}
+
+      {vue === 'autour' && foyer && (
+        <AutourDeMoi
+          mesRestos={restaurants.data ?? []}
+          surAjout={async (decouvert) => {
+            const id = crypto.randomUUID()
+            await muter({
+              table: 'restaurants', type: 'insert', cible_id: id,
+              charge: {
+                id, foyer_id: foyer.id, nom: decouvert.nom, ville: null, adresse: null,
+                latitude: decouvert.latitude, longitude: decouvert.longitude,
+                telephone: decouvert.telephone, site: decouvert.site, cuisine: decouvert.cuisine,
+                note: null, avis: null, favori: false, carte_photos: [],
+                cree_le: new Date().toISOString(),
+              },
+            })
+            await rafraichir()
+          }}
+        />
+      )}
 
       <Feuille ouverte={creation} onFermer={() => setCreation(false)} titre="Nouveau restaurant">
         {foyer && (
@@ -447,6 +525,189 @@ function CarteMonde({
     <div className="overflow-hidden rounded-xl shadow-carte">
       <div ref={conteneur} style={{ height: '62vh' }} aria-label="Carte des restaurants" />
       {!pret && <p className="py-4 text-center text-corps-2 text-encre-3">Chargement de la carte…</p>}
+    </div>
+  )
+}
+
+/** 📍 Autour de moi : découverte GPS, tri par distance et par NOS goûts. */
+function AutourDeMoi({
+  mesRestos,
+  surAjout,
+}: {
+  mesRestos: LigneRestaurant[]
+  surAjout: (r: RestoAutour) => Promise<void>
+}) {
+  const [rayon, setRayon] = useState(2000)
+  const [etat, setEtat] = useState<'attente' | 'geoloc' | 'recherche' | 'pret' | 'erreur'>('attente')
+  const [resultats, setResultats] = useState<RestoAutour[]>([])
+  const [gouts, setGouts] = useState(false)
+  const [ajoutes, setAjoutes] = useState<Set<string>>(new Set())
+  const [avisStiga, setAvisStiga] = useState<string | null>(null)
+  const [reflechit, setReflechit] = useState(false)
+
+  // Nos goûts : les cuisines de nos favoris et de nos tables notées ≥ 4.
+  const cuisinesAimees = [
+    ...new Set(
+      mesRestos
+        .filter((r) => r.favori || (r.note ?? 0) >= 4)
+        .flatMap((r) => (r.cuisine ?? '').split(/[,;]/).map((c) => c.trim().toLowerCase()))
+        .filter(Boolean),
+    ),
+  ]
+  const dansNosGouts = (r: RestoAutour) =>
+    cuisinesAimees.length > 0 &&
+    cuisinesAimees.some((c) => (r.cuisine ?? '').toLowerCase().includes(c))
+
+  const lancer = (rayonChoisi: number) => {
+    setEtat('geoloc')
+    setAvisStiga(null)
+    navigator.geolocation?.getCurrentPosition(
+      (pos) => {
+        setEtat('recherche')
+        void chercherAutour(pos.coords.latitude, pos.coords.longitude, rayonChoisi)
+          .then((liste) => {
+            setResultats(liste)
+            setEtat('pret')
+          })
+          .catch(() => setEtat('erreur'))
+      },
+      () => setEtat('erreur'),
+      { enableHighAccuracy: true, timeout: 10000 },
+    )
+  }
+
+  const demanderAvis = async () => {
+    setReflechit(true)
+    try {
+      const { data: session } = await supabase.auth.getSession()
+      const dejaNotes = mesRestos
+        .filter((r) => r.note !== null || r.favori)
+        .map((r) => `${r.nom} (${r.cuisine ?? '?'}, ${r.favori ? 'favori' : ''} note ${r.note ?? '—'}/5${r.avis ? `, « ${r.avis.slice(0, 60)} »` : ''})`)
+        .join(' · ')
+      const alentours = resultats
+        .slice(0, 20)
+        .map((r) => `${r.nom} (${r.cuisine ?? 'cuisine inconnue'}, à ${r.distanceM} m)`)
+        .join(' · ')
+      const question =
+        `Voici les restaurants autour de nous : ${alentours}. ` +
+        `Nos goûts d'après notre carnet : ${dejaNotes || 'pas encore de notes'}. ` +
+        `Recommande les 3 meilleures tables à essayer parmi la liste autour de nous, en une ligne chacune avec pourquoi (par rapport à nos goûts). Sois direct et concret.`
+      const reponse = await fetch('/api/gastif', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${session.session?.access_token ?? ''}`,
+        },
+        body: JSON.stringify({ messages: [{ role: 'utilisateur', texte: question }], contexte: '', role_membre: 'adult' }),
+      })
+      const donnees = (await reponse.json()) as { reponse?: string; message?: string }
+      setAvisStiga(donnees.reponse ?? donnees.message ?? 'StiGa n’a pas répondu — réessaie.')
+    } catch {
+      setAvisStiga('Pas de réseau — réessaie.')
+    } finally {
+      setReflechit(false)
+    }
+  }
+
+  const visibles = resultats
+    .filter((r) => !gouts || dansNosGouts(r))
+    .sort((a, b) => Number(dansNosGouts(b)) - Number(dansNosGouts(a)) || a.distanceM - b.distanceM)
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-wrap items-center gap-2">
+        {[[500, '500 m'], [2000, '2 km'], [10000, '10 km']].map(([m, libelle]) => (
+          <button
+            key={m}
+            onClick={() => {
+              setRayon(Number(m))
+              lancer(Number(m))
+            }}
+            aria-pressed={rayon === Number(m) && etat === 'pret'}
+            className={`min-h-sur-tactile rounded-full px-4 text-note font-[590]
+              ${rayon === Number(m) && etat !== 'attente' ? 'bg-encre text-fond' : 'bg-fond-sourd text-encre-2'}`}
+          >
+            {libelle}
+          </button>
+        ))}
+        {cuisinesAimees.length > 0 && etat === 'pret' && (
+          <button
+            onClick={() => setGouts(!gouts)}
+            aria-pressed={gouts}
+            className={`min-h-sur-tactile rounded-full px-4 text-note font-[590]
+              ${gouts ? 'bg-ambre/25 text-encre' : 'bg-fond-sourd text-encre-2'}`}
+          >
+            💛 Dans nos goûts
+          </button>
+        )}
+      </div>
+
+      {etat === 'attente' && (
+        <EtatVide titre="Où es-tu ?" message="Choisis un rayon — StiGa cherche les tables autour de ta position." />
+      )}
+      {etat === 'geoloc' && <p className="py-6 text-center text-corps-2 text-encre-3">📍 Localisation…</p>}
+      {etat === 'recherche' && <p className="py-6 text-center text-corps-2 text-encre-3">🔎 Recherche des tables autour de toi…</p>}
+      {etat === 'erreur' && (
+        <p className="py-6 text-center text-corps-2 text-encre-3">
+          Impossible de te localiser ou de chercher — vérifie l’autorisation de position et le réseau.
+        </p>
+      )}
+
+      {etat === 'pret' && (
+        <>
+          <p className="text-legende text-encre-3">
+            {visibles.length} table{visibles.length > 1 ? 's' : ''} trouvée{visibles.length > 1 ? 's' : ''}
+            {cuisinesAimees.length > 0 ? ` — vos goûts : ${cuisinesAimees.slice(0, 4).join(', ')}` : ''}
+          </p>
+          {resultats.length > 0 && (
+            <Bouton pleineLargeur variante="primaire" desactive={reflechit} onClick={() => void demanderAvis()}>
+              {reflechit ? 'StiGa réfléchit…' : '✨ StiGa, recommande-moi les bonnes tables'}
+            </Bouton>
+          )}
+          {avisStiga && (
+            <div className="rounded-lg bg-fond-sourd px-3 py-2">
+              <p className="whitespace-pre-wrap text-corps-2 leading-snug text-encre">{avisStiga}</p>
+            </div>
+          )}
+          <ul className="flex flex-col gap-2">
+            {visibles.slice(0, 30).map((r) => (
+              <li key={r.id} className="rounded-xl bg-fond-eleve p-3 shadow-carte">
+                <div className="flex items-center gap-2">
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-corps font-[590] text-encre">
+                      {dansNosGouts(r) ? '💛 ' : ''}{r.nom}
+                    </p>
+                    <p className="truncate text-legende text-encre-3">
+                      {[r.cuisine, r.distanceM < 1000 ? `${r.distanceM} m` : `${(r.distanceM / 1000).toFixed(1)} km`]
+                        .filter(Boolean)
+                        .join(' · ')}
+                    </p>
+                  </div>
+                  <a
+                    href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(r.nom)}&query_place_id=`}
+                    target="_blank"
+                    rel="noopener"
+                    aria-label={`Avis Google de ${r.nom}`}
+                    className="flex min-h-sur-tactile min-w-sur-tactile items-center justify-center rounded-full bg-fond-sourd text-[16px]"
+                  >
+                    ⭐
+                  </a>
+                  <Bouton
+                    variante="discret"
+                    desactive={ajoutes.has(r.id)}
+                    onClick={() => {
+                      setAjoutes((a) => new Set(a).add(r.id))
+                      void surAjout(r)
+                    }}
+                  >
+                    {ajoutes.has(r.id) ? '✓' : '+ Carnet'}
+                  </Bouton>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
     </div>
   )
 }
