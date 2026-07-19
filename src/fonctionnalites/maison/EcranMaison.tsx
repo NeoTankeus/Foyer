@@ -11,7 +11,11 @@ type Volet = 'taches' | 'courses' | 'menus' | 'mur'
 export function EcranMaison() {
   const [parametres] = useSearchParams()
   // Le raccourci PWA « Ajouter aux courses » ouvre directement le bon volet.
-  const [volet, setVolet] = useState<Volet>(parametres.get('ajout') === 'courses' ? 'courses' : 'taches')
+  const [volet, setVolet] = useState<Volet>(() => {
+    const demande = parametres.get('volet')
+    if (demande === 'mur' || demande === 'menus' || demande === 'courses' || demande === 'taches') return demande
+    return parametres.get('ajout') === 'courses' ? 'courses' : 'taches'
+  })
 
   return (
     <div className="pb-4">

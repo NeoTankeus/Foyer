@@ -8,6 +8,7 @@ import { lireAvecRepli } from '@/lib/lecture'
 import { utiliserSession } from '@/etat/session'
 import { versLocal } from '@/lib/dates'
 import { couleurMembre } from '@/lib/couleurs'
+import { notifierLesAutres } from '@/lib/notifications'
 import type { LigneMur } from '@/lib/basedonnees.types'
 import { Bouton } from '@/design/composants/Bouton'
 import { EtatVide } from '@/design/composants/EtatVide'
@@ -36,6 +37,15 @@ export function EcranMur() {
     },
   })
 
+  // On note la visite : la pastille rouge de l'accueil s'éteint.
+  useEffect(() => {
+    try {
+      localStorage.setItem('foyer-mur-vu', new Date().toISOString())
+    } catch {
+      // stockage indisponible
+    }
+  }, [mur.data])
+
   useEffect(() => {
     const canal = supabase
       .channel('mur-temps-reel')
@@ -57,8 +67,10 @@ export function EcranMur() {
         id, foyer_id: foyer.id, auteur_id: membre.id, type: 'note',
         contenu: texte.trim(), media_url: null, epingle: false,
         expire_le: new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString(),
+        cree_le: new Date().toISOString(),
       },
     })
+    notifierLesAutres('🧲 Mot sur le Mur', `${membre.prenom} : « ${texte.trim().slice(0, 100)} »`, '/maison?volet=mur')
     setTexte('')
     await clientRequetes.invalidateQueries({ queryKey: ['mur'] })
   }

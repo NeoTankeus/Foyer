@@ -23,6 +23,7 @@ import {
   maintenantLocal,
 } from '@/lib/dates'
 import { couleurMembre } from '@/lib/couleurs'
+import { Reorder, useDragControls } from 'framer-motion'
 import type { LigneIdeeCadeau, LigneTache } from '@/lib/basedonnees.types'
 import { ChronologieJour } from './ChronologieJour'
 import { BriefGastif } from './BriefGastif'
@@ -32,7 +33,7 @@ import { Bouton } from '@/design/composants/Bouton'
 import { BoutonMiseAJour } from '@/design/composants/BoutonMiseAJour'
 import { importerAgendaSiBesoin } from '@/lib/synchro-agenda'
 
-type CleBloc = 'urgent' | 'brief' | 'prix' | 'agenda' | 'taches' | 'penser' | 'courses' | 'menus' | 'fil'
+type CleBloc = 'urgent' | 'brief' | 'prix' | 'agenda' | 'taches' | 'penser' | 'courses' | 'menus' | 'mur' | 'fil'
 
 const BLOCS: { cle: CleBloc; libelle: string }[] = [
   { cle: 'urgent', libelle: '🔴 Relances urgentes' },
@@ -43,13 +44,16 @@ const BLOCS: { cle: CleBloc; libelle: string }[] = [
   { cle: 'penser', libelle: '💡 À penser' },
   { cle: 'courses', libelle: '🛒 Courses' },
   { cle: 'menus', libelle: '🍽️ Ce soir on mange' },
+  { cle: 'mur', libelle: '🧲 Le Mur (mots de la famille)' },
   { cle: 'fil', libelle: '🕐 Chronologie du jour' },
 ]
 
 const DEFAUT: Record<CleBloc, boolean> = {
   urgent: true, brief: true, prix: true, agenda: true, taches: true,
-  penser: true, courses: true, menus: true, fil: false,
+  penser: true, courses: true, menus: true, mur: true, fil: false,
 }
+
+const ORDRE_DEFAUT: CleBloc[] = BLOCS.map((b) => b.cle)
 
 function chargerBlocs(): Record<CleBloc, boolean> {
   try {
@@ -57,6 +61,17 @@ function chargerBlocs(): Record<CleBloc, boolean> {
     return brut ? { ...DEFAUT, ...(JSON.parse(brut) as Record<CleBloc, boolean>) } : DEFAUT
   } catch {
     return DEFAUT
+  }
+}
+
+function chargerOrdre(): CleBloc[] {
+  try {
+    const brut = JSON.parse(localStorage.getItem('foyer-blocs-ordre') ?? '[]') as CleBloc[]
+    const connus = brut.filter((c) => ORDRE_DEFAUT.includes(c))
+    // les blocs apparus depuis viennent se ranger à la fin, jamais perdus
+    return [...connus, ...ORDRE_DEFAUT.filter((c) => !connus.includes(c))]
+  } catch {
+    return ORDRE_DEFAUT
   }
 }
 
@@ -75,7 +90,14 @@ export function EcranAujourdhui() {
     new Date(maintenantLocal().getTime() + 14 * 24 * 3600 * 1000).toISOString(),
   )
   const [blocs, setBlocs] = useState(chargerBlocs)
+  const [ordre, setOrdre] = useState<CleBloc[]>(chargerOrdre)
   const [personnaliser, setPersonnaliser] = useState(false)
+
+  const enregistrerOrdre = (suivant: CleBloc[]) => {
+    setOrdre(suivant)
+    localStorage.setItem('foyer-blocs-ordre', JSON.stringify(suivant))
+  }
+  const position = (cle: CleBloc) => ordre.indexOf(cle)
 
   const estAdulte = membre?.role === 'adult'
   const aujourdHui = dateIsoJour(maintenantLocal())
@@ -150,6 +172,22 @@ export function EcranAujourdhui() {
       return resultats.sort((a, b) => ordre.indexOf(a.creneau) - ordre.indexOf(b.creneau))
     },
   })
+
+  // 🧲 Le Mur : dernier mot + compteur de non-lus (mots des autres, depuis ma dernière visite).
+  const mur = useQuery({
+    queryKey: ['mur', 'accueil'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('mur').select('*').order('cree_le', { ascending: false }).limit(5)
+      if (error) return []
+      return data
+    },
+  })
+  const murVuLe = (() => {
+    try { return localStorage.getItem('foyer-mur-vu') ?? '' } catch { return '' }
+  })()
+  const murNonVus = (mur.data ?? []).filter((m) => m.cree_le > murVuLe && m.auteur_id !== membre?.id).length
+  const dernierMot = mur.data?.[0]
 
   const enregistrerBlocs = (suivants: Record<CleBloc, boolean>) => {
     setBlocs(suivants)
@@ -238,7 +276,7 @@ export function EcranAujourdhui() {
         {blocs.urgent && relances.length > 0 && (
           <section
             className="rounded-xl p-4 text-white shadow-carte"
-            style={{ background: 'linear-gradient(135deg, #e0705e, var(--urgent))' }}
+            style={{ background: 'linear-gradient(135deg, #e0705e, var(--urgent))', order: position('urgent') }}
           >
             <h2 className="mb-1 text-note font-[700] uppercase tracking-wide opacity-90">
               🔴 Relances — {relances.length}
@@ -250,7 +288,7 @@ export function EcranAujourdhui() {
         )}
 
         {blocs.brief && (
-          <section className="rounded-xl bg-fond-eleve p-4 shadow-carte">
+          <section className="rounded-xl bg-fond-eleve p-4 shadow-carte" style={{ order: position('brief') }}>
             <BriefGastif evenements={evenements.data ?? []} taches={taches.data ?? []} />
           </section>
         )}
@@ -259,7 +297,7 @@ export function EcranAujourdhui() {
         {blocs.prix && estAdulte && (baissesPrix.data?.length ?? 0) > 0 && (
           <section
             className="rounded-xl p-4 text-white shadow-carte"
-            style={{ background: 'linear-gradient(135deg, var(--sauge), #4f7d5e)' }}
+            style={{ background: 'linear-gradient(135deg, var(--sauge), #4f7d5e)', order: position('prix') }}
           >
             <button onClick={() => naviguer('/nous/celebrations')} className="flex w-full items-center justify-between text-left">
               <h2 className="text-note font-[700] uppercase tracking-wide opacity-90">
@@ -287,7 +325,7 @@ export function EcranAujourdhui() {
         )}
 
         {blocs.agenda && (
-          <section className="rounded-xl bg-fond-eleve p-4 shadow-carte">
+          <section className="rounded-xl bg-fond-eleve p-4 shadow-carte" style={{ order: position('agenda') }}>
             <button onClick={() => naviguer('/agenda')} className="mb-2 flex w-full items-center justify-between">
               <h2 className="text-note font-[700] uppercase tracking-wide text-encre-3">📅 La journée</h2>
               <span className="text-encre-3">›</span>
@@ -327,7 +365,7 @@ export function EcranAujourdhui() {
         )}
 
         {blocs.taches && tachesOuvertes.length > 0 && (
-          <section className="rounded-xl bg-fond-eleve p-4 shadow-carte">
+          <section className="rounded-xl bg-fond-eleve p-4 shadow-carte" style={{ order: position('taches') }}>
             <button onClick={() => naviguer('/maison')} className="mb-1 flex w-full items-center justify-between">
               <h2 className="text-note font-[700] uppercase tracking-wide text-encre-3">
                 ✅ À faire — {tachesOuvertes.length}
@@ -368,7 +406,7 @@ export function EcranAujourdhui() {
         )}
 
         {blocs.penser && (celebrationsTriees.length > 0 || (documents.data?.length ?? 0) > 0 || (colis.data?.length ?? 0) > 0) && (
-          <section className="rounded-xl bg-fond-eleve p-4 shadow-carte">
+          <section className="rounded-xl bg-fond-eleve p-4 shadow-carte" style={{ order: position('penser') }}>
             <h2 className="mb-1 text-note font-[700] uppercase tracking-wide text-encre-3">💡 À penser</h2>
             {celebrationsTriees.slice(0, 4).map(({ c, dans }) => (
               <button key={c.id} onClick={() => naviguer('/nous/celebrations')} className="block w-full py-0.5 text-left text-corps-2 text-encre">
@@ -394,7 +432,7 @@ export function EcranAujourdhui() {
         )}
 
         {blocs.courses && (articlesRestants.length > 0 || articlesCoches.length > 0) && (
-          <section className="rounded-xl bg-fond-eleve p-4 shadow-carte">
+          <section className="rounded-xl bg-fond-eleve p-4 shadow-carte" style={{ order: position('courses') }}>
             <button onClick={() => naviguer('/maison?ajout=courses')} className="mb-1 flex w-full items-center justify-between">
               <h2 className="text-note font-[700] uppercase tracking-wide text-encre-3">
                 🛒 Courses — {articlesRestants.length} à prendre
@@ -432,7 +470,7 @@ export function EcranAujourdhui() {
         )}
 
         {blocs.menus && (
-          <section className="rounded-xl bg-fond-eleve p-4 shadow-carte">
+          <section className="rounded-xl bg-fond-eleve p-4 shadow-carte" style={{ order: position('menus') }}>
             <button onClick={() => naviguer('/maison')} className="flex w-full items-center justify-between">
               <h2 className="text-note font-[700] uppercase tracking-wide text-encre-3">🍽️ Aujourd’hui on mange</h2>
               <span className="text-encre-3">›</span>
@@ -452,8 +490,39 @@ export function EcranAujourdhui() {
           </section>
         )}
 
+        {/* 🧲 Le Mur — le frigo de la famille, avec pastille rouge des non-lus */}
+        {blocs.mur && (
+          <section className="rounded-xl bg-fond-eleve p-4 shadow-carte" style={{ order: position('mur') }}>
+            <button onClick={() => naviguer('/maison?volet=mur')} className="flex w-full items-center justify-between">
+              <h2 className="text-note font-[700] uppercase tracking-wide text-encre-3">🧲 Le Mur</h2>
+              <span className="flex items-center gap-2 text-encre-3">
+                {murNonVus > 0 && (
+                  <span
+                    aria-label={`${murNonVus} nouveau${murNonVus > 1 ? 'x' : ''} message${murNonVus > 1 ? 's' : ''}`}
+                    className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-urgent px-1.5 text-legende font-[700] text-white"
+                  >
+                    {murNonVus}
+                  </span>
+                )}
+                ›
+              </span>
+            </button>
+            {dernierMot ? (
+              <button onClick={() => naviguer('/maison?volet=mur')} className="mt-1 block w-full text-left">
+                <p className="text-corps text-encre">« {dernierMot.contenu || '📷 Photo'} »</p>
+                <p className="text-legende text-encre-3">
+                  {membres.find((m) => m.id === dernierMot.auteur_id)?.prenom ?? 'quelqu’un'} ·{' '}
+                  {new Date(dernierMot.cree_le).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}
+                </p>
+              </button>
+            ) : (
+              <p className="mt-1 text-corps-2 text-encre-3">Laisse un mot sur le frigo de la famille.</p>
+            )}
+          </section>
+        )}
+
         {blocs.fil && (
-          <section className="rounded-xl bg-fond-eleve p-4 shadow-carte">
+          <section className="rounded-xl bg-fond-eleve p-4 shadow-carte" style={{ order: position('fil') }}>
             <button onClick={() => naviguer('/agenda')} className="mb-2 flex w-full items-center justify-between">
               <h2 className="text-note font-[700] uppercase tracking-wide text-encre-3">🕐 Chronologie du jour</h2>
               <span className="text-encre-3">›</span>
@@ -465,19 +534,29 @@ export function EcranAujourdhui() {
 
       <Feuille ouverte={personnaliser} onFermer={() => setPersonnaliser(false)} titre="Personnaliser l’accueil">
         <div className="flex flex-col gap-1">
-          {BLOCS.map((b) => (
-            <label key={b.cle} className="flex min-h-sur-tactile items-center justify-between rounded-md px-2">
-              <span className="text-corps text-encre">{b.libelle}</span>
-              <input
-                type="checkbox"
-                checked={blocs[b.cle]}
-                onChange={(e) => enregistrerBlocs({ ...blocs, [b.cle]: e.target.checked })}
-                className="h-6 w-6 accent-[#6e9b7a]"
-              />
-            </label>
-          ))}
+          <Reorder.Group
+            axis="y"
+            values={ordre}
+            onReorder={(suivant) => enregistrerOrdre(suivant as CleBloc[])}
+            className="flex list-none flex-col gap-1"
+          >
+            {ordre.map((cle) => {
+              const bloc = BLOCS.find((b) => b.cle === cle)
+              if (!bloc) return null
+              return (
+                <LigneBlocOrdre
+                  key={cle}
+                  valeur={cle}
+                  libelle={bloc.libelle}
+                  active={blocs[cle]}
+                  onBascule={(actif) => enregistrerBlocs({ ...blocs, [cle]: actif })}
+                />
+              )
+            })}
+          </Reorder.Group>
           <p className="mt-2 text-legende text-encre-3">
-            Chaque téléphone garde son propre réglage. Un bloc vide ne s’affiche pas, même activé.
+            Glisse ☰ pour changer l’ordre — l’accueil suit immédiatement. La coche affiche ou masque.
+            Chaque téléphone garde son propre réglage ; un bloc vide ne s’affiche pas, même activé.
           </p>
           <Bouton pleineLargeur variante="valider" onClick={() => setPersonnaliser(false)}>
             C’est réglé
@@ -485,5 +564,48 @@ export function EcranAujourdhui() {
         </div>
       </Feuille>
     </div>
+  )
+}
+
+/** Une ligne du panneau de personnalisation : poignée ☰ pour glisser, coche pour afficher. */
+function LigneBlocOrdre({
+  valeur,
+  libelle,
+  active,
+  onBascule,
+}: {
+  valeur: string
+  libelle: string
+  active: boolean
+  onBascule: (actif: boolean) => void
+}) {
+  const poignee = useDragControls()
+  return (
+    <Reorder.Item
+      value={valeur}
+      dragListener={false}
+      dragControls={poignee}
+      className="flex min-h-sur-tactile items-center gap-1 rounded-md bg-fond-sourd px-1"
+    >
+      <button
+        aria-label={`Déplacer « ${libelle} »`}
+        onPointerDown={(e) => {
+          e.preventDefault()
+          poignee.start(e)
+        }}
+        style={{ touchAction: 'none' }}
+        className="cursor-grab px-3 py-3 text-[17px] text-encre-3"
+      >
+        ☰
+      </button>
+      <span className="flex-1 text-corps text-encre">{libelle}</span>
+      <input
+        type="checkbox"
+        checked={active}
+        onChange={(e) => onBascule(e.target.checked)}
+        aria-label={`Afficher « ${libelle} »`}
+        className="mr-2 h-6 w-6 accent-[#6e9b7a]"
+      />
+    </Reorder.Item>
   )
 }
