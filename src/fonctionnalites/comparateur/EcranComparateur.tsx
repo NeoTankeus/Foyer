@@ -141,7 +141,7 @@ export function EcranComparateur() {
       <BarreRetour vers="/nous" />
       <h2 className="pb-1 text-titre-3 text-encre">🏷 Comparateur de prix</h2>
       <p className="pb-3 text-note text-encre-3">
-        En boutique : vise le code-barres — Gastif identifie le produit et ouvre ses prix sur internet.
+        En boutique : vise le code-barres — StiGa identifie le produit et ouvre ses prix sur internet.
       </p>
 
       {(etat === 'scan' || etat === 'erreur-camera') && (
@@ -152,7 +152,7 @@ export function EcranComparateur() {
           </div>
           {etat === 'erreur-camera' && (
             <p className="mt-2 text-corps-2 text-encre-3">
-              Caméra indisponible — autorise-la dans Réglages → Gastif, ou utilise la photo / la saisie ci-dessous.
+              Caméra indisponible — autorise-la dans Réglages → StiGa, ou utilise la photo / la saisie ci-dessous.
             </p>
           )}
           <div className="mt-3 flex flex-col gap-2">

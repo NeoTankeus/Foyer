@@ -41,7 +41,7 @@ type CleBloc =
 
 const BLOCS: { cle: CleBloc; libelle: string }[] = [
   { cle: 'urgent', libelle: '🔴 Relances urgentes' },
-  { cle: 'brief', libelle: 'ILY Le brief de Gastif' },
+  { cle: 'brief', libelle: 'ILY Le brief de StiGa' },
   { cle: 'pilote', libelle: '🤖 Le Pilote (suggestions)' },
   { cle: 'meteo', libelle: '🌤 Météo' },
   { cle: 'vacances', libelle: '🎒 Vacances scolaires (zone B)' },

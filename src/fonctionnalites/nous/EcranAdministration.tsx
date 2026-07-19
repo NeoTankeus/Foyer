@@ -109,10 +109,10 @@ export function EcranAdministration() {
 
       <Carte>
         <h3 className="mb-2 text-note font-[590] uppercase tracking-wide text-encre-3">
-          Mémoire de Gastif
+          Mémoire de StiGa
         </h3>
         <p className="mb-2 text-note text-encre-3">
-          Ce que Gastif doit savoir pour toujours — il le relit à chaque question.
+          Ce que StiGa doit savoir pour toujours — il le relit à chaque question.
           Ex. : « Gabriel ne mange pas de poisson. Les courses se font le samedi matin.
           Le mercredi est chargé. »
         </p>
@@ -120,7 +120,7 @@ export function EcranAdministration() {
           value={memoire}
           onChange={(e) => setMemoire(e.target.value)}
           rows={4}
-          aria-label="Mémoire de Gastif"
+          aria-label="Mémoire de StiGa"
           className="w-full rounded-md border border-trait bg-fond-eleve px-3 py-2 text-corps-2"
         />
         <div className="mt-2">
@@ -132,7 +132,7 @@ export function EcranAdministration() {
                 .from('foyers')
                 .update({ reglages: { ...foyer.reglages, memoire } })
                 .eq('id', foyer.id)
-                .then(() => confirmer('Mémoire de Gastif enregistrée.'))
+                .then(() => confirmer('Mémoire de StiGa enregistrée.'))
             }}
           >
             Enregistrer la mémoire

@@ -117,7 +117,7 @@ export function EcranNous() {
           ) : (
             <>
               <p className="mb-2 text-corps-2 text-encre-2">
-                Le brief de Gastif à ~7h, les colis, les baisses de prix, les anniversaires — et en direct
+                Le brief de StiGa à ~7h, les colis, les baisses de prix, les anniversaires — et en direct
                 ce que l’autre ajoute (tâches, agenda, courses…), sur l’écran verrouillé.
                 {notificationsPossibles() ? '' : ' Sur iPhone : ajoute d’abord StiGa à l’écran d’accueil.'}
               </p>

@@ -59,7 +59,7 @@ export function EcranPersonnes() {
         <Bouton variante="discret" onClick={() => setEnEdition('nouvelle')} etiquette="Nouvelle fiche">+</Bouton>
       </div>
       <p className="pb-3 text-note text-encre-3">
-        Goûts, tailles, allergies, cadeaux déjà offerts — Gastif s’en souvient pour toi.
+        Goûts, tailles, allergies, cadeaux déjà offerts — StiGa s’en souvient pour toi.
       </p>
 
       {(personnes.data?.length ?? 0) === 0 && !personnes.isLoading && (

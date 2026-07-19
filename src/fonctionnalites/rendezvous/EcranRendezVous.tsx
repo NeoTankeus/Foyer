@@ -56,7 +56,7 @@ export function EcranRendezVous() {
         }),
       })
       const donnees = (await reponse.json()) as { reponse?: string; message?: string }
-      setIdees(donnees.reponse ?? donnees.message ?? 'Gastif n’a pas répondu — réessaie.')
+      setIdees(donnees.reponse ?? donnees.message ?? 'StiGa n’a pas répondu — réessaie.')
     } catch {
       setIdees('Pas de réseau — réessaie.')
     } finally {
@@ -119,14 +119,14 @@ export function EcranRendezVous() {
         )}
         <div className="mt-3">
           <Bouton pleineLargeur variante="primaire" desactive={reflechit} onClick={() => void demanderIdees()}>
-            {reflechit ? 'Gastif réfléchit…' : '✨ Demander 3 idées à Gastif'}
+            {reflechit ? 'StiGa réfléchit…' : '✨ Demander 3 idées à StiGa'}
           </Bouton>
         </div>
       </Carte>
 
       {idees && (
         <Carte>
-          <h3 className="mb-1 text-note font-[590] uppercase tracking-wide text-encre-3">Les idées de Gastif</h3>
+          <h3 className="mb-1 text-note font-[590] uppercase tracking-wide text-encre-3">Les idées de StiGa</h3>
           <p className="whitespace-pre-wrap text-corps-2 leading-snug text-encre">{idees}</p>
         </Carte>
       )}

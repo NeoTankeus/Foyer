@@ -277,7 +277,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try { resultat.anniversaires = await rappellerAnniversaires(pousser, pousserAdultes) } catch { /* section suivante */ }
   try {
     resultat.brief = await composerBrief()
-    if (resultat.brief) await pousser('☀️ Le brief de Gastif', resultat.brief)
+    if (resultat.brief) await pousser('☀️ Le brief de StiGa', resultat.brief)
   } catch { /* fin */ }
 
   res.status(200).json(resultat)

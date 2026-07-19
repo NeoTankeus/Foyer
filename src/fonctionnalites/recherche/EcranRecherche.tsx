@@ -104,7 +104,7 @@ export function EcranRecherche() {
               naviguer('/gastif')
             }}
           >
-            Demander à Gastif
+            Demander à StiGa
           </Bouton>
           <Bouton
             variante="discret"
@@ -119,7 +119,7 @@ export function EcranRecherche() {
       <div className="mt-3 flex flex-col gap-1">
         {qStable && resultats.length === 0 && (
           <p className="py-4 text-center text-corps-2 text-encre-3">
-            Rien dans le foyer pour « {qStable} » — essaie Gastif ou le web au-dessus.
+            Rien dans le foyer pour « {qStable} » — essaie StiGa ou le web au-dessus.
           </p>
         )}
         {resultats.map((r, i) => (
