@@ -90,6 +90,7 @@ export type LigneArticle = {
   position: number
   ref_produit: string | null
   ajoute_par: string | null
+  image_url?: string | null
   cree_le: string
   modifie_le: string
 }

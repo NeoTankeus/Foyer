@@ -349,6 +349,14 @@ export async function ajouterArticle(
     },
   })
   notifierCoursesAvecReserve(await prenomDe(membreId))
+  // Visuel automatique : une image internet arrive toute seule sur l'article.
+  void import('./images')
+    .then(({ chercherVisuels }) => chercherVisuels([libelle]))
+    .then((images) => {
+      const image = images[libelle]
+      if (image) return muter({ table: 'articles', type: 'update', cible_id: id, charge: { image_url: image } })
+    })
+    .catch(() => undefined)
 }
 
 export async function basculerArticle(article: LigneArticle, membreId: string) {

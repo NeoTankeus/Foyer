@@ -96,12 +96,36 @@ export default async function handler(req: Request): Promise<Response> {
   }
 
   const prix = prixBrut ? Number(prixBrut.replace(',', '.')) : null
+  const titrePropre = titre ? titre.replace(/&amp;/g, '&').replace(/&#39;/g, '’').slice(0, 120) : null
+
+  // Visuel garanti : si le site cache son image (Amazon…), on la cherche sur
+  // internet à partir du titre — même principe que le CRM.
+  let imageFinale = image ?? null
+  if (!imageFinale && titrePropre) {
+    try {
+      const q = encodeURIComponent(titrePropre.slice(0, 80))
+      const bing = await fetch(`https://www.bing.com/images/search?q=${q}&count=5&setlang=fr`, {
+        headers: {
+          'user-agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15',
+          'accept-language': 'fr-FR',
+        },
+      })
+      const htmlBing = await bing.text()
+      imageFinale =
+        /turl&quot;:&quot;(https:\/\/[^&"]+?)&quot;/.exec(htmlBing)?.[1] ??
+        /"turl":"(https:\/\/[^"]+?)"/.exec(htmlBing)?.[1] ??
+        null
+      if (imageFinale) imageFinale = imageFinale.replace(/\\u0026/g, '&')
+    } catch {
+      // pas d'image trouvée — tant pis
+    }
+  }
 
   return new Response(
     JSON.stringify({
       produit: {
-        titre: titre ? titre.replace(/&amp;/g, '&').replace(/&#39;/g, '’').slice(0, 120) : null,
-        image: image ?? null,
+        titre: titrePropre,
+        image: imageFinale,
         prix: prix && Number.isFinite(prix) ? prix : null,
       },
     }),

@@ -14,6 +14,7 @@ import { EtatVide } from '@/design/composants/EtatVide'
 import { Coche } from '@/design/composants/Coche'
 import { BarreRetour } from '@/design/composants/BarreRetour'
 import { notifierLesAutres } from '@/lib/notifications'
+import { chercherVisuels } from '@/lib/images'
 
 function prochaineOccurrence(dateIso: string): Date {
   const date = new Date(dateIso)
@@ -169,6 +170,7 @@ function CoffreAIdees({
   const [confirmeSupprCeleb, setConfirmeSupprCeleb] = useState(false)
   const [noteBrouillon, setNoteBrouillon] = useState('')
   const [erreurAjout, setErreurAjout] = useState<string | null>(null)
+  const [visuelsEnCours, setVisuelsEnCours] = useState(false)
   const dejaReleve = useRef(false)
 
   const analyserLien = async (url: string): Promise<{ titre: string | null; image: string | null; prix: number | null }> => {
@@ -334,6 +336,14 @@ function CoffreAIdees({
           e.preventDefault()
           if (!idee.trim() || !foyer || !membre) return
           const id = crypto.randomUUID()
+          const libelleIdee = idee.trim()
+          // Visuel automatique en arrière-plan, comme pour les courses.
+          void chercherVisuels([libelleIdee])
+            .then((images) => {
+              const image = images[libelleIdee]
+              if (image) return muter({ table: 'idees_cadeaux', type: 'update', cible_id: id, charge: { image_url: image } }).then(rafraichir)
+            })
+            .catch(() => undefined)
           void muter({
             table: 'idees_cadeaux', type: 'insert', cible_id: id,
             charge: {
@@ -392,9 +402,36 @@ function CoffreAIdees({
             {majEnCours ? 'Mise à jour des prix…' : '🔄 Actualiser tous les prix'}
           </Bouton>
           <p className="-mt-1 text-legende text-encre-3">
-            Les prix sont aussi revérifiés chaque nuit — 💸 notification automatique dès qu’un prix baisse.
+            Prix relevé à l’ajout, à chaque ouverture du coffre et chaque nuit — 💸 notification dès qu’il baisse.
           </p>
         </>
+      )}
+      {(idees.data ?? []).some((i) => !i.image_url) && (
+        <Bouton
+          variante="discret"
+          pleineLargeur
+          desactive={visuelsEnCours}
+          onClick={() => {
+            void (async () => {
+              const sansImage = (idees.data ?? []).filter((i) => !i.image_url).slice(0, 25)
+              if (sansImage.length === 0) return
+              setVisuelsEnCours(true)
+              try {
+                const images = await chercherVisuels(sansImage.map((i) => i.libelle))
+                for (const idee of sansImage) {
+                  const image = images[idee.libelle]
+                  if (!image) continue
+                  await muter({ table: 'idees_cadeaux', type: 'update', cible_id: idee.id, charge: { image_url: image } })
+                }
+                await rafraichir()
+              } finally {
+                setVisuelsEnCours(false)
+              }
+            })()
+          }}
+        >
+          {visuelsEnCours ? 'Recherche des visuels…' : '🖼 Chercher les visuels manquants'}
+        </Bouton>
       )}
 
       <ul className="flex flex-col gap-2">

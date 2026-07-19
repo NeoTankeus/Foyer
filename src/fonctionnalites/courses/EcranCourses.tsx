@@ -11,6 +11,8 @@ import {
   utiliserRealtimeCourses,
 } from '@/lib/requetes'
 import { devinerRayon, indexRayon } from './rayons'
+import { chercherVisuels } from '@/lib/images'
+import { muter } from '@/lib/sync'
 import type { LigneArticle } from '@/lib/basedonnees.types'
 import { Coche } from '@/design/composants/Coche'
 import { Bouton } from '@/design/composants/Bouton'
@@ -27,6 +29,8 @@ export function EcranCourses() {
   const [suggestions, setSuggestions] = useState<string[]>([])
   const [magasinOuvert, setMagasinOuvert] = useState(false)
   const [dicteeEnCours, setDicteeEnCours] = useState(false)
+  const [visuelsEnCours, setVisuelsEnCours] = useState(false)
+  const [erreurVisuels, setErreurVisuels] = useState<string | null>(null)
   const champRef = useRef<HTMLInputElement>(null)
 
   // Plusieurs personnes cochent en même temps : temps réel obligatoire.
@@ -44,6 +48,30 @@ export function EcranCourses() {
   const coches = articles.filter((a) => a.coche)
 
   const rafraichir = () => clientRequetes.invalidateQueries({ queryKey: ['courses'] })
+
+  // Le bouton général : un visuel internet pour chaque produit sans image, d'un coup.
+  const chercherTousLesVisuels = async () => {
+    const sansImage = aFaire.filter((a) => !a.image_url).slice(0, 25)
+    if (sansImage.length === 0) return
+    setVisuelsEnCours(true)
+    setErreurVisuels(null)
+    try {
+      const images = await chercherVisuels(sansImage.map((a) => a.libelle))
+      let trouves = 0
+      for (const article of sansImage) {
+        const image = images[article.libelle]
+        if (!image) continue
+        await muter({ table: 'articles', type: 'update', cible_id: article.id, charge: { image_url: image } })
+        trouves += 1
+      }
+      if (trouves === 0) setErreurVisuels('Aucun visuel trouvé — réessaie dans un instant.')
+      await rafraichir()
+    } catch {
+      setErreurVisuels('Recherche impossible — vérifie le réseau, ou colle la mise à jour SQL « visuels des courses ».')
+    } finally {
+      setVisuelsEnCours(false)
+    }
+  }
 
   const ajouter = (libelle: string) => {
     const propre = libelle.trim()
@@ -154,17 +182,29 @@ export function EcranCourses() {
         <EtatVide titre="Liste vide" message="Dis un mot, il est déjà dessus." />
       )}
 
+      {aFaire.some((a) => !a.image_url) && (
+        <div className="mb-3">
+          <Bouton variante="discret" pleineLargeur desactive={visuelsEnCours} onClick={() => void chercherTousLesVisuels()}>
+            {visuelsEnCours ? 'Recherche des visuels…' : '🖼 Chercher les visuels des produits'}
+          </Bouton>
+          {erreurVisuels && <p className="mt-1 text-legende text-urgent">{erreurVisuels}</p>}
+        </div>
+      )}
+
       {grouperParRayon(aFaire).map(([rayon, lignes]) => (
         <section key={rayon} className="mb-3">
           <h3 className="mb-1 px-1 text-note font-[590] uppercase tracking-wide text-encre-3">{rayon}</h3>
           <ul className="flex flex-col gap-1">
             {lignes.map((article) => (
-              <li key={article.id} className="flex items-center rounded-md bg-fond-eleve px-2 shadow-carte">
+              <li key={article.id} className="flex items-center gap-1 rounded-md bg-fond-eleve px-2 shadow-carte">
                 <Coche
                   cochee={false}
                   onBascule={() => basculer(article)}
                   etiquette={`Cocher ${article.libelle}`}
                 />
+                {article.image_url && (
+                  <img src={article.image_url} alt="" className="h-10 w-10 shrink-0 rounded-md object-cover" />
+                )}
                 <span className="flex-1 py-3 text-corps text-encre">{article.libelle}</span>
               </li>
             ))}
