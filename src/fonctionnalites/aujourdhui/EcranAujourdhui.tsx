@@ -1,6 +1,6 @@
 // L'accueil : un tableau de bord. Le rouge n'apparaît que quand ça urge,
 // chaque bloc se coche, se tape, se personnalise. Le Fil est un bloc optionnel.
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
@@ -30,6 +30,7 @@ import { Coche } from '@/design/composants/Coche'
 import { Feuille } from '@/design/composants/Feuille'
 import { Bouton } from '@/design/composants/Bouton'
 import { BoutonMiseAJour } from '@/design/composants/BoutonMiseAJour'
+import { importerAgendaSiBesoin } from '@/lib/synchro-agenda'
 
 type CleBloc = 'urgent' | 'brief' | 'prix' | 'agenda' | 'taches' | 'penser' | 'courses' | 'menus' | 'fil'
 
@@ -78,6 +79,13 @@ export function EcranAujourdhui() {
 
   const estAdulte = membre?.role === 'adult'
   const aujourdHui = dateIsoJour(maintenantLocal())
+
+  // Les calendriers Apple se resynchronisent tout seuls à l'ouverture
+  // (au plus toutes les 4 h — la tournée de 7h complète le dispositif).
+  useEffect(() => {
+    importerAgendaSiBesoin(clientRequetes)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const documents = useQuery({
     queryKey: ['documents', 'expirants'],

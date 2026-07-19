@@ -171,7 +171,7 @@ export function EcranAdministration() {
 
       <Carte>
         <h3 className="mb-2 text-note font-[590] uppercase tracking-wide text-encre-3">
-          📅 Calendriers Apple (import automatique chaque matin)
+          📅 Calendriers Apple (auto : chaque matin + à l’ouverture de l’app)
         </h3>
         <p className="mb-2 text-note text-encre-3">
           🔑 <strong>Connexion directe iCloud</strong> — la voie simple, qui marche AUSSI avec le
