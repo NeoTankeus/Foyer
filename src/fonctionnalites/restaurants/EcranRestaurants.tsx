@@ -51,15 +51,43 @@ interface RestoAutour {
   distanceM: number
 }
 
+// Les serveurs Overpass (OpenStreetMap) — le premier est souvent saturé,
+// on essaie chaque miroir à tour de rôle jusqu'à obtenir une réponse.
+const MIROIRS_OVERPASS = [
+  'https://overpass-api.de/api/interpreter',
+  'https://overpass.kumi.systems/api/interpreter',
+  'https://overpass.private.coffee/api/interpreter',
+]
+
 /** Les restaurants autour d'un point (Overpass / OpenStreetMap, gratuit). */
 async function chercherAutour(lat: number, lon: number, rayonM: number): Promise<RestoAutour[]> {
   const requete = `[out:json][timeout:15];(node(around:${rayonM},${lat},${lon})[amenity~"restaurant|bistro|brasserie"][name];way(around:${rayonM},${lat},${lon})[amenity~"restaurant|bistro|brasserie"][name];);out center 80;`
-  const reponse = await fetch('https://overpass-api.de/api/interpreter', {
-    method: 'POST',
-    body: `data=${encodeURIComponent(requete)}`,
-    headers: { 'content-type': 'application/x-www-form-urlencoded' },
-  })
-  if (!reponse.ok) throw new Error('overpass')
+  let reponse: Response | null = null
+  let derniereErreur = 'aucun serveur joignable'
+  for (const miroir of MIROIRS_OVERPASS) {
+    const coupure = new AbortController()
+    const minuteur = setTimeout(() => coupure.abort(), 20000)
+    try {
+      const essai = await fetch(miroir, {
+        method: 'POST',
+        body: `data=${encodeURIComponent(requete)}`,
+        headers: { 'content-type': 'application/x-www-form-urlencoded' },
+        signal: coupure.signal,
+      })
+      if (essai.ok) {
+        reponse = essai
+        break
+      }
+      derniereErreur = `serveur cartes : ${essai.status}`
+    } catch (e) {
+      derniereErreur = coupure.signal.aborted
+        ? 'serveur cartes trop lent (20 s)'
+        : `serveur cartes injoignable (${String(e instanceof Error ? e.message : e).slice(0, 60)})`
+    } finally {
+      clearTimeout(minuteur)
+    }
+  }
+  if (!reponse) throw new Error(derniereErreur)
   const donnees = (await reponse.json()) as {
     elements?: { id: number; lat?: number; lon?: number; center?: { lat: number; lon: number }; tags?: Record<string, string> }[]
   }
@@ -684,8 +712,9 @@ function AutourDeMoi({
             setResultats(liste)
             setEtat('pret')
           })
-          .catch(() => {
-            setDiagnostic('position OK, mais la recherche des tables a échoué (réseau ?)')
+          .catch((e: unknown) => {
+            const detail = String(e instanceof Error ? e.message : e).slice(0, 90)
+            setDiagnostic(`position OK, mais la recherche des tables a échoué — ${detail}`)
             setEtat('erreur')
           })
       },
