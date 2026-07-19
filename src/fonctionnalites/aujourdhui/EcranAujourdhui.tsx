@@ -34,6 +34,7 @@ import { BoutonMiseAJour } from '@/design/composants/BoutonMiseAJour'
 import { importerAgendaSiBesoin } from '@/lib/synchro-agenda'
 import { choisirVille, iconeMeteo, previsions, villeMeteo, type JourMeteo } from '@/lib/meteo'
 import { prochainesVacances, type Vacances } from '@/lib/scolaire'
+import { majBadgeIcone } from '@/lib/badge'
 
 type CleBloc =
   | 'urgent' | 'brief' | 'pilote' | 'meteo' | 'prix' | 'agenda' | 'taches'
@@ -328,6 +329,11 @@ export function EcranAujourdhui() {
     }
     return liste
   }, [taches.data, documents.data, celebrations.data, aujourdHui])
+
+  // La pastille rouge sur l'icône de l'app : relances + mots du Mur non lus.
+  useEffect(() => {
+    majBadgeIcone(relances.length + murNonVus)
+  }, [relances.length, murNonVus])
 
   // TOUT ce qui est ouvert apparaît — pas seulement ce qui est daté d'aujourd'hui.
   const tachesOuvertes = taches.data ?? []
