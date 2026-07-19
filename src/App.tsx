@@ -28,6 +28,10 @@ const EcranSouvenirs = paresseux(() => import('@/fonctionnalites/souvenirs/Ecran
 const EcranAlbum = paresseux(() => import('@/fonctionnalites/souvenirs/EcranAlbum'), 'EcranAlbum')
 const EcranCoffre = paresseux(() => import('@/fonctionnalites/coffre/EcranCoffre'), 'EcranCoffre')
 const EcranComparateur = paresseux(() => import('@/fonctionnalites/comparateur/EcranComparateur'), 'EcranComparateur')
+const EcranPersonnes = paresseux(() => import('@/fonctionnalites/personnes/EcranPersonnes'), 'EcranPersonnes')
+const EcranInventaire = paresseux(() => import('@/fonctionnalites/inventaire/EcranInventaire'), 'EcranInventaire')
+const EcranRendezVous = paresseux(() => import('@/fonctionnalites/rendezvous/EcranRendezVous'), 'EcranRendezVous')
+const EcranDebrief = paresseux(() => import('@/fonctionnalites/debrief/EcranDebrief'), 'EcranDebrief')
 const EcranColis = paresseux(() => import('@/fonctionnalites/colis/EcranColis'), 'EcranColis')
 const EcranRoutines = paresseux(() => import('@/fonctionnalites/enfant/EcranRoutines'), 'EcranRoutines')
 
@@ -182,6 +186,10 @@ function Interieur() {
             <Route path="/nous/souvenirs/album/:voyageId" element={<EcranAlbum />} />
             <Route path="/nous/coffre" element={<EcranCoffre />} />
             <Route path="/nous/comparateur" element={<EcranComparateur />} />
+            <Route path="/nous/personnes" element={<EcranPersonnes />} />
+            <Route path="/nous/inventaire" element={<EcranInventaire />} />
+            <Route path="/nous/rendez-vous" element={<EcranRendezVous />} />
+            <Route path="/nous/debrief" element={<EcranDebrief />} />
             <Route path="/nous/colis" element={<EcranColis />} />
             <Route path="/nous/routines" element={<EcranRoutines />} />
             <Route path="*" element={<Navigate to="/" replace />} />

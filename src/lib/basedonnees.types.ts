@@ -142,6 +142,8 @@ export interface Database {
       gastif_conversations: Table<LigneGastifConversation>
       concerts: Table<LigneConcert>
       depenses: Table<LigneDepense>
+      personnes: Table<LignePersonne>
+      inventaire: Table<LigneInventaire>
       integrations: Table<LigneIntegration>
       push_abonnements: Table<LignePushAbonnement>
     }
@@ -358,6 +360,30 @@ export type LigneConcert = {
   format: string | null
   image_donnees: string | null
   notes: string | null
+  cree_le: string
+}
+
+export type LignePersonne = {
+  id: string
+  foyer_id: string
+  prenom: string
+  relation: string | null
+  gouts: string | null
+  tailles: string | null
+  allergies: string | null
+  notes: string | null
+  cree_le: string
+}
+
+export type LigneInventaire = {
+  id: string
+  foyer_id: string
+  zone: string
+  libelle: string
+  code_barres: string | null
+  image_url: string | null
+  quantite: number
+  dlc: string | null
   cree_le: string
 }
 

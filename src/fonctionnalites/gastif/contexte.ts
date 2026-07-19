@@ -39,7 +39,7 @@ export async function assemblerContexte(
   const [
     evenements, taches, tachesFaites, courses, repas, recettes,
     voyages, reservations, valises, documents, colis, celebrations,
-    souvenirs, mur, routines, concerts,
+    souvenirs, mur, routines, concerts, personnes, inventaire,
   ] = await Promise.all([
     supabase.from('evenements').select('*').gt('fin_a', debut).lt('debut_a', fin).order('debut_a'),
     supabase.from('taches').select('*').eq('statut', 'a_faire').order('echeance'),
@@ -57,6 +57,8 @@ export async function assemblerContexte(
     supabase.from('mur').select('*').order('cree_le', { ascending: false }).limit(15),
     supabase.from('routines').select('*').eq('active', true),
     supabase.from('concerts').select('*'),
+    supabase.from('personnes').select('*'),
+    supabase.from('inventaire').select('*'),
   ])
 
   const prenom = (id: string | null) => membres.find((m) => m.id === id)?.prenom ?? '?'
@@ -143,6 +145,19 @@ export async function assemblerContexte(
   // Routines
   for (const r of routines.data ?? [])
     lignes.push(`Routine « ${r.nom} » (${prenom(r.membre_id)}, ${r.moment}) : ${r.etapes.map((e) => e.libelle).join(' → ')}.`)
+
+  // La mémoire des gens (adultes seulement — la RLS filtre déjà)
+  for (const p of personnes.data ?? [])
+    lignes.push(
+      `Proche : ${p.prenom}${p.relation ? ` (${p.relation})` : ''}${p.gouts ? `, aime : ${p.gouts}` : ''}${p.tailles ? `, tailles : ${p.tailles}` : ''}${p.allergies ? `, ATTENTION : ${p.allergies}` : ''}${p.notes ? `, note : ${p.notes}` : ''}.`,
+    )
+
+  // L'inventaire (placards, frigo, congélo) — pour proposer des menus anti-gaspi
+  const stock = (inventaire.data ?? [])
+  if (stock.length > 0)
+    lignes.push(
+      `Inventaire du foyer : ${stock.map((s) => `${s.libelle} x${s.quantite} (${s.zone}${s.dlc ? `, DLC ${s.dlc}` : ''})`).join(' · ')}.`,
+    )
 
   return lignes.join('\n')
 }

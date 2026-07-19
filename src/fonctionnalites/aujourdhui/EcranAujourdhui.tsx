@@ -32,12 +32,19 @@ import { Feuille } from '@/design/composants/Feuille'
 import { Bouton } from '@/design/composants/Bouton'
 import { BoutonMiseAJour } from '@/design/composants/BoutonMiseAJour'
 import { importerAgendaSiBesoin } from '@/lib/synchro-agenda'
+import { choisirVille, iconeMeteo, previsions, villeMeteo, type JourMeteo } from '@/lib/meteo'
+import { prochainesVacances, type Vacances } from '@/lib/scolaire'
 
-type CleBloc = 'urgent' | 'brief' | 'prix' | 'agenda' | 'taches' | 'penser' | 'courses' | 'menus' | 'mur' | 'fil'
+type CleBloc =
+  | 'urgent' | 'brief' | 'pilote' | 'meteo' | 'prix' | 'agenda' | 'taches'
+  | 'penser' | 'courses' | 'menus' | 'mur' | 'vacances' | 'fil'
 
 const BLOCS: { cle: CleBloc; libelle: string }[] = [
   { cle: 'urgent', libelle: '🔴 Relances urgentes' },
   { cle: 'brief', libelle: 'ILY Le brief de Gastif' },
+  { cle: 'pilote', libelle: '🤖 Le Pilote (suggestions)' },
+  { cle: 'meteo', libelle: '🌤 Météo' },
+  { cle: 'vacances', libelle: '🎒 Vacances scolaires (zone B)' },
   { cle: 'prix', libelle: '💸 Baisses de prix (cadeaux)' },
   { cle: 'agenda', libelle: '📅 La journée' },
   { cle: 'taches', libelle: '✅ À faire' },
@@ -49,7 +56,8 @@ const BLOCS: { cle: CleBloc; libelle: string }[] = [
 ]
 
 const DEFAUT: Record<CleBloc, boolean> = {
-  urgent: true, brief: true, prix: true, agenda: true, taches: true,
+  urgent: true, brief: true, pilote: true, meteo: true, vacances: true,
+  prix: true, agenda: true, taches: true,
   penser: true, courses: true, menus: true, mur: true, fil: false,
 }
 
@@ -189,6 +197,101 @@ export function EcranAujourdhui() {
   const murNonVus = (mur.data ?? []).filter((m) => m.cree_le > murVuLe && m.auteur_id !== membre?.id).length
   const dernierMot = mur.data?.[0]
 
+  const celebrationsTriees = useMemo(
+    () =>
+      (celebrations.data ?? [])
+        .map((c) => {
+          const date = new Date(c.date)
+          const prochaine = new Date(maintenantLocal().getFullYear(), date.getMonth(), date.getDate())
+          if (prochaine < new Date(maintenantLocal().getFullYear(), maintenantLocal().getMonth(), maintenantLocal().getDate()))
+            prochaine.setFullYear(prochaine.getFullYear() + 1)
+          return { c, dans: differenceInCalendarDays(prochaine, maintenantLocal()) }
+        })
+        .sort((a, b) => a.dans - b.dans),
+    [celebrations.data],
+  )
+
+  // 🌤 Météo (ville mémorisée sur ce téléphone) + 🎒 vacances zone B.
+  const [ville, setVille] = useState(villeMeteo())
+  const [saisieVille, setSaisieVille] = useState('')
+  const meteo = useQuery<JourMeteo[]>({
+    queryKey: ['meteo', ville?.nom ?? ''],
+    queryFn: previsions,
+    enabled: ville !== null,
+    staleTime: 30 * 60 * 1000,
+  })
+  const vacances = useQuery<Vacances[]>({
+    queryKey: ['vacances-zone-b'],
+    queryFn: prochainesVacances,
+    staleTime: 12 * 3600 * 1000,
+  })
+
+  // 🧊 Inventaire : les DLC qui pressent (pour le Pilote).
+  const inventaire = useQuery({
+    queryKey: ['inventaire', 'dlc'],
+    queryFn: async () => {
+      const limite = new Date(Date.now() + 3 * 86400000).toISOString().slice(0, 10)
+      const { data, error } = await supabase
+        .from('inventaire').select('*').not('dlc', 'is', null).lte('dlc', limite).order('dlc')
+      if (error) return []
+      return data
+    },
+  })
+
+  // 🎁 Les célébrations proches sans aucune idée (pour le Pilote, adultes).
+  const ideesParCelebration = useQuery({
+    queryKey: ['idees', 'compte'],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('idees_cadeaux').select('celebration_id' as '*')
+      if (error) return new Set<string>()
+      return new Set((data as { celebration_id: string | null }[]).map((i) => i.celebration_id ?? ''))
+    },
+    enabled: estAdulte,
+  })
+
+  // 🤖 Le Pilote : des suggestions calculées sur les données réelles du foyer.
+  const suggestions = useMemo(() => {
+    const liste: { id: string; texte: string; vers: string }[] = []
+    for (const l of inventaire.data ?? []) {
+      const perime = (l.dlc ?? '') < aujourdHui
+      liste.push({
+        id: `dlc-${l.id}`,
+        texte: perime
+          ? `⚠️ ${l.libelle} est périmé — à sortir du stock.`
+          : `🧊 DLC proche : ${l.libelle} (${new Date(`${l.dlc}T12:00:00`).toLocaleDateString('fr-FR', { weekday: 'long' })}) — mets-le au menu.`,
+        vers: '/nous/inventaire',
+      })
+    }
+    if (estAdulte && ideesParCelebration.data) {
+      for (const { c, dans } of celebrationsTriees) {
+        if (dans <= 21 && !ideesParCelebration.data.has(c.id)) {
+          liste.push({
+            id: `cadeau-${c.id}`,
+            texte: `🎁 ${c.nom} dans ${dans} j et le coffre à idées est vide — on s’y met ?`,
+            vers: '/nous/celebrations',
+          })
+        }
+      }
+    }
+    const demain = (meteo.data ?? [])[1]
+    if (demain && demain.probaPluie >= 60) {
+      const dehors = (evenementsAVenir.data ?? []).find(
+        (e) => e.debut_a.slice(0, 10) === demain.date && /parc|piscine|vélo|velo|rando|plage|jardin|foot|match|pique/i.test(e.titre),
+      )
+      if (dehors) {
+        liste.push({
+          id: 'pluie-demain',
+          texte: `🌧 Pluie probable demain (${demain.probaPluie} %) pour « ${dehors.titre} » — prévois un plan B.`,
+          vers: '/agenda',
+        })
+      }
+    }
+    if (maintenantLocal().getDay() === 0) {
+      liste.push({ id: 'debrief', texte: '📊 C’est dimanche : le Débrief de la semaine est prêt.', vers: '/nous/debrief' })
+    }
+    return liste.slice(0, 4)
+  }, [inventaire.data, ideesParCelebration.data, celebrationsTriees, meteo.data, evenementsAVenir.data, aujourdHui, estAdulte])
+
   const enregistrerBlocs = (suivants: Record<CleBloc, boolean>) => {
     setBlocs(suivants)
     localStorage.setItem('foyer-blocs', JSON.stringify(suivants))
@@ -230,16 +333,6 @@ export function EcranAujourdhui() {
   const tachesOuvertes = taches.data ?? []
   const articlesRestants = (courses.data?.articles ?? []).filter((a) => !a.coche)
   const articlesCoches = (courses.data?.articles ?? []).filter((a) => a.coche)
-
-  const celebrationsTriees = (celebrations.data ?? [])
-    .map((c) => {
-      const date = new Date(c.date)
-      const prochaine = new Date(maintenantLocal().getFullYear(), date.getMonth(), date.getDate())
-      if (prochaine < new Date(maintenantLocal().getFullYear(), maintenantLocal().getMonth(), maintenantLocal().getDate()))
-        prochaine.setFullYear(prochaine.getFullYear() + 1)
-      return { c, dans: differenceInCalendarDays(prochaine, maintenantLocal()) }
-    })
-    .sort((a, b) => a.dans - b.dans)
 
   const evenementsDuJour = (evenements.data ?? [])
     .filter((e) => !e.journee_entiere)
@@ -290,6 +383,103 @@ export function EcranAujourdhui() {
         {blocs.brief && (
           <section className="rounded-xl bg-fond-eleve p-4 shadow-carte" style={{ order: position('brief') }}>
             <BriefGastif evenements={evenements.data ?? []} taches={taches.data ?? []} />
+          </section>
+        )}
+
+        {/* 🤖 Le Pilote — Gastif propose, calculé sur les vraies données du foyer */}
+        {blocs.pilote && suggestions.length > 0 && (
+          <section
+            className="rounded-xl p-4 shadow-carte"
+            style={{ background: 'color-mix(in srgb, var(--prune) 12%, var(--fond-eleve))', order: position('pilote') }}
+          >
+            <h2 className="mb-1 flex items-center gap-2 text-note font-[700] uppercase tracking-wide text-encre-3">
+              <span className="badge-ily h-5 w-8 text-[9px]">ILY</span> Le Pilote
+            </h2>
+            {suggestions.map((s) => (
+              <button
+                key={s.id}
+                onClick={() => naviguer(s.vers)}
+                className="block w-full py-1 text-left text-corps-2 leading-snug text-encre"
+              >
+                {s.texte}
+              </button>
+            ))}
+          </section>
+        )}
+
+        {/* 🌤 Météo — Open-Meteo (modèle Météo-France), ville mémorisée */}
+        {blocs.meteo && (
+          <section className="rounded-xl bg-fond-eleve p-4 shadow-carte" style={{ order: position('meteo') }}>
+            <div className="flex items-center justify-between">
+              <h2 className="text-note font-[700] uppercase tracking-wide text-encre-3">
+                🌤 Météo{ville ? ` — ${ville.nom}` : ''}
+              </h2>
+              {ville && (
+                <button onClick={() => setVille(null)} className="text-legende text-encre-3 underline">
+                  changer
+                </button>
+              )}
+            </div>
+            {!ville ? (
+              <form
+                className="mt-2 flex gap-2"
+                onSubmit={(e) => {
+                  e.preventDefault()
+                  void choisirVille(saisieVille).then((v) => {
+                    if (v) setVille(v)
+                  })
+                }}
+              >
+                <input
+                  value={saisieVille}
+                  onChange={(e) => setSaisieVille(e.target.value)}
+                  placeholder="Ta ville (une fois)"
+                  aria-label="Ville pour la météo"
+                  className="min-h-sur-tactile w-full min-w-0 flex-1 rounded-md border border-trait bg-fond-sourd px-3 text-corps-2"
+                />
+                <Bouton type="submit" variante="valider" desactive={!saisieVille.trim()}>OK</Bouton>
+              </form>
+            ) : (
+              <div className="mt-2 flex justify-between">
+                {(meteo.data ?? []).map((j, idx) => (
+                  <div key={j.date} className="flex flex-col items-center gap-0.5">
+                    <span className="text-legende capitalize text-encre-3">
+                      {idx === 0 ? 'auj.' : new Date(`${j.date}T12:00:00`).toLocaleDateString('fr-FR', { weekday: 'short' })}
+                    </span>
+                    <span className="text-[22px]">{iconeMeteo(j.code)}</span>
+                    <span className="chiffres text-note text-encre">
+                      {j.tMax}° <span className="text-encre-3">{j.tMin}°</span>
+                    </span>
+                    {j.probaPluie >= 40 && (
+                      <span className="chiffres text-legende text-ardoise">☔ {j.probaPluie} %</span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+        )}
+
+        {/* 🎒 Vacances scolaires zone B — calendrier officiel */}
+        {blocs.vacances && (vacances.data?.length ?? 0) > 0 && (
+          <section className="rounded-xl bg-fond-eleve p-4 shadow-carte" style={{ order: position('vacances') }}>
+            <h2 className="mb-1 text-note font-[700] uppercase tracking-wide text-encre-3">
+              🎒 Vacances scolaires — zone B
+            </h2>
+            {(vacances.data ?? []).slice(0, 2).map((v) => {
+              const dans = differenceInCalendarDays(new Date(v.debut), maintenantLocal())
+              const enCours = dans <= 0
+              return (
+                <p key={v.debut} className="py-0.5 text-corps-2 text-encre">
+                  {v.description}{' '}
+                  <span className="chiffres text-encre-3">
+                    {enCours
+                      ? `— en cours, jusqu’au ${new Date(v.fin).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}`
+                      : `— J-${dans} (${new Date(v.debut).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })} → ${new Date(v.fin).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })})`}
+                  </span>
+                </p>
+              )
+            })}
           </section>
         )}
 

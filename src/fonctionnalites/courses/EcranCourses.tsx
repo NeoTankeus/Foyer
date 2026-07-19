@@ -14,6 +14,9 @@ import { devinerRayon, indexRayon } from './rayons'
 import { chercherVisuels } from '@/lib/images'
 import { muter } from '@/lib/sync'
 import { ChoixVisuel } from '@/design/composants/ChoixVisuel'
+import { Feuille } from '@/design/composants/Feuille'
+import { decoderBillet } from '@/fonctionnalites/voyages/billets'
+import { COULEURS_NUTRISCORE, ficheParCodeBarres, type FicheProduit } from '@/lib/openfoodfacts'
 import type { LigneArticle } from '@/lib/basedonnees.types'
 import { Coche } from '@/design/composants/Coche'
 import { Bouton } from '@/design/composants/Bouton'
@@ -33,6 +36,8 @@ export function EcranCourses() {
   const [visuelsEnCours, setVisuelsEnCours] = useState(false)
   const [erreurVisuels, setErreurVisuels] = useState<string | null>(null)
   const [choixVisuelPour, setChoixVisuelPour] = useState<LigneArticle | null>(null)
+  const [ficheScan, setFicheScan] = useState<FicheProduit | 'introuvable' | null>(null)
+  const [scanEnCours, setScanEnCours] = useState(false)
   const champRef = useRef<HTMLInputElement>(null)
 
   // Plusieurs personnes cochent en même temps : temps réel obligatoire.
@@ -184,6 +189,34 @@ export function EcranCourses() {
         <EtatVide titre="Liste vide" message="Dis un mot, il est déjà dessus." />
       )}
 
+      <div className="mb-3">
+        <label className="btn-3d btn-clair inline-flex min-h-sur-tactile w-full cursor-pointer items-center justify-center px-4 py-2.5 text-center text-corps-2 leading-tight">
+          {scanEnCours ? 'Lecture du code-barres…' : '📷 Scanner un produit (fiche + Nutri-Score)'}
+          <input
+            type="file"
+            accept="image/*"
+            capture="environment"
+            className="hidden"
+            onChange={(e) => {
+              const fichier = e.target.files?.[0]
+              e.target.value = ''
+              if (!fichier) return
+              setScanEnCours(true)
+              void decoderBillet(fichier)
+                .then(async (decode) => {
+                  if (!decode) {
+                    setFicheScan('introuvable')
+                    return
+                  }
+                  const fiche = await ficheParCodeBarres(decode.texte)
+                  setFicheScan(fiche ?? 'introuvable')
+                })
+                .finally(() => setScanEnCours(false))
+            }}
+          />
+        </label>
+      </div>
+
       {aFaire.some((a) => !a.image_url) && (
         <div className="mb-3">
           <Bouton variante="discret" pleineLargeur desactive={visuelsEnCours} onClick={() => void chercherTousLesVisuels()}>
@@ -248,6 +281,48 @@ export function EcranCourses() {
           </ul>
         </section>
       )}
+
+      <Feuille ouverte={ficheScan !== null} onFermer={() => setFicheScan(null)} titre="Fiche produit">
+        {ficheScan === 'introuvable' ? (
+          <p className="py-4 text-center text-corps-2 text-encre-3">
+            Code illisible ou produit inconnu d’Open Food Facts — réessaie en cadrant bien le code-barres.
+          </p>
+        ) : ficheScan ? (
+          <div className="flex flex-col gap-3">
+            <div className="flex items-center gap-3">
+              {ficheScan.image && <img src={ficheScan.image} alt="" className="h-24 w-24 shrink-0 rounded-md object-contain" />}
+              <div className="min-w-0 flex-1">
+                <p className="text-corps font-[590] text-encre">{ficheScan.nom ?? 'Produit'}</p>
+                <p className="text-legende text-encre-3">
+                  {[ficheScan.marque, ficheScan.quantite].filter(Boolean).join(' · ')}
+                </p>
+                {ficheScan.nutriscore && (
+                  <span
+                    className="mt-1 inline-flex h-7 w-7 items-center justify-center rounded-md text-corps font-[800] uppercase text-white"
+                    style={{ background: COULEURS_NUTRISCORE[ficheScan.nutriscore] ?? 'var(--encre-3)' }}
+                  >
+                    {ficheScan.nutriscore}
+                  </span>
+                )}
+              </div>
+            </div>
+            {ficheScan.allergenes.length > 0 && (
+              <p className="text-corps-2 text-urgent">⚠️ Allergènes : {ficheScan.allergenes.join(', ')}</p>
+            )}
+            <Bouton
+              pleineLargeur
+              variante="valider"
+              onClick={() => {
+                const libelle = [ficheScan.marque?.split(',')[0], ficheScan.nom].filter(Boolean).join(' ')
+                ajouter(libelle)
+                setFicheScan(null)
+              }}
+            >
+              🛒 Ajouter à la liste
+            </Bouton>
+          </div>
+        ) : null}
+      </Feuille>
 
       <ChoixVisuel
         ouverte={choixVisuelPour !== null}
