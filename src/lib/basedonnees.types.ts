@@ -145,6 +145,9 @@ export interface Database {
       personnes: Table<LignePersonne>
       inventaire: Table<LigneInventaire>
       restaurants: Table<LigneRestaurant>
+      habitudes: Table<LigneHabitude>
+      capsules: Table<LigneCapsule>
+      sante: Table<LigneSante>
       notifications: Table<LigneNotification>
       integrations: Table<LigneIntegration>
       push_abonnements: Table<LignePushAbonnement>
@@ -430,6 +433,41 @@ export type LigneDepense = {
   cree_le: string
 }
 
+
+export type LigneHabitude = {
+  id: string
+  foyer_id: string
+  membre_id: string
+  nom: string
+  emoji: string
+  jours: string[] // dates AAAA-MM-JJ tenues
+  cree_le: string
+}
+
+export type LigneCapsule = {
+  id: string
+  foyer_id: string
+  auteur_id: string | null
+  titre: string
+  contenu: string | null
+  image_donnees: string | null
+  ouvrir_le: string
+  ouverte: boolean
+  cree_le: string
+}
+
+export type LigneSante = {
+  id: string
+  foyer_id: string
+  personne: string
+  type: 'vaccin' | 'ordonnance' | 'mesure' | 'note'
+  libelle: string
+  date_soin: string | null
+  rappel_le: string | null
+  image_donnees: string | null
+  notes: string | null
+  cree_le: string
+}
 
 export type LigneIntegration = {
   id: string

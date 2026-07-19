@@ -31,6 +31,15 @@ export function EcranNous() {
   const estAdulte = membre?.role === 'adult'
 
   const MODULES: { chemin: string; libelle: string; detail: string; icone: string; couleur: string; adulte?: boolean }[] = [
+    { chemin: '/nous/chef', libelle: 'Le Chef', detail: 'le menu du soir avec ce qu’on a déjà', icone: '🧑‍🍳', couleur: 'var(--sauge)' },
+    { chemin: '/nous/soiree', libelle: 'Soirée parfaite', detail: 'film + plat + resto, décidé en 10 s', icone: '🎬', couleur: 'var(--prune)' },
+    { chemin: '/nous/roue', libelle: 'La Roue', detail: 'elle décide, plus de débat', icone: '🎲', couleur: 'var(--corail)' },
+    { chemin: '/nous/radar', libelle: 'Radar de départ', detail: 'l’heure à laquelle il faut VRAIMENT partir', icone: '🚗', couleur: 'var(--ardoise)' },
+    { chemin: '/nous/journal', libelle: 'Le Journal', detail: 'votre vie s’écrit toute seule', icone: '📔', couleur: 'var(--or)' },
+    { chemin: '/nous/jardin', libelle: 'Le Jardin', detail: 'vos habitudes poussent chaque jour', icone: '🌱', couleur: 'var(--sauge)', adulte: true },
+    { chemin: '/nous/capsules', libelle: 'Capsules temporelles', detail: 'des mots d’aujourd’hui pour plus tard', icone: '💌', couleur: 'var(--corail)', adulte: true },
+    { chemin: '/nous/budget', libelle: 'Le Trésorier', detail: 'scanne le ticket, StiGa classe tout', icone: '💰', couleur: 'var(--or)', adulte: true },
+    { chemin: '/nous/sante', libelle: 'Carnet santé', detail: 'vaccins, ordonnances, rappels', icone: '🩺', couleur: 'var(--ardoise)', adulte: true },
     { chemin: '/nous/equilibre', libelle: 'Équilibre', detail: 'la répartition réelle, en minutes', icone: '⚖️', couleur: 'var(--ardoise)', adulte: true },
     { chemin: '/nous/celebrations', libelle: 'Célébrations', detail: 'anniversaires et coffre à idées', icone: '🎂', couleur: 'var(--corail)' },
     { chemin: '/nous/voyages', libelle: 'Voyages', detail: 'valises, réservations, météo', icone: '✈️', couleur: 'var(--ardoise)' },

@@ -150,9 +150,45 @@ async function veillerPrix(pousser: (titre: string, corps: string) => Promise<vo
 
 // ————— Le brief du matin —————
 
+// Radar de départ : pour les rendez-vous du jour qui ont un lieu, calcule
+// l'heure à laquelle il faut partir de la maison (trajet OSRM + 10 min de marge).
+async function heuresDeDepart(
+  evenements: { titre: string; debut_a: string; journee_entiere: boolean; lieu?: string | null }[],
+): Promise<string[]> {
+  const foyers = await sb<{ reglages?: { maison?: { lat?: number; lon?: number } } }[]>('foyers?select=reglages&limit=1')
+  const maison = foyers[0]?.reglages?.maison
+  if (!maison?.lat || !maison?.lon) return []
+  const phrases: string[] = []
+  for (const e of evenements.filter((x) => !x.journee_entiere && x.lieu).slice(0, 3)) {
+    try {
+      const g = await fetch(
+        `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(e.lieu ?? '')}&format=jsonv2&limit=1`,
+        { headers: { accept: 'application/json', 'user-agent': 'StiGa-app-famille/1.0' } },
+      )
+      if (!g.ok) continue
+      const [cible] = (await g.json()) as { lat: string; lon: string }[]
+      if (!cible) continue
+      const o = await fetch(
+        `https://router.project-osrm.org/route/v1/driving/${maison.lon},${maison.lat};${cible.lon},${cible.lat}?overview=false`,
+      )
+      if (!o.ok) continue
+      const route = (await o.json()) as { routes?: { duration?: number }[] }
+      const duree = route.routes?.[0]?.duration
+      if (!duree) continue
+      const minutes = Math.round(duree / 60)
+      const depart = new Date(new Date(e.debut_a).getTime() - (minutes + 10) * 60000)
+      const heure = depart.toLocaleTimeString('fr-FR', { timeZone: 'Europe/Paris', hour: '2-digit', minute: '2-digit' })
+      phrases.push(`🚗 ${e.titre} : pars vers ${heure} (${minutes} min de route).`)
+    } catch {
+      // lieu introuvable ou routeur muet — on n'annonce rien de faux
+    }
+  }
+  return phrases
+}
+
 async function composerBrief(): Promise<string> {
   const { debut, fin, jour } = bornesJourParis()
-  interface Evt { titre: string; debut_a: string; journee_entiere: boolean }
+  interface Evt { titre: string; debut_a: string; journee_entiere: boolean; lieu?: string | null }
   interface Tache { titre: string }
   interface Repas { notes: string | null; recette_id: string | null }
   const [evenements, taches, repas] = await Promise.all([
@@ -171,6 +207,7 @@ async function composerBrief(): Promise<string> {
     morceaux.push(
       `${horaires.length} rendez-vous aujourd’hui — premier : ${premier?.titre ?? ''} à ${heure}.`,
     )
+    morceaux.push(...(await heuresDeDepart(horaires).catch(() => [])))
   }
   if (taches.length === 1) morceaux.push(`1 chose à faire : ${taches[0]?.titre ?? ''}.`)
   else if (taches.length > 1) morceaux.push(`${taches.length} choses à faire.`)
@@ -287,7 +324,34 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     await envoyer(abonnements.filter((a) => idsAdultes.has(a.membre_id)), titre, corps, url)
   }
 
-  const resultat = { ics: 0, colis: 0, prix: 0, anniversaires: 0, brief: '', notifies: abonnements.length }
+  // 💌 Capsules temporelles dont le jour est arrivé : on prévient les adultes
+  // (le contenu, lui, ne se révèle que dans l'app, à l'ouverture).
+  const livrerCapsules = async (): Promise<number> => {
+    const { jour } = bornesJourParis()
+    const capsules = await sb<{ id: string; titre: string }[]>(
+      `capsules?ouverte=eq.false&ouvrir_le=lte.${jour}&select=id,titre`,
+    )
+    for (const c of capsules) {
+      await pousserAdultes('💌 Une capsule temporelle s’ouvre !', `« ${c.titre} » attend d’être ouverte.`, '/nous/capsules')
+    }
+    return capsules.length
+  }
+
+  // 🩺 Rappels santé du jour (vaccins, renouvellements…).
+  const rappelerSante = async (): Promise<number> => {
+    const { jour } = bornesJourParis()
+    const rappels = await sb<{ personne: string; libelle: string }[]>(
+      `sante?rappel_le=eq.${jour}&select=personne,libelle`,
+    )
+    for (const r of rappels) {
+      await pousserAdultes('🩺 Rappel santé', `${r.personne} : ${r.libelle}.`, '/nous/sante')
+    }
+    return rappels.length
+  }
+
+  const resultat = { ics: 0, colis: 0, prix: 0, anniversaires: 0, capsules: 0, sante: 0, brief: '', notifies: abonnements.length }
+  try { resultat.capsules = await livrerCapsules() } catch { /* section suivante */ }
+  try { resultat.sante = await rappelerSante() } catch { /* section suivante */ }
   try { resultat.ics = (await importerIcs(URL_SUPABASE, CLE_SERVICE)).importes } catch { /* section suivante */ }
   try { resultat.colis = await suivreColis((t, c) => pousserAdultes(t, c, '/nous/colis')) } catch { /* section suivante */ }
   try { resultat.prix = await veillerPrix((t, c) => pousserAdultes(t, c, '/nous/celebrations')) } catch { /* section suivante */ }

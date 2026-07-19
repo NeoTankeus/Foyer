@@ -1,7 +1,9 @@
 // Les nouveautés de la version en cours — affichées UNE fois dans le pop-up
 // « Quoi de neuf », signé ILY. Mises à jour à chaque déploiement.
 export const NOTES_VERSION: string[] = [
-  '⚡ « Autour de moi » façon TripAdvisor : la carte s’ouvre immédiatement avec ta position, et les tables s’y épinglent dès qu’elles arrivent — toutes les sources de cartes sont interrogées en même temps, la plus rapide gagne.',
-  '☆ Sur chaque table proposée : touche l’étoile pour la mettre direct en favori (elle rejoint le carnet ET la carte du monde).',
-  '📖 Les noms de restaurants ne sont plus coupés — ils s’affichent en entier sur plusieurs lignes.',
+  '🎁 10 NOUVELLES fonctionnalités d’un coup, toutes dans le Menu !',
+  '🧑‍🍳 Le Chef : le dîner du soir avec ce qu’on a déjà dans les placards (le manquant part dans les courses).',
+  '🎬 Soirée parfaite · 🎲 La Roue qui décide · 🚗 Radar de départ (l’heure à laquelle il faut partir, aussi dans le brief du matin).',
+  '📔 Le Journal qui s’écrit tout seul · 🌱 Le Jardin des habitudes · 💌 Capsules temporelles (frissons garantis).',
+  '💰 Le Trésorier (scanne un ticket, il classe tout) · 🩺 Carnet santé avec rappels · ✈️ Voyages : StiGa fait les valises selon la météo.',
 ]

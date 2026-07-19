@@ -15,6 +15,7 @@ import {
 import { differenceInCalendarDays, maintenantLocal } from '@/lib/dates'
 import type { LigneDepense, LigneReservation } from '@/lib/basedonnees.types'
 import { compresserImage } from '@/fonctionnalites/souvenirs/donnees'
+import { demanderAStiga } from '@/lib/stiga'
 import { decoderBillet, genererCodeVisuel } from './billets'
 import { Coche } from '@/design/composants/Coche'
 import { couleurMembre } from '@/lib/couleurs'
@@ -49,6 +50,8 @@ export function EcranVoyage() {
   const [nouvelleTacheMaison, setNouvelleTacheMaison] = useState('')
   const [depenseManuelle, setDepenseManuelle] = useState<Partial<LigneDepense> | null>(null)
   const [ticketEnCours, setTicketEnCours] = useState(false)
+  const [valiseIA, setValiseIA] = useState(false)
+  const [checklistIA, setChecklistIA] = useState(false)
   const { foyer } = utiliserSession()
 
   const depenses = useQuery({
@@ -244,6 +247,78 @@ export function EcranVoyage() {
     await clientRequetes.invalidateQueries({ queryKey: ['voyages'] })
   }
 
+  // « Une liste par ligne » renvoyée par StiGa → éléments propres et dédupliqués.
+  const lignesDeListe = (texte: string, dejaLa: string[]): string[] => {
+    const connus = new Set(dejaLa.map((x) => x.toLowerCase()))
+    return texte
+      .split('\n')
+      .map((l) => l.replace(/^[\s•\-–*\d.)]+/, '').trim())
+      .filter((l) => l.length > 1 && l.length < 60 && !/[:!?]$/.test(l))
+      .filter((l) => !connus.has(l.toLowerCase()))
+      .slice(0, 20)
+  }
+
+  // ✨ StiGa remplit la valise du membre actif selon la destination et la météo.
+  const remplirValiseIA = async () => {
+    if (!voyage) return
+    setValiseIA(true)
+    try {
+      const proprietaire = filants.find((m) => m.id === membreActif)
+      const ciel = (meteo ?? [])
+        .map((j) => `${j.date} ${Math.round(j.tMin)}–${Math.round(j.tMax)}°${j.pluieMm > 1 ? ' pluie' : ''}`)
+        .join(' · ')
+      const nuits =
+        voyage.debut && voyage.fin
+          ? differenceInCalendarDays(new Date(`${voyage.fin}T12:00:00`), new Date(`${voyage.debut}T12:00:00`))
+          : null
+      const reponse = await demanderAStiga(
+        `Prépare la valise de ${proprietaire?.prenom ?? 'un membre'}` +
+          `${proprietaire?.role === 'child' ? ' (enfant de 7 ans)' : ' (adulte)'} pour ${voyage.destination ?? voyage.titre}` +
+          `${nuits ? `, ${nuits} nuit${nuits > 1 ? 's' : ''}` : ''}. ` +
+          `Météo sur place : ${ciel || 'inconnue — prévois large'}. ` +
+          `Déjà dans la valise : ${affaires.map((a) => a.libelle).join(', ') || 'rien'}. ` +
+          `Donne UNIQUEMENT la liste des affaires à ajouter, une par ligne, sans catégories ni commentaires, 15 éléments max.`,
+      )
+      const nouveaux = lignesDeListe(reponse, affaires.map((a) => a.libelle))
+      for (const libelle of nouveaux) {
+        const vid = crypto.randomUUID()
+        await muter({
+          table: 'valise', type: 'insert', cible_id: vid,
+          charge: { id: vid, voyage_id: voyage.id, membre_id: membreActif, libelle, categorie: 'divers', position: 999, coche: false },
+        })
+      }
+      await clientRequetes.invalidateQueries({ queryKey: ['valise', voyage.id] })
+    } finally {
+      setValiseIA(false)
+    }
+  }
+
+  // ✨ StiGa propose la checklist avant-départ (maison + anti-gaspi frigo).
+  const proposerChecklistIA = async () => {
+    if (!voyage) return
+    setChecklistIA(true)
+    try {
+      const reponse = await demanderAStiga(
+        `On part ${voyage.destination ? `à ${voyage.destination}` : 'en voyage'}` +
+          `${voyage.debut ? ` le ${voyage.debut}` : ''}${voyage.fin ? ` jusqu'au ${voyage.fin}` : ''}. ` +
+          `Fais la checklist avant de quitter la maison (fermer l'eau, frigo à vider — pense anti-gaspi la semaine d'avant —, ` +
+          `poubelles, courrier, plantes, chauffage, clés…). ` +
+          `Déjà listé : ${voyage.checklist_maison.map((c) => c.libelle).join(', ') || 'rien'}. ` +
+          `Donne UNIQUEMENT les éléments à ajouter, un par ligne, sans commentaires, 12 max.`,
+      )
+      const nouveaux = lignesDeListe(reponse, voyage.checklist_maison.map((c) => c.libelle))
+      if (nouveaux.length > 0) {
+        await muter({
+          table: 'voyages', type: 'update', cible_id: voyage.id,
+          charge: { checklist_maison: [...voyage.checklist_maison, ...nouveaux.map((libelle) => ({ libelle, coche: false }))] },
+        })
+        await clientRequetes.invalidateQueries({ queryKey: ['voyages'] })
+      }
+    } finally {
+      setChecklistIA(false)
+    }
+  }
+
   const attacherPhotoResa = async (fichiers: FileList | null) => {
     const fichier = fichiers?.[0]
     if (!fichier || !resaPourPhoto || !voyage) return
@@ -353,6 +428,13 @@ export function EcranVoyage() {
           />
           <Bouton type="submit" variante="discret">OK</Bouton>
         </form>
+        <div className="mt-2">
+          <Bouton pleineLargeur variante="soleil" desactive={valiseIA} onClick={() => void remplirValiseIA()}>
+            {valiseIA
+              ? 'StiGa fait la valise…'
+              : `✨ StiGa remplit la valise de ${filants.find((m) => m.id === membreActif)?.prenom ?? ''} (selon la météo)`}
+          </Bouton>
+        </div>
       </section>
 
       {/* Réservations */}
@@ -524,6 +606,11 @@ export function EcranVoyage() {
           />
           <Bouton type="submit" variante="discret">OK</Bouton>
         </form>
+        <div className="mt-2">
+          <Bouton pleineLargeur variante="soleil" desactive={checklistIA} onClick={() => void proposerChecklistIA()}>
+            {checklistIA ? 'StiGa fait le tour de la maison…' : '✨ StiGa propose la checklist avant-départ'}
+          </Bouton>
+        </div>
       </section>
 
       <Feuille ouverte={depenseManuelle !== null} onFermer={() => setDepenseManuelle(null)} titre="Dépense du séjour">

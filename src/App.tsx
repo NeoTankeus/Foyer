@@ -35,6 +35,15 @@ const EcranDebrief = paresseux(() => import('@/fonctionnalites/debrief/EcranDebr
 const EcranRestaurants = paresseux(() => import('@/fonctionnalites/restaurants/EcranRestaurants'), 'EcranRestaurants')
 const EcranColis = paresseux(() => import('@/fonctionnalites/colis/EcranColis'), 'EcranColis')
 const EcranRoutines = paresseux(() => import('@/fonctionnalites/enfant/EcranRoutines'), 'EcranRoutines')
+const EcranChef = paresseux(() => import('@/fonctionnalites/chef/EcranChef'), 'EcranChef')
+const EcranJournal = paresseux(() => import('@/fonctionnalites/journal/EcranJournal'), 'EcranJournal')
+const EcranRadar = paresseux(() => import('@/fonctionnalites/radar/EcranRadar'), 'EcranRadar')
+const EcranBudget = paresseux(() => import('@/fonctionnalites/budget/EcranBudget'), 'EcranBudget')
+const EcranSoiree = paresseux(() => import('@/fonctionnalites/soiree/EcranSoiree'), 'EcranSoiree')
+const EcranJardin = paresseux(() => import('@/fonctionnalites/jardin/EcranJardin'), 'EcranJardin')
+const EcranCapsules = paresseux(() => import('@/fonctionnalites/capsules/EcranCapsules'), 'EcranCapsules')
+const EcranSante = paresseux(() => import('@/fonctionnalites/sante/EcranSante'), 'EcranSante')
+const EcranRoue = paresseux(() => import('@/fonctionnalites/roue/EcranRoue'), 'EcranRoue')
 
 function IconeOnglet({ nom }: { nom: string }) {
   const traits = { fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round' as const }
@@ -194,6 +203,15 @@ function Interieur() {
             <Route path="/nous/restaurants" element={<EcranRestaurants />} />
             <Route path="/nous/colis" element={<EcranColis />} />
             <Route path="/nous/routines" element={<EcranRoutines />} />
+            <Route path="/nous/chef" element={<EcranChef />} />
+            <Route path="/nous/journal" element={<EcranJournal />} />
+            <Route path="/nous/radar" element={<EcranRadar />} />
+            <Route path="/nous/budget" element={<EcranBudget />} />
+            <Route path="/nous/soiree" element={<EcranSoiree />} />
+            <Route path="/nous/jardin" element={<EcranJardin />} />
+            <Route path="/nous/capsules" element={<EcranCapsules />} />
+            <Route path="/nous/sante" element={<EcranSante />} />
+            <Route path="/nous/roue" element={<EcranRoue />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </Suspense>
