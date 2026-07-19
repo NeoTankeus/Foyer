@@ -176,7 +176,7 @@ export function EcranAdministration() {
         <p className="mb-2 text-note text-encre-3">
           🔑 <strong>Connexion directe iCloud</strong> — la voie simple, qui marche AUSSI avec le
           calendrier « Famille » : sur <strong>appleid.apple.com</strong> → Connexion et sécurité →
-          <strong> Mots de passe d’app</strong> → crée-en un (nomme-le FOYER) et colle-le ici.
+          <strong> Mots de passe d’app</strong> → crée-en un (nomme-le StiGa) et colle-le ici.
           Lecture seule, révocable quand tu veux.
         </p>
         <div className="mb-3 flex flex-col gap-2">

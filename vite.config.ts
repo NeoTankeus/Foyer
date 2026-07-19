@@ -30,9 +30,9 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['icones/icone.svg'],
       manifest: {
-        name: 'Gastif',
-        short_name: 'Gastif',
-        description: 'L’intendant du foyer — le quotidien, en paix.',
+        name: 'StiGa',
+        short_name: 'StiGa',
+        description: 'StiGa — Stéphane, Tiphaine, Gabriel. Le quotidien, en paix.',
         lang: 'fr',
         dir: 'ltr',
         display: 'standalone',

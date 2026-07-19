@@ -112,14 +112,14 @@ export function EcranNous() {
             </p>
           ) : notifications === 'refuse' ? (
             <p className="text-corps-2 text-encre-3">
-              Refusées dans les réglages du téléphone. Réglages → Notifications → FOYER pour les rouvrir.
+              Refusées dans les réglages du téléphone. Réglages → Notifications → StiGa pour les rouvrir.
             </p>
           ) : (
             <>
               <p className="mb-2 text-corps-2 text-encre-2">
                 Le brief de Gastif à ~7h, les colis, les baisses de prix, les anniversaires — et en direct
                 ce que l’autre ajoute (tâches, agenda, courses…), sur l’écran verrouillé.
-                {notificationsPossibles() ? '' : ' Sur iPhone : ajoute d’abord FOYER à l’écran d’accueil.'}
+                {notificationsPossibles() ? '' : ' Sur iPhone : ajoute d’abord StiGa à l’écran d’accueil.'}
               </p>
               {notificationsPossibles() && (
                 <Bouton

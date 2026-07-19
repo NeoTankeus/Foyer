@@ -33,7 +33,7 @@ export function EcranConnexion() {
 
   return (
     <div className="safe-haut safe-bas flex min-h-dvh flex-col justify-center bg-fond px-6">
-      <h1 className="text-titre text-encre">FOYER</h1>
+      <h1 className="text-titre text-encre">StiGa</h1>
       <p className="mb-8 mt-1 text-corps-2 text-encre-3">Le quotidien, en paix.</p>
 
       <form
