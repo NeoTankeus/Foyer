@@ -341,9 +341,15 @@ export function EcranAujourdhui() {
   return (
     <div>
       <header className="verre verre-clair safe-haut sticky top-0 z-10 flex items-center justify-between px-5 pb-2 pt-3">
-        <div>
-          <h1 className="text-titre-2 capitalize text-encre">{formatJourLong(maintenantLocal())}</h1>
-          <p className="text-note text-encre-3">Salut {membre?.prenom} 👋</p>
+        <div className="min-w-0 flex-1">
+          <h1 className="truncate text-titre-2 text-encre">
+            {(() => {
+              const h = maintenantLocal().getHours()
+              const salut = h < 5 ? 'Bonne nuit' : h < 12 ? 'Bonjour' : h < 18 ? 'Bon après-midi' : 'Bonsoir'
+              return `${salut} ${membre?.prenom ?? ''} ✨`
+            })()}
+          </h1>
+          <p className="text-note capitalize text-encre-3">{formatJourLong(maintenantLocal())}</p>
         </div>
         <div className="flex gap-1">
           <BoutonMiseAJour />

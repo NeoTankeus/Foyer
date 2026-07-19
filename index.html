@@ -16,6 +16,44 @@
     <title>Gastif</title>
   </head>
   <body>
+    <!-- Coucou Gastif ! — affiché instantanément, avant tout chargement. -->
+    <style>
+      #coucou-gastif {
+        position: fixed; inset: 0; z-index: 9999;
+        display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px;
+        background: radial-gradient(120% 90% at 50% 0%, #1c1a22 0%, #0e0e10 60%, #0a0a0c 100%);
+        opacity: 1; transition: opacity 0.55s ease;
+      }
+      @media (prefers-color-scheme: light) {
+        #coucou-gastif { background: radial-gradient(120% 90% at 50% 0%, #fff7ef 0%, #fcfcfa 55%, #f4f1ec 100%); }
+        #coucou-gastif .cg-titre { color: #26242b; }
+        #coucou-gastif .cg-sous { color: #8a8794; }
+      }
+      #coucou-gastif.cg-sortie { opacity: 0; pointer-events: none; }
+      #coucou-gastif .cg-badge {
+        display: flex; align-items: center; justify-content: center;
+        width: 92px; height: 64px; border-radius: 26px;
+        background: linear-gradient(135deg, #f2a58d 0%, #e0705e 45%, #a48ad4 100%);
+        color: #fff; font: 800 24px/1 -apple-system, system-ui, sans-serif; letter-spacing: 0.06em;
+        box-shadow: 0 6px 24px rgb(224 112 94 / 0.35), inset 0 1px 0 rgb(255 255 255 / 0.35);
+        animation: cg-pouls 1.6s ease-in-out infinite;
+      }
+      #coucou-gastif .cg-titre {
+        color: #f4f2f7; font: 700 30px/1.2 -apple-system, system-ui, sans-serif; letter-spacing: -0.02em;
+        animation: cg-monte 0.7s ease both 0.1s;
+      }
+      #coucou-gastif .cg-sous {
+        color: #77747f; font: 500 15px/1 -apple-system, system-ui, sans-serif;
+        animation: cg-monte 0.7s ease both 0.25s;
+      }
+      @keyframes cg-pouls { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.06); } }
+      @keyframes cg-monte { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+    </style>
+    <div id="coucou-gastif" aria-hidden="true">
+      <div class="cg-badge">ILY</div>
+      <div class="cg-titre">Coucou Gastif&nbsp;!</div>
+      <div class="cg-sous">le quotidien, en paix</div>
+    </div>
     <div id="racine"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

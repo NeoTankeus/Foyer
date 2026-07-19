@@ -2,9 +2,30 @@
 // Si une nouvelle version existe, elle s'active et l'app se recharge sur place.
 
 let enregistrement: ServiceWorkerRegistration | null = null
+let majDisponible = false
+const abonnes = new Set<() => void>()
+
+function signalerMajDisponible(): void {
+  majDisponible = true
+  abonnes.forEach((cb) => cb())
+}
+
+/** Prévenu dès qu'une nouvelle version est prête (pastille rouge du nuage). */
+export function surMiseAJourDisponible(cb: () => void): () => void {
+  abonnes.add(cb)
+  if (majDisponible) cb()
+  return () => abonnes.delete(cb)
+}
 
 export function retenirEnregistrementSw(r: ServiceWorkerRegistration): void {
   enregistrement = r
+  if (r.waiting) signalerMajDisponible()
+  r.addEventListener('updatefound', () => {
+    const nouveau = r.installing
+    nouveau?.addEventListener('statechange', () => {
+      if (nouveau.state === 'installed' && navigator.serviceWorker.controller) signalerMajDisponible()
+    })
+  })
 }
 
 /**

@@ -1,6 +1,8 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { QueryClient } from '@tanstack/react-query'
+import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client'
+import { createSyncStoragePersister } from '@tanstack/query-sync-storage-persister'
 import { registerSW } from 'virtual:pwa-register'
 import { App } from './App'
 import { demarrerSyncAuRetourDuReseau } from './lib/sync'
@@ -27,11 +29,17 @@ const clientRequetes = new QueryClient({
   defaultOptions: {
     queries: {
       staleTime: 30_000,
+      gcTime: 24 * 3600 * 1000,
       retry: 1,
       refetchOnWindowFocus: true,
     },
   },
 })
+
+// FLUIDITÉ : le dernier état connu est mémorisé sur le téléphone — à
+// l'ouverture, l'app s'affiche IMMÉDIATEMENT avec ses données, puis se
+// rafraîchit en arrière-plan. Le cache saute à chaque nouvelle version.
+const persistant = createSyncStoragePersister({ storage: window.localStorage, key: 'gastif-cache' })
 
 demarrerSyncAuRetourDuReseau()
 
@@ -47,8 +55,19 @@ if (!racine) throw new Error('Élément racine introuvable')
 
 createRoot(racine).render(
   <StrictMode>
-    <QueryClientProvider client={clientRequetes}>
+    <PersistQueryClientProvider
+      client={clientRequetes}
+      persistOptions={{ persister: persistant, maxAge: 24 * 3600 * 1000, buster: __DATE_VERSION__ }}
+    >
       <App />
-    </QueryClientProvider>
+    </PersistQueryClientProvider>
   </StrictMode>,
 )
+
+// L'écran « Coucou Gastif ! » s'efface en douceur une fois l'app montée.
+window.setTimeout(() => {
+  const splash = document.getElementById('coucou-gastif')
+  if (!splash) return
+  splash.classList.add('cg-sortie')
+  window.setTimeout(() => splash.remove(), 600)
+}, 500)

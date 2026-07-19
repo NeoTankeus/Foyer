@@ -14,7 +14,9 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0",
+    "@tanstack/query-sync-storage-persister": "^5.101.2",
     "@tanstack/react-query": "^5.51.0",
+    "@tanstack/react-query-persist-client": "^5.101.2",
     "@zxing/browser": "^0.2.1",
     "@zxing/library": "^0.23.0",
     "bwip-js": "^4.11.2",
