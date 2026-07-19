@@ -1,16 +1,30 @@
-import { defineConfig } from 'vite'
+import { defineConfig, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 import { fileURLToPath } from 'node:url'
 
+const DATE_VERSION = new Date().toLocaleString('fr-FR', {
+  timeZone: 'Europe/Paris', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit',
+})
+
+// /version.json publié à chaque déploiement : l'app compare sa version à celle
+// du serveur — le nuage SAIT quand une mise à jour existe, sans deviner.
+function publierVersion(): Plugin {
+  return {
+    name: 'publier-version',
+    generateBundle() {
+      this.emitFile({ type: 'asset', fileName: 'version.json', source: JSON.stringify({ version: DATE_VERSION }) })
+    },
+  }
+}
+
 export default defineConfig({
   // La date de compilation, affichée dans Menu → Mise à jour.
   define: {
-    __DATE_VERSION__: JSON.stringify(
-      new Date().toLocaleString('fr-FR', { timeZone: 'Europe/Paris', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }),
-    ),
+    __DATE_VERSION__: JSON.stringify(DATE_VERSION),
   },
   plugins: [
+    publierVersion(),
     react(),
     VitePWA({
       registerType: 'autoUpdate',

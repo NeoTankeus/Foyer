@@ -17,6 +17,12 @@ export function surMiseAJourDisponible(cb: () => void): () => void {
   return () => abonnes.delete(cb)
 }
 
+/** Compare la version locale à celle du serveur — allume la pastille si besoin. */
+export async function detecterMajEnLigne(): Promise<void> {
+  const distante = await versionServeur()
+  if (distante && distante !== __DATE_VERSION__) signalerMajDisponible()
+}
+
 export function retenirEnregistrementSw(r: ServiceWorkerRegistration): void {
   enregistrement = r
   if (r.waiting) signalerMajDisponible()
@@ -28,19 +34,61 @@ export function retenirEnregistrementSw(r: ServiceWorkerRegistration): void {
   })
 }
 
+/** La version actuellement en ligne, lue directement (jamais de cache). */
+export async function versionServeur(): Promise<string | null> {
+  try {
+    const reponse = await fetch(`/version.json?t=${Date.now()}`, { cache: 'no-store' })
+    if (!reponse.ok) return null
+    const donnees = (await reponse.json()) as { version?: string }
+    return donnees.version ?? null
+  } catch {
+    return null
+  }
+}
+
 /**
- * Vérifie tout de suite s'il y a une nouvelle version.
- * 'nouvelle'  → elle s'installe, l'app va se recharger toute seule dans quelques secondes.
- * 'a_jour'    → rien à faire.
- * 'indisponible' → pas de service worker (navigateur privé, très vieux iOS…).
+ * Vérifie tout de suite s'il y a une nouvelle version — d'abord en comparant
+ * les numéros de version (fiable), puis via le service worker.
  */
 export async function verifierMiseAJour(): Promise<'nouvelle' | 'a_jour' | 'indisponible'> {
-  if (!enregistrement) return 'indisponible'
+  const distante = await versionServeur()
+  if (distante && distante !== __DATE_VERSION__) return 'nouvelle'
+  if (!enregistrement) return distante ? 'a_jour' : 'indisponible'
   try {
     await enregistrement.update()
     if (enregistrement.installing || enregistrement.waiting) return 'nouvelle'
     return 'a_jour'
   } catch {
-    return 'indisponible'
+    return distante ? 'a_jour' : 'indisponible'
   }
+}
+
+const attendre = (ms: number) => new Promise((res) => setTimeout(res, ms))
+
+/**
+ * Installe la nouvelle version COÛTE QUE COÛTE : on insiste auprès du service
+ * worker jusqu'à ce qu'elle soit prise (le rechargement final est garanti).
+ */
+export async function mettreAJourMaintenant(): Promise<never> {
+  for (let tentative = 0; tentative < 10; tentative++) {
+    try {
+      await enregistrement?.update()
+      const nouveau = enregistrement?.installing ?? enregistrement?.waiting
+      if (nouveau) {
+        // On laisse la nouvelle version s'activer (skipWaiting est déjà dans le SW).
+        for (let attente = 0; attente < 20; attente++) {
+          if (enregistrement?.active && !enregistrement.installing && !enregistrement.waiting) break
+          await attendre(500)
+        }
+        window.location.reload()
+        return new Promise<never>(() => undefined)
+      }
+    } catch {
+      // on retente
+    }
+    await attendre(2000)
+  }
+  // Dernier recours : rechargement sec — le réseau servira la nouvelle version.
+  window.location.reload()
+  return new Promise<never>(() => undefined)
 }

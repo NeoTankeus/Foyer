@@ -5,7 +5,7 @@ import { utiliserSession } from '@/etat/session'
 import { baseLocale } from '@/lib/dexie'
 import { rejouerFileAttente } from '@/lib/sync'
 import { activerNotifications, etatAbonnement, notificationsPossibles } from '@/lib/notifications'
-import { verifierMiseAJour } from '@/lib/maj'
+import { mettreAJourMaintenant, verifierMiseAJour } from '@/lib/maj'
 import { PastilleMembre } from '@/design/composants/PastilleMembre'
 import { Bouton } from '@/design/composants/Bouton'
 import { Carte } from '@/design/composants/Carte'
@@ -156,7 +156,7 @@ export function EcranNous() {
               void verifierMiseAJour().then((resultat) => {
                 if (resultat === 'nouvelle') {
                   setEtatMaj('installe')
-                  window.setTimeout(() => window.location.reload(), 8000)
+                  void mettreAJourMaintenant()
                 } else if (resultat === 'a_jour') {
                   setEtatMaj('a_jour')
                   window.setTimeout(() => setEtatMaj('repos'), 4000)

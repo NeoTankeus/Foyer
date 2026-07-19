@@ -1,7 +1,7 @@
 // Le nuage vert : un appui = vérification + installation de la mise à jour
 // sur place, sans fermer l'app ni toucher au raccourci.
 import { useEffect, useRef, useState } from 'react'
-import { surMiseAJourDisponible, verifierMiseAJour } from '@/lib/maj'
+import { mettreAJourMaintenant, surMiseAJourDisponible, verifierMiseAJour } from '@/lib/maj'
 
 type Etat = 'repos' | 'verifie' | 'installe' | 'a_jour' | 'dispo'
 
@@ -20,18 +20,16 @@ export function BoutonMiseAJour() {
     if (etat === 'verifie' || etat === 'installe') return
     navigator.vibrate?.(4)
     if (etat === 'dispo') {
-      // La nouvelle version attend déjà : on l'applique tout de suite.
+      // La nouvelle version est là : installation garantie, rechargement inclus.
       setEtat('installe')
-      window.setTimeout(() => window.location.reload(), 400)
+      await mettreAJourMaintenant()
       return
     }
     setEtat('verifie')
     const resultat = await verifierMiseAJour()
     if (resultat === 'nouvelle') {
-      // La nouvelle version s'active : l'app se recharge automatiquement.
-      // Filet de sécurité si le rechargement ne vient pas tout seul.
       setEtat('installe')
-      minuteur.current = window.setTimeout(() => window.location.reload(), 8000)
+      await mettreAJourMaintenant()
     } else {
       setEtat('a_jour')
       minuteur.current = window.setTimeout(() => setEtat('repos'), 2500)
