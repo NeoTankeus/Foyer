@@ -1,6 +1,6 @@
 // Les nouveautés de la version en cours — affichées UNE fois dans le pop-up
 // « Quoi de neuf », signé ILY. Mises à jour à chaque déploiement.
 export const NOTES_VERSION: string[] = [
-  '⚡ Mises à jour AUTOMATIQUES : dès que tu ouvres STG (ou que tu y reviens), la nouvelle version s’installe toute seule — le nuage passe en ⬇️ pendant l’installation, l’app se recharge, c’est tout.',
-  '☁️ Et pendant que tu es dans l’app : UN SEUL appui sur le nuage suffit désormais (fini les 3-4 appuis) — vérification, téléchargement, activation et rechargement d’un coup.',
+  '🌌 Le Ciel s’ouvre maintenant DIRECT sur l’image : un globe animé avec la Station spatiale au centre, dessiné instantanément (zéro chargement) — la Terre défile sous elle en continu, et ta ville apparaît en rouge quand elle passe de votre côté.',
+  '🛰 Plus d’attente du satellite : la trajectoire est calculée localement chaque seconde, le direct ne fait qu’affiner.',
 ]
