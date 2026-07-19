@@ -100,6 +100,23 @@ interface ReponseOverpass {
   elements?: { id: number; lat?: number; lon?: number; center?: { lat: number; lon: number }; tags?: Record<string, string> }[]
 }
 
+/** Le serveur de StiGa interroge les cartes à notre place (contourne Safari). */
+async function chercherAutourViaStiga(lat: number, lon: number, rayonM: number): Promise<ReponseOverpass> {
+  const { data: session } = await supabase.auth.getSession()
+  const reponse = await fetch('/api/chercher-resto', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      authorization: `Bearer ${session.session?.access_token ?? ''}`,
+    },
+    body: JSON.stringify({ mode: 'autour', lat, lon, rayon: rayonM }),
+  })
+  if (!reponse.ok) throw new Error(`relais ${reponse.status}`)
+  const donnees = (await reponse.json()) as ReponseOverpass & { erreur?: string }
+  if (donnees.erreur) throw new Error(donnees.erreur)
+  return donnees
+}
+
 /** Les restaurants autour d'un point (Overpass / OpenStreetMap, gratuit). */
 async function chercherAutour(lat: number, lon: number, rayonM: number): Promise<RestoAutour[]> {
   const requete = `[out:json][timeout:20];(node(around:${rayonM},${lat},${lon})[amenity~"restaurant|bistro|brasserie"][name];way(around:${rayonM},${lat},${lon})[amenity~"restaurant|bistro|brasserie"][name];);out center 80;`
@@ -129,12 +146,20 @@ async function chercherAutour(lat: number, lon: number, rayonM: number): Promise
   let donnees: ReponseOverpass
   try {
     donnees = await Promise.any(essais)
+    // Le plus rapide a répondu — on coupe les autres.
+    for (const c of controleurs) c.abort()
   } catch (e) {
-    const premiere = e instanceof AggregateError ? e.errors[0] : e
-    throw new Error(String(premiere instanceof Error ? premiere.message : 'aucun serveur cartes joignable'))
+    // Safari bloque l'appel direct (« Load failed ») — le serveur de StiGa
+    // interroge les cartes à notre place.
+    try {
+      donnees = await chercherAutourViaStiga(lat, lon, rayonM)
+    } catch (relais) {
+      const premiere = e instanceof AggregateError ? e.errors[0] : e
+      const motifDirect = String(premiere instanceof Error ? premiere.message : premiere).slice(0, 50)
+      const motifRelais = String(relais instanceof Error ? relais.message : relais).slice(0, 50)
+      throw new Error(`direct : ${motifDirect} · relais StiGa : ${motifRelais}`)
+    }
   }
-  // Le plus rapide a répondu — on coupe les autres.
-  for (const c of controleurs) c.abort()
   const versRad = (d: number) => (d * Math.PI) / 180
   const distance = (la: number, lo: number) => {
     const R = 6371000

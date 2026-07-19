@@ -116,12 +116,53 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return
     }
 
-    const { mode, nom, ville, site, requete } = (req.body ?? {}) as {
+    const { mode, nom, ville, site, requete, lat, lon, rayon } = (req.body ?? {}) as {
       mode?: string
       nom?: string
       ville?: string
       site?: string
       requete?: string
+      lat?: number
+      lon?: number
+      rayon?: number
+    }
+
+    // Relais Overpass : Safari bloque parfois l'appel direct depuis l'app,
+    // alors le serveur de StiGa interroge les cartes à sa place.
+    if (mode === 'autour') {
+      const la = Number(lat)
+      const lo = Number(lon)
+      const ra = Math.min(Math.max(Number(rayon) || 2000, 100), 30000)
+      if (!Number.isFinite(la) || !Number.isFinite(lo)) {
+        res.status(200).json({ elements: [], erreur: 'position invalide' })
+        return
+      }
+      const requeteOsm = `[out:json][timeout:20];(node(around:${ra},${la},${lo})[amenity~"restaurant|bistro|brasserie"][name];way(around:${ra},${la},${lo})[amenity~"restaurant|bistro|brasserie"][name];);out center 80;`
+      const miroirs = [
+        'https://overpass-api.de/api/interpreter',
+        'https://overpass.kumi.systems/api/interpreter',
+        'https://overpass.private.coffee/api/interpreter',
+      ]
+      let derniere = 'aucun serveur cartes joignable'
+      for (const miroir of miroirs) {
+        try {
+          const r = await fetch(miroir, {
+            method: 'POST',
+            body: `data=${encodeURIComponent(requeteOsm)}`,
+            headers: { 'content-type': 'application/x-www-form-urlencoded' },
+            signal: AbortSignal.timeout(18000),
+          })
+          if (r.ok) {
+            res.status(200).json(await r.json())
+            return
+          }
+          derniere = `serveur cartes : ${r.status}`
+        } catch (e) {
+          derniere = `serveur cartes injoignable (${String(e instanceof Error ? e.message : e).slice(0, 60)})`
+        }
+      }
+      res.status(200).json({ elements: [], erreur: derniere })
+      return
     }
 
     if (mode === 'thefork') {
