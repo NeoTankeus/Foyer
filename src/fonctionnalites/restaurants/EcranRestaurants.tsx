@@ -188,23 +188,23 @@ export function EcranRestaurants() {
 
           <ul className="flex flex-col gap-2">
             {visibles.map((r) => (
-              <li key={r.id}>
+              <li key={r.id} className="flex items-center gap-1 rounded-xl bg-fond-eleve p-3 shadow-carte">
                 <button
-                  onClick={() => setOuvert(r)}
-                  className="w-full rounded-xl bg-fond-eleve p-4 text-left shadow-carte"
+                  onClick={() => void muter({ table: 'restaurants', type: 'update', cible_id: r.id, charge: { favori: !r.favori } }).then(rafraichir)}
+                  aria-pressed={r.favori}
+                  aria-label={`${r.favori ? 'Retirer des' : 'Mettre en'} favoris : ${r.nom}`}
+                  className="flex min-h-sur-tactile min-w-sur-tactile shrink-0 items-center justify-center text-[24px]"
                 >
-                  <div className="flex items-center gap-2">
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-corps font-[590] text-encre">
-                        {r.favori ? '⭐ ' : ''}{r.nom}
-                      </p>
-                      <p className="truncate text-legende text-encre-3">
-                        {[r.ville, r.cuisine].filter(Boolean).join(' · ')}
-                      </p>
-                    </div>
-                    {r.note !== null && <Etoiles note={r.note} />}
-                  </div>
+                  {r.favori ? '⭐' : '☆'}
                 </button>
+                <button onClick={() => setOuvert(r)} className="min-w-0 flex-1 py-1 text-left">
+                  <p className="truncate text-corps font-[590] text-encre">{r.nom}</p>
+                  <p className="truncate text-legende text-encre-3">
+                    {[r.ville, r.cuisine].filter(Boolean).join(' · ')}
+                  </p>
+                  {r.note !== null && <Etoiles note={r.note} />}
+                </button>
+                <span aria-hidden="true" className="text-encre-3">›</span>
               </li>
             ))}
           </ul>
@@ -327,6 +327,44 @@ function FicheRestaurant({
   const [choixCarte, setChoixCarte] = useState(false)
   const [photoEnCours, setPhotoEnCours] = useState(false)
   const [localisation, setLocalisation] = useState<'repos' | 'en-cours' | 'echec'>('repos')
+  const [pageTheFork, setPageTheFork] = useState<string | null | 'cherche'>('cherche')
+  const [pageMenu, setPageMenu] = useState<string | null>(null)
+
+  const appelResto = async (corps: Record<string, unknown>): Promise<Record<string, unknown>> => {
+    const { data } = await supabase.auth.getSession()
+    const reponse = await fetch('/api/chercher-resto', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${data.session?.access_token ?? ''}` },
+      body: JSON.stringify(corps),
+    })
+    return (await reponse.json()) as Record<string, unknown>
+  }
+
+  // La vraie page TheFork du restaurant — cherchée dès l'ouverture de la fiche.
+  useEffect(() => {
+    let annule = false
+    setPageTheFork('cherche')
+    void appelResto({ mode: 'thefork', nom: resto.nom, ville: resto.ville ?? '' })
+      .then((r) => {
+        if (!annule) setPageTheFork(typeof r['url'] === 'string' ? (r['url'] as string) : null)
+      })
+      .catch(() => {
+        if (!annule) setPageTheFork(null)
+      })
+    return () => {
+      annule = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resto.id])
+
+  // La carte : on lit d'abord LE SITE du restaurant, internet en secours.
+  const chercheurCarte = async (requete: string): Promise<string[]> => {
+    const r = await appelResto({
+      mode: 'carte', nom: resto.nom, ville: resto.ville ?? '', site: resto.site ?? '', requete,
+    })
+    setPageMenu(typeof r['pageMenu'] === 'string' ? (r['pageMenu'] as string) : null)
+    return Array.isArray(r['images']) ? (r['images'] as string[]) : []
+  }
 
   // Position manquante (l'adresse n'avait pas été trouvée) : on retente.
   const localiser = async () => {
@@ -432,9 +470,19 @@ function FicheRestaurant({
         <a href={`https://www.tripadvisor.fr/Search?q=${q}`} target="_blank" rel="noopener" className="btn-3d btn-clair inline-flex min-h-sur-tactile items-center justify-center px-4 py-2.5 text-corps-2 leading-tight">
           🦉 TripAdvisor
         </a>
-        <a href={`https://www.thefork.fr/search?queryText=${q}`} target="_blank" rel="noopener" className="btn-3d btn-ardoise inline-flex min-h-sur-tactile items-center justify-center px-4 py-2.5 text-corps-2 leading-tight">
-          🍴 Réserver (TheFork)
-        </a>
+        {pageTheFork === 'cherche' ? (
+          <span className="inline-flex min-h-sur-tactile items-center px-2 text-legende text-encre-3">
+            🍴 TheFork : recherche de la page…
+          </span>
+        ) : pageTheFork ? (
+          <a href={pageTheFork} target="_blank" rel="noopener" className="btn-3d btn-ardoise inline-flex min-h-sur-tactile items-center justify-center px-4 py-2.5 text-corps-2 leading-tight">
+            🍴 Réserver (TheFork)
+          </a>
+        ) : (
+          <span className="inline-flex min-h-sur-tactile items-center px-2 text-legende text-encre-3">
+            🍴 Pas de page TheFork trouvée — 📞 l’appel reste le plus sûr.
+          </span>
+        )}
       </div>
 
       <div>
@@ -471,8 +519,18 @@ function FicheRestaurant({
             />
           </label>
           <Bouton variante="discret" onClick={() => setChoixCarte(true)}>
-            🔎 Chercher la carte sur internet
+            🔎 Chercher la carte {resto.site ? 'sur le site du resto' : 'sur internet'}
           </Bouton>
+          {pageMenu && (
+            <a
+              href={pageMenu}
+              target="_blank"
+              rel="noopener"
+              className="btn-3d btn-clair inline-flex min-h-sur-tactile items-center justify-center px-4 py-2.5 text-corps-2 leading-tight"
+            >
+              🌐 Ouvrir la carte du site {/\.pdf(\?|$)/i.test(pageMenu) ? '(PDF)' : ''}
+            </a>
+          )}
         </div>
       </div>
 
@@ -491,6 +549,7 @@ function FicheRestaurant({
         ouverte={choixCarte}
         nomInitial={`${resto.nom} ${resto.ville ?? ''} carte menu`}
         onFermer={() => setChoixCarte(false)}
+        chercheur={chercheurCarte}
         onChoix={(image) => {
           setChoixCarte(false)
           void surMaj({ carte_photos: [...resto.carte_photos, image] })
@@ -580,6 +639,7 @@ function AutourDeMoi({
 }) {
   const [rayon, setRayon] = useState(2000)
   const [etat, setEtat] = useState<'attente' | 'geoloc' | 'recherche' | 'pret' | 'erreur'>('attente')
+  const [refusPosition, setRefusPosition] = useState(false)
   const [resultats, setResultats] = useState<RestoAutour[]>([])
   const [ici, setIci] = useState<[number, number] | null>(null)
   const [gouts, setGouts] = useState(false)
@@ -601,9 +661,16 @@ function AutourDeMoi({
     cuisinesAimees.some((c) => (r.cuisine ?? '').toLowerCase().includes(c))
 
   const lancer = (rayonChoisi: number) => {
-    setEtat('geoloc')
     setAvisStiga(null)
-    navigator.geolocation?.getCurrentPosition(
+    setRefusPosition(false)
+    if (!navigator.geolocation) {
+      setRefusPosition(true)
+      setEtat('erreur')
+      return
+    }
+    setEtat('geoloc')
+    // C'est CET appel qui déclenche la demande d'autorisation sur l'iPhone.
+    navigator.geolocation.getCurrentPosition(
       (pos) => {
         setIci([pos.coords.latitude, pos.coords.longitude])
         setEtat('recherche')
@@ -614,8 +681,11 @@ function AutourDeMoi({
           })
           .catch(() => setEtat('erreur'))
       },
-      () => setEtat('erreur'),
-      { enableHighAccuracy: true, timeout: 10000 },
+      (e) => {
+        setRefusPosition(e.code === e.PERMISSION_DENIED)
+        setEtat('erreur')
+      },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 },
     )
   }
 
@@ -686,14 +756,39 @@ function AutourDeMoi({
       </div>
 
       {etat === 'attente' && (
-        <EtatVide titre="Où es-tu ?" message="Choisis un rayon — StiGa cherche les tables autour de ta position." />
+        <EtatVide
+          titre="Où es-tu ?"
+          message="Choisis un rayon — l’iPhone te demandera alors l’autorisation de position : accepte, et StiGa cherche les tables autour de toi."
+        />
       )}
       {etat === 'geoloc' && <p className="py-6 text-center text-corps-2 text-encre-3">📍 Localisation…</p>}
       {etat === 'recherche' && <p className="py-6 text-center text-corps-2 text-encre-3">🔎 Recherche des tables autour de toi…</p>}
       {etat === 'erreur' && (
-        <p className="py-6 text-center text-corps-2 text-encre-3">
-          Impossible de te localiser ou de chercher — vérifie l’autorisation de position et le réseau.
-        </p>
+        <div className="flex flex-col gap-3 rounded-xl bg-fond-sourd p-4">
+          {refusPosition ? (
+            <>
+              <p className="text-corps-2 font-[590] text-encre">📍 L’iPhone bloque la position de StiGa.</p>
+              <ol className="list-decimal space-y-1 pl-5 text-corps-2 text-encre-2">
+                <li>
+                  Ouvre <strong>Réglages → Confidentialité et sécurité → Service de localisation</strong> : vérifie
+                  qu’il est <strong>activé</strong>.
+                </li>
+                <li>
+                  Dans la même liste, descends jusqu’à <strong>Safari</strong> (ou « Sites web Safari ») et choisis
+                  <strong> « Lorsque l’app est active »</strong>.
+                </li>
+                <li>Reviens ici et touche « Réessayer » — la demande d’autorisation apparaîtra, accepte-la.</li>
+              </ol>
+            </>
+          ) : (
+            <p className="text-corps-2 text-encre-2">
+              Impossible de te localiser ou de chercher — vérifie le réseau, puis réessaie.
+            </p>
+          )}
+          <Bouton pleineLargeur variante="primaire" onClick={() => lancer(rayon)}>
+            📍 Réessayer
+          </Bouton>
+        </div>
       )}
 
       {etat === 'pret' && (

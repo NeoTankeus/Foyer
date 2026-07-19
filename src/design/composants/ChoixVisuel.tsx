@@ -11,9 +11,11 @@ interface Props {
   onFermer: () => void
   /** L'image choisie + le nom (éventuellement corrigé) à enregistrer. */
   onChoix: (image: string, nom: string) => void
+  /** Recherche personnalisée (ex. : lire le site du restaurant) — sinon recherche d'images standard. */
+  chercheur?: (requete: string) => Promise<string[]>
 }
 
-export function ChoixVisuel({ ouverte, nomInitial, onFermer, onChoix }: Props) {
+export function ChoixVisuel({ ouverte, nomInitial, onFermer, onChoix, chercheur }: Props) {
   const [nom, setNom] = useState(nomInitial)
   const [resultats, setResultats] = useState<string[]>([])
   const [enCours, setEnCours] = useState(false)
@@ -24,7 +26,7 @@ export function ChoixVisuel({ ouverte, nomInitial, onFermer, onChoix }: Props) {
     setEnCours(true)
     setErreur(null)
     try {
-      const choix = await chercherChoixVisuels(requete)
+      const choix = await (chercheur ? chercheur(requete) : chercherChoixVisuels(requete))
       setResultats(choix)
       if (choix.length === 0) setErreur('Rien trouvé — précise le nom (marque, modèle…) et relance.')
     } catch {
