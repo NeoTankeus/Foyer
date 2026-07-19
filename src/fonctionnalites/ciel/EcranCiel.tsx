@@ -49,27 +49,51 @@ function distanceKm(lat1: number, lon1: number, lat2: number, lon2: number): num
   return Math.round(6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)))
 }
 
+const CLE_ISS = 'stg-iss-derniere'
+
 export function EcranCiel() {
   const lune = phaseLune()
   const ville = villeMeteo()
-  const [iss, setIss] = useState<{ lat: number; lon: number; km: number | null } | null>(null)
+  // Affichage INSTANTANÉ : on repart de la dernière position connue de l'ISS
+  // (elle bouge de ~460 km/min, mais ça donne tout de suite le bon ordre de
+  // grandeur), puis le direct la remplace dès la première réponse.
+  const [iss, setIss] = useState<{ lat: number; lon: number; km: number | null; direct: boolean } | null>(() => {
+    try {
+      const memo = JSON.parse(localStorage.getItem(CLE_ISS) ?? 'null') as { lat: number; lon: number } | null
+      if (!memo) return null
+      return {
+        lat: memo.lat,
+        lon: memo.lon,
+        km: ville ? distanceKm(ville.latitude, ville.longitude, memo.lat, memo.lon) : null,
+        direct: false,
+      }
+    } catch {
+      return null
+    }
+  })
 
-  // La Station spatiale, suivie en direct toutes les 8 secondes.
+  // La Station spatiale, suivie en direct toutes les 8 secondes (coupure 5 s).
   useEffect(() => {
     let arret = false
     const suivre = async () => {
+      const coupure = new AbortController()
+      const minuteurCoupure = setTimeout(() => coupure.abort(), 5000)
       try {
-        const r = await fetch('https://api.wheretheiss.at/v1/satellites/25544')
+        const r = await fetch('https://api.wheretheiss.at/v1/satellites/25544', { signal: coupure.signal })
         if (!r.ok) return
         const d = (await r.json()) as { latitude: number; longitude: number }
         if (arret) return
+        localStorage.setItem(CLE_ISS, JSON.stringify({ lat: d.latitude, lon: d.longitude }))
         setIss({
           lat: d.latitude,
           lon: d.longitude,
           km: ville ? distanceKm(ville.latitude, ville.longitude, d.latitude, d.longitude) : null,
+          direct: true,
         })
       } catch {
-        // le satellite repassera
+        // le satellite repassera — la dernière position mémorisée reste affichée
+      } finally {
+        clearTimeout(minuteurCoupure)
       }
     }
     void suivre()
@@ -141,11 +165,15 @@ export function EcranCiel() {
                     : 'Position en direct — choisis ta ville dans la météo du tableau de bord pour savoir quand elle passe près de chez vous.'}
               </p>
               <p className="mt-1 text-legende text-encre-3">
-                Position : {iss.lat.toFixed(1)}°, {iss.lon.toFixed(1)}° · 28 000 km/h · rafraîchi toutes les 8 s · elle fait le tour de la Terre en 92 min — dites-le à Gabriel !
+                Position : {iss.lat.toFixed(1)}°, {iss.lon.toFixed(1)}° · 28 000 km/h ·{' '}
+                {iss.direct ? '🟢 EN DIRECT (toutes les 8 s)' : '⏳ dernière position connue, le direct arrive…'} · elle fait
+                le tour de la Terre en 92 min — dites-le à Gabriel !
               </p>
             </>
           ) : (
-            <p className="text-corps-2 text-encre-3">Connexion au satellite…</p>
+            <p className="text-corps-2 text-encre-3">
+              🛰 Elle file à 28 000 km/h quelque part au-dessus de nos têtes — le direct arrive dans quelques secondes…
+            </p>
           )}
         </Carte>
 

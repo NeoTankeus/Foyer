@@ -2,6 +2,7 @@
 // (données du gouvernement, mises à jour en continu) — la moins chère autour
 // de toi, et combien tu économises sur un plein.
 import { useState } from 'react'
+import { utiliserSession } from '@/etat/session'
 import { BarreRetour } from '@/design/composants/BarreRetour'
 import { Bouton } from '@/design/composants/Bouton'
 import { EtatVide } from '@/design/composants/EtatVide'
@@ -57,32 +58,48 @@ async function chercherStations(lat: number, lon: number, carburant: string): Pr
 }
 
 export function EcranCarburant() {
+  const { foyer } = utiliserSession()
+  const maison = (foyer?.reglages['maison'] ?? null) as { lat?: number; lon?: number } | null
   const [carburant, setCarburant] = useState(() => localStorage.getItem(CLE_CARBURANT) ?? 'gazole_prix')
+  const [source, setSource] = useState<'maison' | 'gps'>(maison?.lat ? 'maison' : 'gps')
   const [etat, setEtat] = useState<'attente' | 'cherche' | 'pret' | 'erreur'>('attente')
   const [stations, setStations] = useState<Station[]>([])
   const [erreur, setErreur] = useState('')
 
-  const lancer = (choix: string) => {
+  const chercherDepuis = (lat: number, lon: number, choix: string) => {
+    chercherStations(lat, lon, choix)
+      .then((liste) => {
+        setStations(liste)
+        setEtat('pret')
+      })
+      .catch((e: unknown) => {
+        setErreur(String(e instanceof Error ? e.message : e))
+        setEtat('erreur')
+      })
+  }
+
+  const lancer = (choix: string, ou: 'maison' | 'gps' = source) => {
     setCarburant(choix)
+    setSource(ou)
     localStorage.setItem(CLE_CARBURANT, choix)
     setEtat('cherche')
+    if (ou === 'maison' && maison?.lat && maison.lon) {
+      // La maison : instantané, et jamais dans la mauvaise ville.
+      chercherDepuis(maison.lat, maison.lon, choix)
+      return
+    }
+    // Position EXACTE — la position approximative peut être à 100 km.
     navigator.geolocation?.getCurrentPosition(
-      (pos) => {
-        chercherStations(pos.coords.latitude, pos.coords.longitude, choix)
-          .then((liste) => {
-            setStations(liste)
-            setEtat('pret')
-          })
-          .catch((e: unknown) => {
-            setErreur(String(e instanceof Error ? e.message : e))
-            setEtat('erreur')
-          })
-      },
+      (pos) => chercherDepuis(pos.coords.latitude, pos.coords.longitude, choix),
       () => {
-        setErreur('Position refusée — autorise la localisation (comme pour les restaurants).')
+        setErreur(
+          maison?.lat
+            ? 'Position refusée — utilise 🏡 La maison, ou autorise la localisation.'
+            : 'Position refusée — autorise la localisation (comme pour les restaurants).',
+        )
         setEtat('erreur')
       },
-      { enableHighAccuracy: false, timeout: 15000, maximumAge: 300000 },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 },
     )
   }
 
@@ -100,6 +117,21 @@ export function EcranCarburant() {
       </header>
 
       <div className="flex flex-col gap-3 px-5 pt-3">
+        {maison?.lat && (
+          <div className="flex gap-2">
+            {([['maison', '🏡 Autour de la maison'], ['gps', '📍 Autour de moi']] as const).map(([cle, libelle]) => (
+              <button
+                key={cle}
+                onClick={() => (etat === 'attente' ? setSource(cle) : lancer(carburant, cle))}
+                aria-pressed={source === cle}
+                className={`min-h-sur-tactile flex-1 rounded-full px-3 text-note font-[590]
+                  ${source === cle ? 'bg-encre text-fond' : 'bg-fond-sourd text-encre-2'}`}
+              >
+                {libelle}
+              </button>
+            ))}
+          </div>
+        )}
         <div className="flex gap-2 overflow-x-auto pb-1">
           {CARBURANTS.map((c) => (
             <button
