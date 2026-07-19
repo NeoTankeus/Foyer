@@ -6,21 +6,19 @@ import { createSyncStoragePersister } from '@tanstack/query-sync-storage-persist
 import { registerSW } from 'virtual:pwa-register'
 import { App } from './App'
 import { demarrerSyncAuRetourDuReseau } from './lib/sync'
-import { detecterMajEnLigne, retenirEnregistrementSw } from './lib/maj'
+import { majAutomatique, retenirEnregistrementSw } from './lib/maj'
 import './design/tokens.css'
 
-// Mise à jour SANS réinstaller : on revérifie la version à chaque retour au
-// premier plan (et toutes les 15 min) — dès qu'une nouvelle version est là,
-// l'app se recharge toute seule. Plus jamais besoin de supprimer le raccourci.
+// Mise à jour AUTOMATIQUE : à l'ouverture, à chaque retour au premier plan et
+// toutes les 15 min, la version du serveur est comparée — si elle est plus
+// récente, l'installation démarre TOUTE SEULE (le nuage passe en ⬇️) et l'app
+// se recharge dès qu'elle est prête. Zéro clic, zéro réinstallation.
 registerSW({
   immediate: true,
   onRegisteredSW(_url, enregistrement) {
     if (!enregistrement) return
     retenirEnregistrementSw(enregistrement)
-    const verifier = () => {
-      void enregistrement.update().catch(() => undefined)
-      void detecterMajEnLigne() // comparaison de version directe → pastille rouge
-    }
+    const verifier = () => void majAutomatique()
     verifier()
     setInterval(verifier, 15 * 60 * 1000)
     document.addEventListener('visibilitychange', () => {

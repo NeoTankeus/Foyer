@@ -1,7 +1,7 @@
 // Le nuage vert : un appui = vérification + installation de la mise à jour
 // sur place, sans fermer l'app ni toucher au raccourci.
 import { useEffect, useRef, useState } from 'react'
-import { mettreAJourMaintenant, surMiseAJourDisponible, verifierMiseAJour } from '@/lib/maj'
+import { mettreAJourMaintenant, surInstallationEnCours, surMiseAJourDisponible, verifierMiseAJour } from '@/lib/maj'
 
 type Etat = 'repos' | 'verifie' | 'installe' | 'a_jour' | 'dispo'
 
@@ -10,7 +10,9 @@ export function BoutonMiseAJour() {
   const minuteur = useRef<number | null>(null)
 
   // Pastille rouge dès qu'une nouvelle version est prête en coulisses.
-  useEffect(() => surMiseAJourDisponible(() => setEtat('dispo')), [])
+  useEffect(() => surMiseAJourDisponible(() => setEtat((e) => (e === 'installe' ? e : 'dispo'))), [])
+  // L'installation automatique (à l'ouverture) s'affiche en direct : nuage → ⬇️.
+  useEffect(() => surInstallationEnCours(() => setEtat('installe')), [])
 
   useEffect(() => () => {
     if (minuteur.current !== null) window.clearTimeout(minuteur.current)

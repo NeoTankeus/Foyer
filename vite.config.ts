@@ -64,6 +64,11 @@ export default defineConfig({
         importScripts: ['sw-push.js'],
         globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
         navigateFallback: '/index.html',
+        // La nouvelle version s'active DÈS qu'elle est téléchargée et prend le
+        // contrôle immédiatement — c'est ça qui rend la mise à jour en 1 appui.
+        skipWaiting: true,
+        clientsClaim: true,
+        cleanupOutdatedCaches: true,
         runtimeCaching: [
           {
             // Données Supabase : le réseau d'abord, le cache en secours (mode avion)
