@@ -116,7 +116,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return
     }
 
-    const { mode, nom, ville, site, requete, lat, lon, rayon } = (req.body ?? {}) as {
+    const { mode, nom, ville, site, requete, lat, lon, rayon, quoi } = (req.body ?? {}) as {
       mode?: string
       nom?: string
       ville?: string
@@ -125,6 +125,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       lat?: number
       lon?: number
       rayon?: number
+      quoi?: string
     }
 
     // Relais Overpass : Safari bloque parfois l'appel direct depuis l'app,
@@ -137,9 +138,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         res.status(200).json({ elements: [], erreur: 'position invalide' })
         return
       }
+      // Le même relais sert plusieurs types de lieux (restaurants, pharmacies…).
+      const amenity = quoi === 'pharmacies' ? 'pharmacy' : 'restaurant|bistro|brasserie'
+      const motNominatim = quoi === 'pharmacies' ? 'pharmacie' : 'restaurant'
       // Toutes les sources sont interrogées EN MÊME TEMPS — la première qui
       // répond avec des tables gagne. Fini l'attente en cascade.
-      const requeteOsm = `[out:json][timeout:10];(node(around:${ra},${la},${lo})[amenity~"restaurant|bistro|brasserie"][name];way(around:${ra},${la},${lo})[amenity~"restaurant|bistro|brasserie"][name];);out center 80;`
+      const requeteOsm = `[out:json][timeout:10];(node(around:${ra},${la},${lo})[amenity~"${amenity}"][name];way(around:${ra},${la},${lo})[amenity~"${amenity}"][name];);out center 80;`
       const miroirs = [
         'https://overpass.kumi.systems/api/interpreter',
         'https://overpass.private.coffee/api/interpreter',
@@ -160,7 +164,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const dLon = ra / (111320 * Math.cos((la * Math.PI) / 180))
         const viewbox = `${lo - dLon},${la + dLat},${lo + dLon},${la - dLat}`
         const r = await fetch(
-          `https://nominatim.openstreetmap.org/search?q=restaurant&format=jsonv2&limit=50&bounded=1&viewbox=${viewbox}&extratags=1&accept-language=fr`,
+          `https://nominatim.openstreetmap.org/search?q=${motNominatim}&format=jsonv2&limit=50&bounded=1&viewbox=${viewbox}&extratags=1&accept-language=fr`,
           {
             headers: { accept: 'application/json', 'user-agent': 'STG-app-famille/1.0' },
             signal: AbortSignal.timeout(12000),

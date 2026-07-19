@@ -38,7 +38,7 @@ import { majBadgeIcone } from '@/lib/badge'
 
 type CleBloc =
   | 'urgent' | 'brief' | 'pilote' | 'meteo' | 'prix' | 'agenda' | 'taches'
-  | 'penser' | 'courses' | 'menus' | 'mur' | 'vacances' | 'fil'
+  | 'penser' | 'courses' | 'menus' | 'mur' | 'vacances' | 'fil' | 'ilyaunan'
 
 const BLOCS: { cle: CleBloc; libelle: string }[] = [
   { cle: 'urgent', libelle: '🔴 Relances urgentes' },
@@ -52,6 +52,7 @@ const BLOCS: { cle: CleBloc; libelle: string }[] = [
   { cle: 'penser', libelle: '💡 À penser' },
   { cle: 'courses', libelle: '🛒 Courses' },
   { cle: 'menus', libelle: '🍽️ Ce soir on mange' },
+  { cle: 'ilyaunan', libelle: '🕰 Il y a un an jour pour jour' },
   { cle: 'mur', libelle: '🧲 Le Mur (mots de la famille)' },
   { cle: 'fil', libelle: '🕐 Chronologie du jour' },
 ]
@@ -59,7 +60,7 @@ const BLOCS: { cle: CleBloc; libelle: string }[] = [
 const DEFAUT: Record<CleBloc, boolean> = {
   urgent: true, brief: true, pilote: true, meteo: true, vacances: true,
   prix: true, agenda: true, taches: true,
-  penser: true, courses: true, menus: true, mur: true, fil: false,
+  penser: true, courses: true, menus: true, mur: true, fil: false, ilyaunan: true,
 }
 
 const ORDRE_DEFAUT: CleBloc[] = BLOCS.map((b) => b.cle)
@@ -117,6 +118,23 @@ export function EcranAujourdhui() {
     importerAgendaSiBesoin(clientRequetes)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // 🕰 Les photos du même jour, l'année dernière.
+  const souvenirsUnAn = useQuery({
+    queryKey: ['ilyaunan', aujourdHui],
+    staleTime: 3600 * 1000,
+    queryFn: async () => {
+      const [a, m, j] = aujourdHui.split('-')
+      const jourPasse = `${Number(a) - 1}-${m}-${j}`
+      const { data } = await supabase
+        .from('souvenirs')
+        .select('id,titre,image_donnees')
+        .gte('pris_le', `${jourPasse}T00:00:00`)
+        .lte('pris_le', `${jourPasse}T23:59:59`)
+        .limit(6)
+      return (data ?? []) as { id: string; titre: string | null; image_donnees: string }[]
+    },
+  })
 
   const documents = useQuery({
     queryKey: ['documents', 'expirants'],
@@ -739,6 +757,33 @@ export function EcranAujourdhui() {
                   — {r.texte}
                 </p>
               ))
+            )}
+          </section>
+        )}
+
+        {/* 🕰 Il y a un an jour pour jour — la madeleine de Proust automatique */}
+        {blocs.ilyaunan && (souvenirsUnAn.data ?? []).length > 0 && (
+          <section
+            className="rounded-xl p-4 shadow-carte"
+            style={{ background: 'color-mix(in srgb, var(--or) 12%, var(--fond-eleve))', order: position('ilyaunan') }}
+          >
+            <button onClick={() => naviguer('/nous/journal')} className="flex w-full items-center justify-between">
+              <h2 className="text-note font-[700] uppercase tracking-wide text-encre-3">🕰 Il y a un an jour pour jour</h2>
+              <span className="text-encre-3">›</span>
+            </button>
+            <div className="mt-2 flex gap-2 overflow-x-auto pb-1">
+              {(souvenirsUnAn.data ?? []).map((s) => (
+                <img
+                  key={s.id}
+                  src={s.image_donnees}
+                  alt={s.titre ?? 'Souvenir'}
+                  loading="lazy"
+                  className="h-28 w-28 shrink-0 rounded-lg object-cover shadow-carte"
+                />
+              ))}
+            </div>
+            {(souvenirsUnAn.data ?? [])[0]?.titre && (
+              <p className="mt-1 text-legende text-encre-3">{(souvenirsUnAn.data ?? [])[0]?.titre}</p>
             )}
           </section>
         )}

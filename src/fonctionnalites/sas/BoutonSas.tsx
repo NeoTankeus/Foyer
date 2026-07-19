@@ -187,16 +187,17 @@ export function BoutonSas() {
 
   return (
     <>
+      {/* Le Perroquet 🦜 a pris la grande place à droite — le Sas vit ici, discret. */}
       <motion.button
         onClick={() => setOuvert(true)}
         whileTap={{ scale: 0.92 }}
         transition={{ type: 'spring', stiffness: 400, damping: 32 }}
         aria-label="Le Sas — capture rapide"
-        className="degrade-froid fixed right-4 z-30 flex h-14 w-14 items-center justify-center
-          rounded-full text-white shadow-carte"
+        className="degrade-froid fixed left-4 z-30 flex h-11 w-11 items-center justify-center
+          rounded-full text-white opacity-90 shadow-carte"
         style={{ bottom: 'calc(84px + env(safe-area-inset-bottom))' }}
       >
-        <svg width="22" height="22" viewBox="0 0 22 22" aria-hidden="true">
+        <svg width="18" height="18" viewBox="0 0 22 22" aria-hidden="true">
           <path d="M11 4v14M4 11h14" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
         </svg>
       </motion.button>

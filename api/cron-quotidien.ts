@@ -349,7 +349,93 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return rappels.length
   }
 
-  const resultat = { ics: 0, colis: 0, prix: 0, anniversaires: 0, capsules: 0, sante: 0, brief: '', notifies: abonnements.length }
+  // 🚨 Alertes maison : météo extrême sur la position de la maison (Radar).
+  const alerterMeteo = async (): Promise<number> => {
+    const foyers = await sb<{ reglages?: { maison?: { lat?: number; lon?: number; adresse?: string } } }[]>(
+      'foyers?select=reglages&limit=1',
+    )
+    const maison = foyers[0]?.reglages?.maison
+    if (!maison?.lat || !maison?.lon) return 0
+    const r = await fetch(
+      `https://api.open-meteo.com/v1/meteofrance?latitude=${maison.lat}&longitude=${maison.lon}` +
+        `&daily=temperature_2m_min,temperature_2m_max,precipitation_sum,weather_code,wind_gusts_10m_max` +
+        `&timezone=Europe%2FParis&forecast_days=1`,
+    )
+    if (!r.ok) return 0
+    const d = ((await r.json()) as {
+      daily?: {
+        temperature_2m_min?: number[]
+        temperature_2m_max?: number[]
+        precipitation_sum?: number[]
+        weather_code?: number[]
+        wind_gusts_10m_max?: number[]
+      }
+    }).daily
+    if (!d) return 0
+    const tMin = d.temperature_2m_min?.[0] ?? 15
+    const tMax = d.temperature_2m_max?.[0] ?? 15
+    const pluie = d.precipitation_sum?.[0] ?? 0
+    const code = d.weather_code?.[0] ?? 0
+    const rafales = d.wind_gusts_10m_max?.[0] ?? 0
+    const alertes: string[] = []
+    if (tMax >= 35) alertes.push(`🥵 Canicule : ${Math.round(tMax)}° prévu — volets fermés la journée, eau pour tout le monde`)
+    if (tMin <= -4) alertes.push(`🥶 Grand froid : ${Math.round(tMin)}° cette nuit — gare au verglas et aux canalisations`)
+    if (code >= 95) alertes.push('⛈ Orages prévus aujourd’hui — rentre ce qui traîne dehors')
+    else if ([71, 73, 75, 77, 85, 86].includes(code)) alertes.push('🌨 Neige prévue — pneus et école à anticiper')
+    else if ([66, 67].includes(code) || (tMin <= 0 && pluie > 0.5)) alertes.push('🧊 Risque de verglas au sol — prudence au volant')
+    if (rafales >= 80) alertes.push(`💨 Vent violent : rafales à ${Math.round(rafales)} km/h — attention aux objets sur la terrasse`)
+    if (pluie >= 25) alertes.push(`🌧 Fortes pluies : ${Math.round(pluie)} mm attendus`)
+    for (const alerte of alertes) await pousser('🚨 Alerte maison', alerte, '/')
+    return alertes.length
+  }
+
+  // 🔌 Garanties et papiers qui expirent : rappel aux jours choisis (J-30, J-7…).
+  const rappelerGaranties = async (): Promise<number> => {
+    const { jour } = bornesJourParis()
+    const documents = await sb<{ titre: string; type: string; expire_le: string | null; rappels: number[] | null }[]>(
+      'documents?expire_le=not.is.null&select=titre,type,expire_le,rappels',
+    )
+    const [a, m, j] = jour.split('-').map(Number)
+    const aujourdHuiUtc = Date.UTC(a ?? 2026, (m ?? 1) - 1, j ?? 1)
+    let envoyes = 0
+    for (const doc of documents) {
+      if (!doc.expire_le) continue
+      const [ea, em, ej] = doc.expire_le.split('-').map(Number)
+      const dans = Math.round((Date.UTC(ea ?? 2026, (em ?? 1) - 1, ej ?? 1) - aujourdHuiUtc) / 86400000)
+      if (!(doc.rappels ?? [30, 7]).includes(dans) && dans !== 0) continue
+      const corps =
+        dans === 0
+          ? `« ${doc.titre} » expire AUJOURD'HUI.`
+          : `« ${doc.titre} » expire dans ${dans} jour${dans > 1 ? 's' : ''} — c'est le moment d'agir${doc.type === 'garantie' ? ' (SAV, échange, remboursement)' : ''}.`
+      await pousserAdultes(doc.type === 'garantie' ? '🔌 Garantie bientôt finie' : '📄 Papier qui expire', corps, '/nous/garanties')
+      envoyes += 1
+    }
+    return envoyes
+  }
+
+  // 🕰 Il y a un an jour pour jour : une photo-souvenir dans le brief du matin.
+  const ilYaUnAn = async (): Promise<number> => {
+    const { jour } = bornesJourParis()
+    const [a, m, j] = jour.split('-').map(Number)
+    const ilYA1An = `${(a ?? 2026) - 1}-${String(m ?? 1).padStart(2, '0')}-${String(j ?? 1).padStart(2, '0')}`
+    const souvenirs = await sb<{ titre: string | null; lieu: string | null }[]>(
+      `souvenirs?pris_le=gte.${ilYA1An}T00:00:00&pris_le=lte.${ilYA1An}T23:59:59&select=titre,lieu&limit=3`,
+    )
+    if (souvenirs.length === 0) return 0
+    const premier = souvenirs[0]
+    const detail = premier?.titre ?? premier?.lieu ?? 'de beaux moments'
+    await pousser(
+      '🕰 Il y a un an jour pour jour',
+      `${souvenirs.length} photo${souvenirs.length > 1 ? 's' : ''} de ce jour-là (${detail}) — ouvre le Journal pour replonger.`,
+      '/nous/journal',
+    )
+    return souvenirs.length
+  }
+
+  const resultat = { ics: 0, colis: 0, prix: 0, anniversaires: 0, capsules: 0, sante: 0, alertes: 0, garanties: 0, souvenirs: 0, brief: '', notifies: abonnements.length }
+  try { resultat.alertes = await alerterMeteo() } catch { /* section suivante */ }
+  try { resultat.garanties = await rappelerGaranties() } catch { /* section suivante */ }
+  try { resultat.souvenirs = await ilYaUnAn() } catch { /* section suivante */ }
   try { resultat.capsules = await livrerCapsules() } catch { /* section suivante */ }
   try { resultat.sante = await rappelerSante() } catch { /* section suivante */ }
   try { resultat.ics = (await importerIcs(URL_SUPABASE, CLE_SERVICE)).importes } catch { /* section suivante */ }

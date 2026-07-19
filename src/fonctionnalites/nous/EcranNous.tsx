@@ -32,6 +32,13 @@ export function EcranNous() {
 
   const MODULES: { chemin: string; libelle: string; detail: string; icone: string; couleur: string; adulte?: boolean }[] = [
     { chemin: '/nous/chef', libelle: 'Le Chef', detail: 'le menu du soir avec ce qu’on a déjà', icone: '🧑‍🍳', couleur: 'var(--sauge)' },
+    { chemin: '/nous/weekend', libelle: 'Week-end surprise', detail: 'un budget, un rayon — STG compose tout', icone: '🧭', couleur: 'var(--ambre)' },
+    { chemin: '/nous/quiz', libelle: 'Quiz du dîner', detail: '3 questions à table, dont une sur VOTRE vie', icone: '🏆', couleur: 'var(--or)' },
+    { chemin: '/nous/ciel', libelle: 'Ce soir on lève les yeux', detail: 'lune, ISS en direct, étoiles filantes', icone: '🌌', couleur: 'var(--prune)' },
+    { chemin: '/nous/carburant', libelle: 'Plein malin', detail: 'la station la moins chère autour de toi', icone: '⛽', couleur: 'var(--ardoise)' },
+    { chemin: '/nous/pharmacies', libelle: 'Pharmacies', detail: 'les plus proches + le réflexe 32 37', icone: '💊', couleur: 'var(--sauge)' },
+    { chemin: '/nous/radar-prix', libelle: 'Radar prix', detail: 'tes produits scannés, aux prix des magasins', icone: '📉', couleur: 'var(--or)' },
+    { chemin: '/nous/garanties', libelle: 'Garanties', detail: 'STG prévient avant que ça expire', icone: '🔌', couleur: 'var(--encre-2)', adulte: true },
     { chemin: '/nous/soiree', libelle: 'Soirée parfaite', detail: 'film + plat + resto, décidé en 10 s', icone: '🎬', couleur: 'var(--prune)' },
     { chemin: '/nous/roue', libelle: 'La Roue', detail: 'elle décide, plus de débat', icone: '🎲', couleur: 'var(--corail)' },
     { chemin: '/nous/radar', libelle: 'Radar de départ', detail: 'l’heure à laquelle il faut VRAIMENT partir', icone: '🚗', couleur: 'var(--ardoise)' },

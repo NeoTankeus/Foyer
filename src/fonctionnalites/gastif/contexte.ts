@@ -40,6 +40,7 @@ export async function assemblerContexte(
     evenements, taches, tachesFaites, courses, repas, recettes,
     voyages, reservations, valises, documents, colis, celebrations,
     souvenirs, mur, routines, concerts, personnes, inventaire, restaurants,
+    habitudes, capsules, sante, depenses,
   ] = await Promise.all([
     supabase.from('evenements').select('*').gt('fin_a', debut).lt('debut_a', fin).order('debut_a'),
     supabase.from('taches').select('*').eq('statut', 'a_faire').order('echeance'),
@@ -60,6 +61,11 @@ export async function assemblerContexte(
     supabase.from('personnes').select('*'),
     supabase.from('inventaire').select('*'),
     supabase.from('restaurants').select('*'),
+    supabase.from('habitudes').select('*'),
+    // Capsules : SEULEMENT titre et date — le contenu reste scellé, même pour STG.
+    supabase.from('capsules').select('titre, ouvrir_le, ouverte' as '*'),
+    supabase.from('sante').select('personne, type, libelle, date_soin, rappel_le' as '*'),
+    supabase.from('depenses').select('montant, categorie, date_depense' as '*').is('voyage_id', null).gte('date_depense', dateIsoJour(addDays(maintenant, -60))),
   ])
 
   const prenom = (id: string | null) => membres.find((m) => m.id === id)?.prenom ?? '?'
@@ -165,6 +171,37 @@ export async function assemblerContexte(
     lignes.push(
       `Inventaire du foyer : ${stock.map((s) => `${s.libelle} x${s.quantite} (${s.zone}${s.dlc ? `, DLC ${s.dlc}` : ''})`).join(' · ')}.`,
     )
+
+  // 🌱 Le Jardin des habitudes
+  const pousses = (habitudes.data ?? []) as { membre_id: string; nom: string; jours: string[] }[]
+  if (pousses.length > 0)
+    lignes.push(
+      `Habitudes en cours (Jardin) : ${pousses.map((h) => `${prenom(h.membre_id)} — « ${h.nom} » (${h.jours.length} jour(s) tenus au total)`).join(' · ')}.`,
+    )
+
+  // 💌 Capsules : titres et dates SEULEMENT — le contenu est scellé, ne jamais spéculer dessus.
+  const boites = (capsules.data ?? []) as { titre: string; ouvrir_le: string; ouverte: boolean }[]
+  if (boites.length > 0)
+    lignes.push(
+      `Capsules temporelles : ${boites.map((c) => `« ${c.titre} » (${c.ouverte ? 'ouverte' : `scellée jusqu'au ${c.ouvrir_le}`})`).join(' · ')}. Leur contenu est secret, n'invente rien dessus.`,
+    )
+
+  // 🩺 Carnet santé (adultes seulement — la RLS filtre) : rappels et repères, pas de diagnostic.
+  const soins = (sante.data ?? []) as { personne: string; type: string; libelle: string; date_soin: string | null; rappel_le: string | null }[]
+  if (soins.length > 0)
+    lignes.push(
+      `Carnet santé : ${soins.slice(0, 15).map((s) => `${s.personne} — ${s.type} ${s.libelle}${s.rappel_le ? ` (rappel ${s.rappel_le})` : ''}`).join(' · ')}.`,
+    )
+
+  // 💰 Le Trésorier : les 60 derniers jours par catégorie.
+  const sous = (depenses.data ?? []) as { montant: number; categorie: string | null }[]
+  if (sous.length > 0) {
+    const parCategorie = new Map<string, number>()
+    for (const d of sous) parCategorie.set(d.categorie ?? 'autre', (parCategorie.get(d.categorie ?? 'autre') ?? 0) + Number(d.montant))
+    lignes.push(
+      `Dépenses du foyer (60 j) : ${[...parCategorie.entries()].map(([c, m]) => `${c} ${Math.round(m)} €`).join(', ')} — total ${Math.round(sous.reduce((s, d) => s + Number(d.montant), 0))} €.`,
+    )
+  }
 
   return lignes.join('\n')
 }

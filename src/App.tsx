@@ -4,6 +4,7 @@ import { utiliserSession } from '@/etat/session'
 import { EcranConnexion } from '@/fonctionnalites/auth/EcranConnexion'
 import { EcranAujourdhui } from '@/fonctionnalites/aujourdhui/EcranAujourdhui'
 import { BoutonSas } from '@/fonctionnalites/sas/BoutonSas'
+import { BoutonPerroquet } from '@/fonctionnalites/perroquet/BoutonPerroquet'
 import { GardeFou } from '@/design/composants/GardeFou'
 import { PopupNouveautes } from '@/design/composants/PopupNouveautes'
 
@@ -44,6 +45,13 @@ const EcranJardin = paresseux(() => import('@/fonctionnalites/jardin/EcranJardin
 const EcranCapsules = paresseux(() => import('@/fonctionnalites/capsules/EcranCapsules'), 'EcranCapsules')
 const EcranSante = paresseux(() => import('@/fonctionnalites/sante/EcranSante'), 'EcranSante')
 const EcranRoue = paresseux(() => import('@/fonctionnalites/roue/EcranRoue'), 'EcranRoue')
+const EcranCarburant = paresseux(() => import('@/fonctionnalites/carburant/EcranCarburant'), 'EcranCarburant')
+const EcranPharmacies = paresseux(() => import('@/fonctionnalites/pharmacies/EcranPharmacies'), 'EcranPharmacies')
+const EcranGaranties = paresseux(() => import('@/fonctionnalites/garanties/EcranGaranties'), 'EcranGaranties')
+const EcranRadarPrix = paresseux(() => import('@/fonctionnalites/prix/EcranRadarPrix'), 'EcranRadarPrix')
+const EcranCiel = paresseux(() => import('@/fonctionnalites/ciel/EcranCiel'), 'EcranCiel')
+const EcranQuiz = paresseux(() => import('@/fonctionnalites/quiz/EcranQuiz'), 'EcranQuiz')
+const EcranWeekend = paresseux(() => import('@/fonctionnalites/weekend/EcranWeekend'), 'EcranWeekend')
 
 function IconeOnglet({ nom }: { nom: string }) {
   const traits = { fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round' as const }
@@ -212,10 +220,18 @@ function Interieur() {
             <Route path="/nous/capsules" element={<EcranCapsules />} />
             <Route path="/nous/sante" element={<EcranSante />} />
             <Route path="/nous/roue" element={<EcranRoue />} />
+            <Route path="/nous/carburant" element={<EcranCarburant />} />
+            <Route path="/nous/pharmacies" element={<EcranPharmacies />} />
+            <Route path="/nous/garanties" element={<EcranGaranties />} />
+            <Route path="/nous/radar-prix" element={<EcranRadarPrix />} />
+            <Route path="/nous/ciel" element={<EcranCiel />} />
+            <Route path="/nous/quiz" element={<EcranQuiz />} />
+            <Route path="/nous/weekend" element={<EcranWeekend />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </Suspense>
         <BoutonSas />
+        <BoutonPerroquet />
         <BarreOnglets />
         <PopupNouveautes />
       </div>
