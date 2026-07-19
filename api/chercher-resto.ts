@@ -139,29 +139,76 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
       const requeteOsm = `[out:json][timeout:20];(node(around:${ra},${la},${lo})[amenity~"restaurant|bistro|brasserie"][name];way(around:${ra},${la},${lo})[amenity~"restaurant|bistro|brasserie"][name];);out center 80;`
       const miroirs = [
-        'https://overpass-api.de/api/interpreter',
         'https://overpass.kumi.systems/api/interpreter',
         'https://overpass.private.coffee/api/interpreter',
+        'https://overpass-api.de/api/interpreter',
       ]
-      let derniere = 'aucun serveur cartes joignable'
+      const motifs: string[] = []
       for (const miroir of miroirs) {
         try {
           const r = await fetch(miroir, {
             method: 'POST',
             body: `data=${encodeURIComponent(requeteOsm)}`,
-            headers: { 'content-type': 'application/x-www-form-urlencoded' },
-            signal: AbortSignal.timeout(18000),
+            headers: { 'content-type': 'application/x-www-form-urlencoded', 'user-agent': UA },
+            signal: AbortSignal.timeout(12000),
           })
           if (r.ok) {
             res.status(200).json(await r.json())
             return
           }
-          derniere = `serveur cartes : ${r.status}`
+          motifs.push(`${r.status}`)
         } catch (e) {
-          derniere = `serveur cartes injoignable (${String(e instanceof Error ? e.message : e).slice(0, 60)})`
+          motifs.push(String(e instanceof Error ? e.message : e).slice(0, 40))
         }
       }
-      res.status(200).json({ elements: [], erreur: derniere })
+      // Plan C : Nominatim en zone délimitée — moins complet, jamais saturé.
+      try {
+        const dLat = ra / 111320
+        const dLon = ra / (111320 * Math.cos((la * Math.PI) / 180))
+        const viewbox = `${lo - dLon},${la + dLat},${lo + dLon},${la - dLat}`
+        const r = await fetch(
+          `https://nominatim.openstreetmap.org/search?q=restaurant&format=jsonv2&limit=50&bounded=1&viewbox=${viewbox}&extratags=1&accept-language=fr`,
+          {
+            headers: { accept: 'application/json', 'user-agent': 'StiGa-app-famille/1.0' },
+            signal: AbortSignal.timeout(15000),
+          },
+        )
+        if (r.ok) {
+          const liste = (await r.json()) as {
+            place_id: number
+            lat: string
+            lon: string
+            display_name: string
+            name?: string
+            extratags?: Record<string, string>
+          }[]
+          const elements = liste
+            .map((x) => {
+              const nom = x.name || x.display_name.split(',')[0] || ''
+              const cuisine = x.extratags?.['cuisine']
+              const phone = x.extratags?.['phone'] ?? x.extratags?.['contact:phone']
+              const website = x.extratags?.['website'] ?? x.extratags?.['contact:website']
+              return {
+                id: x.place_id,
+                lat: Number(x.lat),
+                lon: Number(x.lon),
+                tags: {
+                  name: nom,
+                  ...(cuisine ? { cuisine } : {}),
+                  ...(phone ? { phone } : {}),
+                  ...(website ? { website } : {}),
+                },
+              }
+            })
+            .filter((x) => x.tags.name)
+          res.status(200).json({ elements })
+          return
+        }
+        motifs.push(`nominatim ${r.status}`)
+      } catch (e) {
+        motifs.push(`nominatim ${String(e instanceof Error ? e.message : e).slice(0, 40)}`)
+      }
+      res.status(200).json({ elements: [], erreur: `serveurs cartes : ${motifs.join(' / ')}` })
       return
     }
 
