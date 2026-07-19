@@ -7,6 +7,7 @@ import { useQuery } from '@tanstack/react-query'
 import { villeMeteo, previsions, iconeMeteo } from '@/lib/meteo'
 import { BarreRetour } from '@/design/composants/BarreRetour'
 import { Carte } from '@/design/composants/Carte'
+import { Feuille } from '@/design/composants/Feuille'
 
 // Phase de lune calculée localement (cycle synodique 29,53 j, réf. 2000-01-06).
 function phaseLune(date = new Date()): { nom: string; emoji: string; illumination: number } {
@@ -49,91 +50,61 @@ function distanceKm(lat1: number, lon1: number, lat2: number, lon2: number): num
   return Math.round(6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)))
 }
 
-// Étoiles fixes du fond (déterministes — pas de scintillement au re-rendu).
-const ETOILES = Array.from({ length: 40 }, (_, i) => ({
-  x: (i * 97) % 220,
-  y: (i * 53) % 220,
-  r: 0.6 + ((i * 7) % 10) / 10,
-}))
+// La VRAIE Terre : photo satellite « Blue Marble » de la NASA (domaine
+// public), chargée une fois puis gardée en cache un an par l'app.
+const URL_TERRE =
+  'https://upload.wikimedia.org/wikipedia/commons/thumb/2/23/Blue_Marble_2002.png/1280px-Blue_Marble_2002.png'
 
-/** Le globe vu depuis la Station : la Terre tourne sous elle, dessinée
- *  localement en SVG — AUCUN chargement, l'image est là instantanément. */
-function GlobeIss({ lat, lon, maison }: { lat: number; lon: number; maison: { nom: string; lat: number; lon: number } | null }) {
-  const R = 88
-  const CX = 110
-  const CY = 110
-  const rad = (d: number) => (d * Math.PI) / 180
-  const p0 = rad(lat)
-  const l0 = rad(lon)
-
-  // Projection orthographique centrée sur la Station.
-  const projeter = (latP: number, lonP: number): { x: number; y: number; visible: boolean } => {
-    const p = rad(latP)
-    const l = rad(lonP)
-    const cosC = Math.sin(p0) * Math.sin(p) + Math.cos(p0) * Math.cos(p) * Math.cos(l - l0)
-    return {
-      x: CX + R * Math.cos(p) * Math.sin(l - l0),
-      y: CY - R * (Math.cos(p0) * Math.sin(p) - Math.sin(p0) * Math.cos(p) * Math.cos(l - l0)),
-      visible: cosC > 0.02,
-    }
-  }
-
-  // La grille terrestre : parallèles et méridiens, coupés côté invisible.
-  const chemins: string[] = []
-  const tracer = (points: { x: number; y: number; visible: boolean }[]) => {
-    let d = ''
-    let dansSegment = false
-    for (const pt of points) {
-      if (pt.visible) {
-        d += `${dansSegment ? 'L' : 'M'}${pt.x.toFixed(1)},${pt.y.toFixed(1)}`
-        dansSegment = true
-      } else dansSegment = false
-    }
-    if (d) chemins.push(d)
-  }
-  for (let latG = -60; latG <= 60; latG += 30)
-    tracer(Array.from({ length: 73 }, (_, i) => projeter(latG, -180 + i * 5)))
-  for (let lonG = -180; lonG < 180; lonG += 30)
-    tracer(Array.from({ length: 37 }, (_, i) => projeter(-90 + i * 5, lonG)))
-
-  const chezNous = maison ? projeter(maison.lat, maison.lon) : null
+/** La vraie Terre avec la Station qui avance dessus, seconde par seconde. */
+function CarteTerreIss({
+  lat,
+  lon,
+  ville,
+  grande,
+}: {
+  lat: number
+  lon: number
+  ville: { nom: string; lat: number; lon: number } | null
+  grande?: boolean
+}) {
+  const x = ((lon + 180) / 360) * 100
+  const y = ((90 - lat) / 180) * 100
+  const vx = ville ? ((ville.lon + 180) / 360) * 100 : null
+  const vy = ville ? ((90 - ville.lat) / 180) * 100 : null
 
   return (
-    <svg viewBox="0 0 220 220" className="mx-auto block h-56 w-56" aria-label="La Terre vue depuis la Station spatiale">
-      <defs>
-        <radialGradient id="ciel-fond" cx="50%" cy="40%">
-          <stop offset="0%" stopColor="#101b33" />
-          <stop offset="100%" stopColor="#05070f" />
-        </radialGradient>
-        <radialGradient id="terre" cx="42%" cy="38%">
-          <stop offset="0%" stopColor="#3f6ea8" />
-          <stop offset="70%" stopColor="#1d3a63" />
-          <stop offset="100%" stopColor="#0e1f3a" />
-        </radialGradient>
-      </defs>
-      <rect width="220" height="220" rx="16" fill="url(#ciel-fond)" />
-      {ETOILES.map((e, i) => (
-        <circle key={i} cx={e.x} cy={e.y} r={e.r} fill="#e8ecf7" opacity={0.4 + (i % 3) * 0.2} />
-      ))}
-      <circle cx={CX} cy={CY} r={R} fill="url(#terre)" stroke="#7d9cc8" strokeWidth="1" />
-      {chemins.map((d, i) => (
-        <path key={i} d={d} fill="none" stroke="#89a7d0" strokeWidth="0.5" opacity="0.55" />
-      ))}
-      {chezNous?.visible && (
-        <g>
-          <circle cx={chezNous.x} cy={chezNous.y} r="4" fill="#e35d5d" stroke="#fff" strokeWidth="1.2" />
-          <text x={chezNous.x} y={chezNous.y - 7} textAnchor="middle" fontSize="9" fill="#ffd9d9" fontWeight="700">
-            {maison?.nom}
-          </text>
-        </g>
+    <div
+      className="relative w-full overflow-hidden rounded-xl bg-[#0a1226]"
+      style={{ aspectRatio: '2 / 1' }}
+      aria-label="La Station spatiale sur la vraie carte de la Terre"
+    >
+      <img
+        src={URL_TERRE}
+        alt=""
+        loading="eager"
+        decoding="async"
+        className="absolute inset-0 h-full w-full object-cover"
+      />
+      {/* La maison */}
+      {vx !== null && vy !== null && (
+        <div className="absolute -translate-x-1/2 -translate-y-1/2" style={{ left: `${vx}%`, top: `${vy}%` }}>
+          <div className="h-2.5 w-2.5 rounded-full border border-white bg-urgent shadow" />
+          {grande && (
+            <p className="absolute left-1/2 top-3 -translate-x-1/2 whitespace-nowrap text-[10px] font-[700] text-white drop-shadow">
+              {ville?.nom}
+            </p>
+          )}
+        </div>
       )}
-      {/* La Station, toujours au centre : c'est elle qui regarde la Terre. */}
-      <circle cx={CX} cy={CY} r="7" fill="#fff" opacity="0.15">
-        <animate attributeName="r" values="7;13;7" dur="2.2s" repeatCount="indefinite" />
-        <animate attributeName="opacity" values="0.25;0.05;0.25" dur="2.2s" repeatCount="indefinite" />
-      </circle>
-      <text x={CX} y={CY + 5} textAnchor="middle" fontSize="16">🛰</text>
-    </svg>
+      {/* La Station : halo qui pulse + satellite, elle AVANCE chaque seconde */}
+      <div
+        className="absolute -translate-x-1/2 -translate-y-1/2 transition-all duration-1000 ease-linear"
+        style={{ left: `${x}%`, top: `${y}%` }}
+      >
+        <div className="absolute left-1/2 top-1/2 h-8 w-8 -translate-x-1/2 -translate-y-1/2 animate-ping rounded-full bg-white/25" />
+        <span className={grande ? 'text-[26px] drop-shadow' : 'text-[19px] drop-shadow'} aria-hidden="true">🛰</span>
+      </div>
+    </div>
   )
 }
 
@@ -142,6 +113,7 @@ const CLE_ISS = 'stg-iss-derniere'
 export function EcranCiel() {
   const lune = phaseLune()
   const ville = villeMeteo()
+  const [pleinEcran, setPleinEcran] = useState(false)
   // Affichage INSTANTANÉ, image comprise : on repart de la dernière position
   // mémorisée et de sa vitesse, et on fait AVANCER la Station localement chaque
   // seconde (extrapolation) — le globe bouge dès l'ouverture, sans réseau.
@@ -288,25 +260,27 @@ export function EcranCiel() {
 
         <Carte>
           <p className="mb-1 text-note font-[590] uppercase tracking-wide text-encre-3">🛰 La Station spatiale, EN DIRECT</p>
-          {/* L'image s'affiche IMMÉDIATEMENT — dessinée sur place, aucun chargement. */}
-          <GlobeIss
-            lat={iss?.lat ?? 30}
-            lon={iss?.lon ?? 0}
-            maison={ville ? { nom: ville.nom, lat: ville.latitude, lon: ville.longitude } : null}
-          />
+          {/* La VRAIE Terre — un appui : plein écran avec la position réelle. */}
+          <button onClick={() => setPleinEcran(true)} className="block w-full" aria-label="Voir la Station en plein écran">
+            <CarteTerreIss
+              lat={iss?.lat ?? 30}
+              lon={iss?.lon ?? 0}
+              ville={ville ? { nom: ville.nom, lat: ville.latitude, lon: ville.longitude } : null}
+            />
+          </button>
           {iss ? (
             <>
-              <p className="mt-1 text-corps-2 text-encre">
+              <p className="mt-2 text-corps-2 text-encre">
                 {iss.km !== null && iss.km < 1000
                   ? `🤩 Elle est à ${iss.km} km de chez vous — sortez voir si le ciel est dégagé, elle file comme une étoile très brillante !`
                   : iss.km !== null
-                    ? `Elle survole un point à ${iss.km.toLocaleString('fr-FR')} km de chez vous${ville ? ` — quand le point ${ville.nom} apparaît sur le globe, elle arrive !` : ''}.`
-                    : 'Choisis ta ville dans la météo du tableau de bord pour voir la maison sur le globe.'}
+                    ? `Elle survole un point à ${iss.km.toLocaleString('fr-FR')} km de chez vous.`
+                    : 'Choisis ta ville dans la météo du tableau de bord pour voir la maison sur la carte.'}
               </p>
               <p className="mt-1 text-legende text-encre-3">
                 {iss.lat.toFixed(1)}°, {iss.lon.toFixed(1)}° · 28 000 km/h ·{' '}
-                {iss.direct ? '🟢 EN DIRECT' : '🛰 trajectoire calculée, le direct arrive…'} · tour de la Terre en 92 min —
-                dites-le à Gabriel !
+                {iss.direct ? '🟢 EN DIRECT' : '🛰 trajectoire calculée, le direct arrive…'} · touche la carte pour le
+                plein écran !
               </p>
             </>
           ) : (
@@ -315,6 +289,55 @@ export function EcranCiel() {
             </p>
           )}
         </Carte>
+
+        {/* Plein écran : la position réelle en grand + les vraies caméras NASA */}
+        <Feuille ouverte={pleinEcran} onFermer={() => setPleinEcran(false)} titre="🛰 La Station en direct">
+          <div className="flex flex-col gap-3">
+            <CarteTerreIss
+              lat={iss?.lat ?? 30}
+              lon={iss?.lon ?? 0}
+              ville={ville ? { nom: ville.nom, lat: ville.latitude, lon: ville.longitude } : null}
+              grande
+            />
+            <div className="grid grid-cols-3 gap-2 text-center">
+              {[
+                ['📍', iss ? `${iss.lat.toFixed(1)}°, ${iss.lon.toFixed(1)}°` : '…', 'position'],
+                ['🚀', '28 000 km/h', 'vitesse'],
+                ['🏔', '~ 408 km', 'altitude'],
+              ].map(([icone, valeur, libelle]) => (
+                <div key={String(libelle)} className="rounded-xl bg-fond-sourd px-2 py-3">
+                  <p className="text-corps-2 font-[700] text-encre">{icone} {valeur}</p>
+                  <p className="text-legende text-encre-3">{libelle}</p>
+                </div>
+              ))}
+            </div>
+            {iss !== null && iss.km !== null && (
+              <p className="text-center text-corps-2 text-encre-2">
+                Elle est à <strong>{iss.km.toLocaleString('fr-FR')} km</strong> de chez vous
+                {iss.km < 1500 ? ' — sortez la voir passer !' : '.'}
+              </p>
+            )}
+            <a
+              href="https://spotthestation.nasa.gov/tracking_map.cfm"
+              target="_blank"
+              rel="noopener"
+              className="btn-3d btn-clair inline-flex min-h-sur-tactile items-center justify-center px-4 py-2.5 text-corps-2"
+            >
+              🗺 Le traceur officiel de la NASA (Spot the Station)
+            </a>
+            <a
+              href="https://www.youtube.com/@NASA/streams"
+              target="_blank"
+              rel="noopener"
+              className="btn-3d btn-clair inline-flex min-h-sur-tactile items-center justify-center px-4 py-2.5 text-corps-2"
+            >
+              🎥 La VUE depuis la Station — caméras NASA en direct
+            </a>
+            <p className="text-legende text-encre-3">
+              💡 Sur le traceur NASA tu peux aussi t'inscrire pour être prévenu des passages visibles à l'œil nu au-dessus de chez vous.
+            </p>
+          </div>
+        </Feuille>
 
         <Carte>
           <p className="mb-1 text-note font-[590] uppercase tracking-wide text-encre-3">🌠 Étoiles filantes</p>

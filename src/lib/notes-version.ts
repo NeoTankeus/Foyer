@@ -1,6 +1,6 @@
 // Les nouveautés de la version en cours — affichées UNE fois dans le pop-up
 // « Quoi de neuf », signé ILY. Mises à jour à chaque déploiement.
 export const NOTES_VERSION: string[] = [
-  '⚡ Mises à jour encore plus rapides : seuls les fichiers qui ont VRAIMENT changé sont téléchargés (les images restent en place), et la vérification passe toutes les 5 minutes.',
-  '👀 Et tu VOIS tout en temps réel : dès qu’une installation démarre (clic sur le nuage ou automatique), une bannière s’affiche au-dessus des onglets — « Nouvelle version en cours d’installation… » — puis l’app se recharge toute seule.',
+  '🌍 La Station spatiale survole maintenant la VRAIE Terre (photo satellite NASA « Blue Marble »), avec ta ville en rouge — et le satellite avance dessus seconde par seconde.',
+  '🛰 Touche la carte : PLEIN ÉCRAN avec la position réelle en grand, vitesse, altitude, distance de chez vous — et deux boutons NASA : le traceur officiel et les caméras EN DIRECT pour voir la Terre depuis la Station.',
 ]

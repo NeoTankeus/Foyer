@@ -92,6 +92,16 @@ export default defineConfig({
               expiration: { maxEntries: 60, maxAgeSeconds: 60 * 60 * 24 * 365 },
             },
           },
+          {
+            // La Terre « Blue Marble » (NASA/Wikimedia) : téléchargée une fois,
+            // gardée un an — la carte de la Station s'affiche ensuite hors ligne.
+            urlPattern: ({ url }) => url.hostname === 'upload.wikimedia.org',
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'images-web',
+              expiration: { maxEntries: 10, maxAgeSeconds: 60 * 60 * 24 * 365 },
+            },
+          },
         ],
       },
     }),
