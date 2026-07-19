@@ -16,9 +16,9 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['icones/icone.svg'],
       manifest: {
-        name: 'FOYER',
-        short_name: 'FOYER',
-        description: 'Le quotidien, en paix.',
+        name: 'Gastif',
+        short_name: 'Gastif',
+        description: 'L’intendant du foyer — le quotidien, en paix.',
         lang: 'fr',
         dir: 'ltr',
         display: 'standalone',
