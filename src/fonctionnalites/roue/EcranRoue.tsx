@@ -1,7 +1,7 @@
 // 🎲 La Roue des décisions : pour tous les « on mange quoi ? / on va où ? ».
 // Elle tourne avec VOS options — restos favoris (pondérés), vos plats, ou
 // une liste perso — et StiGa tranche. Plus de débat.
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { motion, useAnimationControls } from 'framer-motion'
 import { useQuery } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
@@ -13,15 +13,19 @@ import { ChampTexte } from '@/design/composants/ChampTexte'
 
 const COULEURS = ['#e8b04b', '#7d9c88', '#a5788d', '#6d87a8', '#c98f6a', '#8b8bb5', '#9aab6e', '#c47f7f']
 const CLE_PERSO = 'stiga-roue-perso'
+const CLE_PLATS = 'stiga-roue-plats'
 const PLATS_SECOURS = ['Pizza', 'Pâtes carbo', 'Raclette', 'Burgers maison', 'Sushis', 'Crêpes', 'Gratin', 'Salade géante']
+
+const lireListe = (cle: string): string[] => {
+  try { return JSON.parse(localStorage.getItem(cle) ?? '[]') as string[] } catch { return [] }
+}
 
 interface Option { libelle: string; poids: number }
 
 export function EcranRoue() {
   const [mode, setMode] = useState<'restos' | 'plats' | 'perso'>('restos')
-  const [perso, setPerso] = useState<string[]>(() => {
-    try { return JSON.parse(localStorage.getItem(CLE_PERSO) ?? '[]') as string[] } catch { return [] }
-  })
+  const [perso, setPerso] = useState<string[]>(() => lireListe(CLE_PERSO))
+  const [plats, setPlats] = useState<string[]>(() => lireListe(CLE_PLATS))
   const [nouvelle, setNouvelle] = useState('')
   const [angle, setAngle] = useState(0)
   const [tourne, setTourne] = useState(false)
@@ -47,6 +51,17 @@ export function EcranRoue() {
       }),
   })
 
+  // Au premier passage sur « plats », la liste modifiable se remplit toute
+  // seule (vos recettes si vous en avez, sinon les classiques) — ensuite tu
+  // ajoutes et retires ce que tu veux, c'est mémorisé.
+  useEffect(() => {
+    if (mode !== 'plats' || plats.length > 0 || recettes.isLoading) return
+    const recettesMaison = (recettes.data ?? []).map((r) => r.titre).slice(0, 8)
+    const graine = recettesMaison.length >= 2 ? recettesMaison : PLATS_SECOURS
+    setPlats(graine)
+    localStorage.setItem(CLE_PLATS, JSON.stringify(graine))
+  }, [mode, plats.length, recettes.isLoading, recettes.data])
+
   const options: Option[] = useMemo(() => {
     if (mode === 'restos') {
       const liste = (restaurants.data ?? [])
@@ -54,12 +69,9 @@ export function EcranRoue() {
         .slice(0, 8)
       return liste.length >= 2 ? liste : []
     }
-    if (mode === 'plats') {
-      const maison = (recettes.data ?? []).map((r) => ({ libelle: r.titre, poids: 1 })).slice(0, 8)
-      return maison.length >= 2 ? maison : PLATS_SECOURS.map((p) => ({ libelle: p, poids: 1 }))
-    }
+    if (mode === 'plats') return plats.map((p) => ({ libelle: p, poids: 1 })).slice(0, 8)
     return perso.map((p) => ({ libelle: p, poids: 1 })).slice(0, 8)
-  }, [mode, restaurants.data, recettes.data, perso])
+  }, [mode, restaurants.data, plats, perso])
 
   const totalPoids = options.reduce((s, o) => s + o.poids, 0)
 
@@ -96,9 +108,16 @@ export function EcranRoue() {
     setTourne(false)
   }
 
-  const majPerso = (liste: string[]) => {
-    setPerso(liste)
-    localStorage.setItem(CLE_PERSO, JSON.stringify(liste))
+  // La liste en cours d'édition : les plats et la liste perso se modifient pareil.
+  const listeActive = mode === 'plats' ? plats : perso
+  const majListe = (liste: string[]) => {
+    if (mode === 'plats') {
+      setPlats(liste)
+      localStorage.setItem(CLE_PLATS, JSON.stringify(liste))
+    } else {
+      setPerso(liste)
+      localStorage.setItem(CLE_PERSO, JSON.stringify(liste))
+    }
   }
 
   // Le camembert SVG : un arc par option.
@@ -192,34 +211,42 @@ export function EcranRoue() {
           </>
         )}
 
-        {mode === 'perso' && (
+        {mode !== 'restos' && (
           <div className="w-full">
             <form
               className="flex gap-2"
               onSubmit={(e) => {
                 e.preventDefault()
                 const propre = nouvelle.trim()
-                if (propre && perso.length < 8) {
-                  majPerso([...perso, propre])
+                if (propre && listeActive.length < 8 && !listeActive.includes(propre)) {
+                  majListe([...listeActive, propre])
                   setNouvelle('')
                 }
               }}
             >
               <div className="flex-1">
-                <ChampTexte etiquette="Ajouter une option" value={nouvelle} onChange={(e) => setNouvelle(e.target.value)} placeholder="Balade en forêt" />
+                <ChampTexte
+                  etiquette={mode === 'plats' ? 'Ajouter un plat' : 'Ajouter une option'}
+                  value={nouvelle}
+                  onChange={(e) => setNouvelle(e.target.value)}
+                  placeholder={mode === 'plats' ? 'Tartiflette' : 'Balade en forêt'}
+                />
               </div>
               <div className="self-end">
-                <Bouton type="submit" variante="valider" desactive={!nouvelle.trim() || perso.length >= 8}>+</Bouton>
+                <Bouton type="submit" variante="valider" desactive={!nouvelle.trim() || listeActive.length >= 8}>+</Bouton>
               </div>
             </form>
             <ul className="mt-2 flex flex-wrap gap-2">
-              {perso.map((p) => (
+              {listeActive.map((p) => (
                 <li key={p} className="flex items-center gap-1 rounded-full bg-fond-sourd px-3 py-1 text-note text-encre-2">
                   {p}
-                  <button aria-label={`Retirer ${p}`} onClick={() => majPerso(perso.filter((x) => x !== p))} className="text-encre-3">✕</button>
+                  <button aria-label={`Retirer ${p}`} onClick={() => majListe(listeActive.filter((x) => x !== p))} className="text-encre-3">✕</button>
                 </li>
               ))}
             </ul>
+            {listeActive.length >= 8 && (
+              <p className="mt-1 text-legende text-encre-3">8 maximum sur la roue — retire un élément pour en ajouter un autre.</p>
+            )}
           </div>
         )}
 

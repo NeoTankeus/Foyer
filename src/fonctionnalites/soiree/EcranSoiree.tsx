@@ -12,8 +12,20 @@ import { BarreRetour } from '@/design/composants/BarreRetour'
 import { Bouton } from '@/design/composants/Bouton'
 import { Carte } from '@/design/composants/Carte'
 
+// Vos abonnements — le film proposé doit OBLIGATOIREMENT être dessus.
+const PLATEFORMES = ['Canal+', 'Prime Video', 'Netflix', 'Disney+', 'Chaînes TV (TF1, France 2/3, M6, Arte…)']
+const CLE_PLATEFORMES = 'stiga-soiree-plateformes'
+
 export function EcranSoiree() {
   const [avec, setAvec] = useState<'gabriel' | 'a-deux'>('gabriel')
+  const [plateformes, setPlateformes] = useState<string[]>(() => {
+    try {
+      const brut = JSON.parse(localStorage.getItem(CLE_PLATEFORMES) ?? 'null') as string[] | null
+      return brut && brut.length > 0 ? brut : PLATEFORMES
+    } catch {
+      return PLATEFORMES
+    }
+  })
   const [proposition, setProposition] = useState<string | null>(null)
   const [enCours, setEnCours] = useState(false)
   const [erreur, setErreur] = useState<string | null>(null)
@@ -45,7 +57,9 @@ export function EcranSoiree() {
         `Météo ce soir : ${cesoir ? `${iconeMeteo(cesoir.code)} ${cesoir.tMax}°, pluie ${cesoir.probaPluie}%` : 'inconnue'}. ` +
         `Nos restos favoris : ${favoris || 'aucun noté pour l’instant'}. ` +
         `Propose EXACTEMENT trois sections, dans ce format :\n` +
-        `🎬 FILM — un titre${avec === 'gabriel' ? ' visible par un enfant de 7 ans' : ''}, une ligne sur pourquoi, et sur quelle plateforme le trouver (Netflix, Disney+, Prime…).\n` +
+        `🎬 FILM — un titre${avec === 'gabriel' ? ' visible par un enfant de 7 ans' : ''}, une ligne sur pourquoi, et sur laquelle de NOS plateformes le voir. ` +
+        `IMPORTANT : on n'a QUE ces catalogues : ${plateformes.join(', ')}. Le film doit être disponible sur l'un d'eux — ` +
+        `si tu n'es pas certain de la disponibilité, choisis un film dont tu es sûr (un classique du catalogue). N'invente jamais une disponibilité.\n` +
         `🍲 À LA MAISON — le plat simple qui va avec la soirée et la météo, en une ligne.\n` +
         `🍴 OU RESTO — ${favoris ? 'UN de nos favoris ci-dessus (redonne son téléphone pour réserver)' : 'dis simplement qu’on n’a pas encore de favoris dans le carnet'}.\n` +
         `Termine par une phrase d'ambiance courte. Pas de blabla autour.`
@@ -80,6 +94,31 @@ export function EcranSoiree() {
               {libelle}
             </button>
           ))}
+        </div>
+
+        <div>
+          <p className="mb-1 text-legende text-encre-3">📺 Nos catalogues (le film sera forcément dessus) :</p>
+          <div className="flex flex-wrap gap-2">
+            {PLATEFORMES.map((p) => {
+              const active = plateformes.includes(p)
+              return (
+                <button
+                  key={p}
+                  onClick={() => {
+                    const suivantes = active ? plateformes.filter((x) => x !== p) : [...plateformes, p]
+                    if (suivantes.length === 0) return
+                    setPlateformes(suivantes)
+                    localStorage.setItem(CLE_PLATEFORMES, JSON.stringify(suivantes))
+                  }}
+                  aria-pressed={active}
+                  className={`min-h-sur-tactile rounded-full px-3 text-note font-[590]
+                    ${active ? 'bg-encre text-fond' : 'bg-fond-sourd text-encre-3'}`}
+                >
+                  {active ? '✓ ' : ''}{p}
+                </button>
+              )
+            })}
+          </div>
         </div>
 
         <Bouton pleineLargeur variante="primaire" desactive={enCours} onClick={() => void organiser()}>
