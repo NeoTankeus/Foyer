@@ -640,6 +640,8 @@ function AutourDeMoi({
   const [rayon, setRayon] = useState(2000)
   const [etat, setEtat] = useState<'attente' | 'geoloc' | 'recherche' | 'pret' | 'erreur'>('attente')
   const [refusPosition, setRefusPosition] = useState(false)
+  const [diagnostic, setDiagnostic] = useState<string | null>(null)
+  const [essais, setEssais] = useState(0)
   const [resultats, setResultats] = useState<RestoAutour[]>([])
   const [ici, setIci] = useState<[number, number] | null>(null)
   const [gouts, setGouts] = useState(false)
@@ -663,8 +665,11 @@ function AutourDeMoi({
   const lancer = (rayonChoisi: number) => {
     setAvisStiga(null)
     setRefusPosition(false)
+    setDiagnostic(null)
+    setEssais((n) => n + 1)
     if (!navigator.geolocation) {
       setRefusPosition(true)
+      setDiagnostic('géolocalisation absente du navigateur')
       setEtat('erreur')
       return
     }
@@ -679,10 +684,33 @@ function AutourDeMoi({
             setResultats(liste)
             setEtat('pret')
           })
-          .catch(() => setEtat('erreur'))
+          .catch(() => {
+            setDiagnostic('position OK, mais la recherche des tables a échoué (réseau ?)')
+            setEtat('erreur')
+          })
       },
       (e) => {
         setRefusPosition(e.code === e.PERMISSION_DENIED)
+        const motifs: Record<number, string> = {
+          1: 'l’iPhone répond « refusé » sans demander',
+          2: 'position indisponible (GPS muet)',
+          3: 'trop long — la position n’est pas arrivée à temps',
+        }
+        let detail = `code ${e.code} — ${motifs[e.code] ?? e.message}`
+        // L'état exact de l'autorisation, si l'iPhone accepte de le dire.
+        void navigator.permissions
+          ?.query({ name: 'geolocation' })
+          .then((p) => {
+            const libelles: Record<string, string> = {
+              denied: 'refusée (mémorisée)',
+              prompt: 'à demander',
+              granted: 'accordée',
+            }
+            detail += ` · autorisation : ${libelles[p.state] ?? p.state}`
+            setDiagnostic(detail)
+          })
+          .catch(() => setDiagnostic(detail))
+        setDiagnostic(detail)
         setEtat('erreur')
       },
       { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 },
@@ -770,20 +798,36 @@ function AutourDeMoi({
               <p className="text-corps-2 font-[590] text-encre">📍 L’iPhone bloque la position de StiGa.</p>
               <ol className="list-decimal space-y-1 pl-5 text-corps-2 text-encre-2">
                 <li>
-                  Ouvre <strong>Réglages → Confidentialité et sécurité → Service de localisation</strong> : vérifie
-                  qu’il est <strong>activé</strong>.
+                  <strong>Réglages → Confidentialité et sécurité → Service de localisation</strong> : vérifie
+                  qu’il est <strong>activé</strong>, puis descends jusqu’à <strong>Sites web Safari</strong> et
+                  choisis <strong>« Lors de l’utilisation de l’app »</strong>.
                 </li>
                 <li>
-                  Dans la même liste, descends jusqu’à <strong>Safari</strong> (ou « Sites web Safari ») et choisis
-                  <strong> « Lorsque l’app est active »</strong>.
+                  Le réglage le plus souvent fautif : <strong>Réglages → Safari</strong>, descends à
+                  « Réglages pour les sites web » → <strong>Position</strong> → choisis
+                  <strong> « Demander »</strong> (surtout pas « Refuser »).
                 </li>
-                <li>Reviens ici et touche « Réessayer » — la demande d’autorisation apparaîtra, accepte-la.</li>
+                <li>
+                  <strong>Ferme complètement StiGa</strong> (balaye vers le haut depuis le bas de l’écran, puis
+                  pousse StiGa vers le haut) et <strong>rouvre-la</strong> — puis touche « Réessayer » et accepte la
+                  demande.
+                </li>
               </ol>
+              {essais >= 2 && (
+                <p className="rounded-lg bg-ambre/15 p-3 text-corps-2 text-encre-2">
+                  Toujours rien après tout ça ? L’iPhone a mémorisé un vieux « non » pour StiGa. Dernier recours :
+                  supprime l’icône StiGa de l’écran d’accueil, rouvre le site dans Safari et refais « Ajouter à
+                  l’écran d’accueil » — toutes tes données sont dans le nuage, tu ne perds rien.
+                </p>
+              )}
             </>
           ) : (
             <p className="text-corps-2 text-encre-2">
               Impossible de te localiser ou de chercher — vérifie le réseau, puis réessaie.
             </p>
+          )}
+          {diagnostic && (
+            <p className="text-legende text-encre-3">Diagnostic pour StiGa : {diagnostic}</p>
           )}
           <Bouton pleineLargeur variante="primaire" onClick={() => lancer(rayon)}>
             📍 Réessayer
