@@ -145,6 +145,7 @@ export interface Database {
       personnes: Table<LignePersonne>
       inventaire: Table<LigneInventaire>
       restaurants: Table<LigneRestaurant>
+      notifications: Table<LigneNotification>
       integrations: Table<LigneIntegration>
       push_abonnements: Table<LignePushAbonnement>
     }
@@ -385,6 +386,17 @@ export type LigneInventaire = {
   image_url: string | null
   quantite: number
   dlc: string | null
+  cree_le: string
+}
+
+export type LigneNotification = {
+  id: string
+  foyer_id: string
+  titre: string
+  corps: string | null
+  url: string
+  cibles: string[]
+  lu_par: string[]
   cree_le: string
 }
 

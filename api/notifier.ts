@@ -88,6 +88,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     res.status(200).json({ notifies: 0 })
     return
   }
+
+  // Dépôt dans la boîte à notifications (la cloche 🔔) — même sans push actif.
+  await sb('notifications', {
+    method: 'POST',
+    body: JSON.stringify({
+      foyer_id: expediteur.foyer_id,
+      titre: titre.slice(0, 80),
+      corps: (corps ?? '').slice(0, 200),
+      url: url ?? '/',
+      cibles,
+      lu_par: [],
+    }),
+  }).catch(() => undefined)
+
   const abonnements = await sb<Abonnement[]>(
     `push_abonnements?membre_id=in.(${cibles.join(',')})&select=*`,
   )

@@ -241,14 +241,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Verrou Père Noël : certains pushs (colis, prix des cadeaux, surprises)
   // ne partent que vers les téléphones des adultes.
   let idsAdultes = new Set<string>()
+  let tousLesMembres: { id: string; foyer_id: string }[] = []
   try {
-    const membres = await sb<{ id: string; role: string }[]>('membres?select=id,role')
+    const membres = await sb<{ id: string; role: string; foyer_id: string }[]>('membres?select=id,role,foyer_id')
     idsAdultes = new Set(membres.filter((m) => m.role === 'adult').map((m) => m.id))
+    tousLesMembres = membres
   } catch {
     // sans info de rôle, on n'envoie les pushs sensibles à personne plutôt qu'à l'enfant
   }
 
-  const envoyer = async (liste: Abonnement[], titre: string, corps: string) => {
+  // Dépôt dans la boîte à notifications (la cloche 🔔 de l'accueil).
+  const deposer = async (cibles: string[], titre: string, corps: string, url: string) => {
+    const foyerId = tousLesMembres[0]?.foyer_id
+    if (!foyerId || cibles.length === 0) return
+    await sb('notifications', {
+      method: 'POST',
+      body: JSON.stringify({ foyer_id: foyerId, titre, corps, url, cibles, lu_par: [] }),
+    }).catch(() => undefined)
+  }
+
+  const envoyer = async (liste: Abonnement[], titre: string, corps: string, url: string) => {
     for (const abonnement of liste) {
       try {
         await webpush.sendNotification(
@@ -256,7 +268,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             endpoint: abonnement.endpoint,
             keys: { p256dh: abonnement.cles.p256dh ?? '', auth: abonnement.cles.auth ?? '' },
           },
-          JSON.stringify({ titre, corps, url: '/' }),
+          JSON.stringify({ titre, corps, url }),
         )
       } catch (erreur) {
         const statut = (erreur as { statusCode?: number }).statusCode
@@ -266,15 +278,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     }
   }
-  const pousser = (titre: string, corps: string) => envoyer(abonnements, titre, corps)
-  const pousserAdultes = (titre: string, corps: string) =>
-    envoyer(abonnements.filter((a) => idsAdultes.has(a.membre_id)), titre, corps)
+  const pousser = async (titre: string, corps: string, url = '/') => {
+    await deposer(tousLesMembres.map((m) => m.id), titre, corps, url)
+    await envoyer(abonnements, titre, corps, url)
+  }
+  const pousserAdultes = async (titre: string, corps: string, url = '/') => {
+    await deposer([...idsAdultes], titre, corps, url)
+    await envoyer(abonnements.filter((a) => idsAdultes.has(a.membre_id)), titre, corps, url)
+  }
 
   const resultat = { ics: 0, colis: 0, prix: 0, anniversaires: 0, brief: '', notifies: abonnements.length }
   try { resultat.ics = (await importerIcs(URL_SUPABASE, CLE_SERVICE)).importes } catch { /* section suivante */ }
-  try { resultat.colis = await suivreColis(pousserAdultes) } catch { /* section suivante */ }
-  try { resultat.prix = await veillerPrix(pousserAdultes) } catch { /* section suivante */ }
-  try { resultat.anniversaires = await rappellerAnniversaires(pousser, pousserAdultes) } catch { /* section suivante */ }
+  try { resultat.colis = await suivreColis((t, c) => pousserAdultes(t, c, '/nous/colis')) } catch { /* section suivante */ }
+  try { resultat.prix = await veillerPrix((t, c) => pousserAdultes(t, c, '/nous/celebrations')) } catch { /* section suivante */ }
+  try {
+    resultat.anniversaires = await rappellerAnniversaires(
+      (t, c) => pousser(t, c, '/nous/celebrations'),
+      (t, c) => pousserAdultes(t, c, '/nous/celebrations'),
+    )
+  } catch { /* section suivante */ }
   try {
     resultat.brief = await composerBrief()
     if (resultat.brief) await pousser('☀️ Le brief de StiGa', resultat.brief)

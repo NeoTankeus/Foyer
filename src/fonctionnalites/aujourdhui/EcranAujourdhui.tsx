@@ -24,7 +24,7 @@ import {
 } from '@/lib/dates'
 import { couleurMembre } from '@/lib/couleurs'
 import { Reorder, useDragControls } from 'framer-motion'
-import type { LigneIdeeCadeau, LigneTache } from '@/lib/basedonnees.types'
+import type { LigneIdeeCadeau, LigneNotification, LigneTache } from '@/lib/basedonnees.types'
 import { ChronologieJour } from './ChronologieJour'
 import { BriefGastif } from './BriefGastif'
 import { Coche } from '@/design/composants/Coche'
@@ -198,6 +198,45 @@ export function EcranAujourdhui() {
   const murNonVus = (mur.data ?? []).filter((m) => m.cree_le > murVuLe && m.auteur_id !== membre?.id).length
   const dernierMot = mur.data?.[0]
 
+  // 🔔 La boîte à notifications : les non-lues qui me sont destinées.
+  const [clocheOuverte, setClocheOuverte] = useState(false)
+  const boite = useQuery({
+    queryKey: ['notifications', membre?.id ?? ''],
+    queryFn: async (): Promise<LigneNotification[]> => {
+      if (!membre) return []
+      const { data, error } = await supabase
+        .from('notifications')
+        .select('*')
+        .contains('cibles', [membre.id])
+        .order('cree_le', { ascending: false })
+        .limit(30)
+      if (error) return []
+      return data
+    },
+    enabled: membre !== null,
+  })
+  const nonLues = (boite.data ?? []).filter((n) => !n.lu_par.includes(membre?.id ?? ''))
+
+  const ouvrirNotification = async (n: LigneNotification) => {
+    if (!membre) return
+    setClocheOuverte(false)
+    // Marquée lue → elle disparaît de la cloche.
+    void supabase
+      .from('notifications')
+      .update({ lu_par: [...n.lu_par, membre.id] })
+      .eq('id', n.id)
+      .then(() => clientRequetes.invalidateQueries({ queryKey: ['notifications'] }))
+    naviguer(n.url || '/')
+  }
+
+  const toutMarquerLu = async () => {
+    if (!membre) return
+    for (const n of nonLues) {
+      await supabase.from('notifications').update({ lu_par: [...n.lu_par, membre.id] }).eq('id', n.id)
+    }
+    await clientRequetes.invalidateQueries({ queryKey: ['notifications'] })
+  }
+
   const celebrationsTriees = useMemo(
     () =>
       (celebrations.data ?? [])
@@ -330,10 +369,10 @@ export function EcranAujourdhui() {
     return liste
   }, [taches.data, documents.data, celebrations.data, aujourdHui])
 
-  // La pastille rouge sur l'icône de l'app : relances + mots du Mur non lus.
+  // La pastille rouge sur l'icône de l'app : notifications non lues + relances.
   useEffect(() => {
-    majBadgeIcone(relances.length + murNonVus)
-  }, [relances.length, murNonVus])
+    majBadgeIcone(nonLues.length + relances.length)
+  }, [nonLues.length, relances.length])
 
   // TOUT ce qui est ouvert apparaît — pas seulement ce qui est daté d'aujourd'hui.
   const tachesOuvertes = taches.data ?? []
@@ -359,6 +398,18 @@ export function EcranAujourdhui() {
         </div>
         <div className="flex gap-1">
           <BoutonMiseAJour />
+          <button
+            onClick={() => setClocheOuverte(true)}
+            aria-label={`Notifications${nonLues.length > 0 ? ` — ${nonLues.length} non lue${nonLues.length > 1 ? 's' : ''}` : ''}`}
+            className="relative flex min-h-sur-tactile min-w-sur-tactile items-center justify-center rounded-full bg-fond-sourd text-[17px]"
+          >
+            🔔
+            {nonLues.length > 0 && (
+              <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-[16px] items-center justify-center rounded-full border-2 border-fond bg-urgent px-0.5 text-[10px] font-[700] text-white">
+                {nonLues.length > 9 ? '9+' : nonLues.length}
+              </span>
+            )}
+          </button>
           <button
             onClick={() => naviguer('/recherche')}
             aria-label="Recherche globale"
@@ -733,6 +784,43 @@ export function EcranAujourdhui() {
           </section>
         )}
       </div>
+
+      <Feuille ouverte={clocheOuverte} onFermer={() => setClocheOuverte(false)} titre="🔔 Notifications">
+        <div className="flex flex-col gap-2">
+          {nonLues.length === 0 ? (
+            <p className="py-6 text-center text-corps-2 text-encre-3">Tout est lu — rien ne t’attend. ✨</p>
+          ) : (
+            <>
+              <ul className="flex flex-col gap-1">
+                {nonLues.map((n) => (
+                  <li key={n.id}>
+                    <button
+                      onClick={() => void ouvrirNotification(n)}
+                      className="flex w-full items-start gap-2 rounded-md bg-fond-sourd px-3 py-2.5 text-left"
+                    >
+                      <span aria-hidden="true" className="mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full bg-urgent" />
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-corps-2 font-[590] text-encre">{n.titre}</span>
+                        {n.corps && <span className="block text-corps-2 leading-snug text-encre-2">{n.corps}</span>}
+                        <span className="block text-legende text-encre-3">
+                          {new Date(n.cree_le).toLocaleString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      </span>
+                      <span aria-hidden="true" className="mt-1 text-encre-3">›</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              <Bouton pleineLargeur variante="discret" onClick={() => void toutMarquerLu()}>
+                Tout marquer comme lu
+              </Bouton>
+            </>
+          )}
+          <p className="text-legende text-encre-3">
+            Touche une notification : elle s’ouvre au bon endroit et disparaît d’ici.
+          </p>
+        </div>
+      </Feuille>
 
       <Feuille ouverte={personnaliser} onFermer={() => setPersonnaliser(false)} titre="Personnaliser l’accueil">
         <div className="flex flex-col gap-1">
