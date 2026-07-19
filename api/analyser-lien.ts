@@ -56,9 +56,19 @@ export default async function handler(req: Request): Promise<Response> {
     /<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:title["']/i,
     /<title[^>]*>([^<]+)<\/title>/i,
   ])
+  // L'image du SITE d'abord — og:image, JSON-LD marchand, puis les gabarits
+  // spécifiques d'Amazon (qui ne met pas d'og:image sur ses fiches produit).
   const image = extraire(html, [
     /<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i,
     /<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']/i,
+    /"image"\s*:\s*\[\s*"(https:[^"]+)"/i,
+    /"image"\s*:\s*"(https:[^"]+)"/i,
+    /"hiRes"\s*:\s*"(https:[^"]+)"/,
+    /data-old-hires=["'](https:[^"']+)["']/i,
+    /id=["']landingImage["'][^>]*\ssrc=["'](https:[^"']+)["']/i,
+    /data-a-dynamic-image=["']\{&quot;(https:[^&"']+)&quot;/i,
+    /data-a-dynamic-image=["']\{"(https:[^"']+)"/i,
+    /<link[^>]+rel=["']image_src["'][^>]+href=["'](https:[^"']+)["']/i,
   ])
   let prixBrut = extraire(html, [
     /<meta[^>]+property=["'](?:og|product):price:amount["'][^>]+content=["']([\d.,]+)["']/i,

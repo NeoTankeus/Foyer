@@ -15,6 +15,7 @@ import { Coche } from '@/design/composants/Coche'
 import { BarreRetour } from '@/design/composants/BarreRetour'
 import { notifierLesAutres } from '@/lib/notifications'
 import { chercherVisuels } from '@/lib/images'
+import { ChoixVisuel } from '@/design/composants/ChoixVisuel'
 
 function prochaineOccurrence(dateIso: string): Date {
   const date = new Date(dateIso)
@@ -171,6 +172,7 @@ function CoffreAIdees({
   const [noteBrouillon, setNoteBrouillon] = useState('')
   const [erreurAjout, setErreurAjout] = useState<string | null>(null)
   const [visuelsEnCours, setVisuelsEnCours] = useState(false)
+  const [choixVisuelPour, setChoixVisuelPour] = useState<LigneIdeeCadeau | null>(null)
   const dejaReleve = useRef(false)
 
   const analyserLien = async (url: string): Promise<{ titre: string | null; image: string | null; prix: number | null }> => {
@@ -570,6 +572,9 @@ function CoffreAIdees({
                         {majUnitaire === i.id ? 'Relevé…' : '🔄 Relever le prix'}
                       </Bouton>
                     )}
+                    <Bouton variante="discret" onClick={() => setChoixVisuelPour(i)}>
+                      🖼 {i.image_url ? 'Changer le visuel' : 'Choisir un visuel'}
+                    </Bouton>
                     <Bouton
                       variante={confirmeSuppr === i.id ? 'urgent' : 'discret'}
                       onClick={() => {
@@ -589,6 +594,21 @@ function CoffreAIdees({
       {(idees.data?.length ?? 0) > 0 && (
         <p className="text-legende text-encre-3">Coché = offert. Touche une idée pour la courbe et les actions.</p>
       )}
+
+      <ChoixVisuel
+        ouverte={choixVisuelPour !== null}
+        nomInitial={choixVisuelPour?.libelle ?? ''}
+        onFermer={() => setChoixVisuelPour(null)}
+        onChoix={(image, nom) => {
+          const idee = choixVisuelPour
+          setChoixVisuelPour(null)
+          if (!idee) return
+          void muter({
+            table: 'idees_cadeaux', type: 'update', cible_id: idee.id,
+            charge: { image_url: image, ...(nom && nom !== idee.libelle ? { libelle: nom } : {}) },
+          }).then(rafraichir)
+        }}
+      />
 
       <div className="mt-2 border-t border-trait pt-3">
         <Bouton

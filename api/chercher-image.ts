@@ -25,7 +25,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return
     }
 
-    const { libelles } = (req.body ?? {}) as { libelles?: string[] }
+    const { libelles, requete } = (req.body ?? {}) as { libelles?: string[]; requete?: string }
+
+    // Mode « choix » : plusieurs candidates pour UNE requête, l'humain tranche.
+    if (typeof requete === 'string' && requete.trim()) {
+      const { chercherImages } = await import('./_images.js')
+      const choix = await chercherImages(requete.trim(), 9)
+      res.status(200).json({ choix })
+      return
+    }
+
     if (!Array.isArray(libelles) || libelles.length === 0) {
       res.status(400).json({ erreur: 'libelles requis' })
       return

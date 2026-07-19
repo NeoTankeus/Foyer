@@ -13,6 +13,7 @@ import {
 import { devinerRayon, indexRayon } from './rayons'
 import { chercherVisuels } from '@/lib/images'
 import { muter } from '@/lib/sync'
+import { ChoixVisuel } from '@/design/composants/ChoixVisuel'
 import type { LigneArticle } from '@/lib/basedonnees.types'
 import { Coche } from '@/design/composants/Coche'
 import { Bouton } from '@/design/composants/Bouton'
@@ -31,6 +32,7 @@ export function EcranCourses() {
   const [dicteeEnCours, setDicteeEnCours] = useState(false)
   const [visuelsEnCours, setVisuelsEnCours] = useState(false)
   const [erreurVisuels, setErreurVisuels] = useState<string | null>(null)
+  const [choixVisuelPour, setChoixVisuelPour] = useState<LigneArticle | null>(null)
   const champRef = useRef<HTMLInputElement>(null)
 
   // Plusieurs personnes cochent en même temps : temps réel obligatoire.
@@ -202,9 +204,17 @@ export function EcranCourses() {
                   onBascule={() => basculer(article)}
                   etiquette={`Cocher ${article.libelle}`}
                 />
-                {article.image_url && (
-                  <img src={article.image_url} alt="" className="h-10 w-10 shrink-0 rounded-md object-cover" />
-                )}
+                <button
+                  onClick={() => setChoixVisuelPour(article)}
+                  aria-label={`Choisir le visuel de ${article.libelle}`}
+                  className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-md bg-fond-sourd"
+                >
+                  {article.image_url ? (
+                    <img src={article.image_url} alt="" className="h-full w-full object-cover" />
+                  ) : (
+                    <span aria-hidden="true" className="text-encre-3">🖼</span>
+                  )}
+                </button>
                 <span className="flex-1 py-3 text-corps text-encre">{article.libelle}</span>
               </li>
             ))}
@@ -238,6 +248,21 @@ export function EcranCourses() {
           </ul>
         </section>
       )}
+
+      <ChoixVisuel
+        ouverte={choixVisuelPour !== null}
+        nomInitial={choixVisuelPour?.libelle ?? ''}
+        onFermer={() => setChoixVisuelPour(null)}
+        onChoix={(image, nom) => {
+          const article = choixVisuelPour
+          setChoixVisuelPour(null)
+          if (!article) return
+          void muter({
+            table: 'articles', type: 'update', cible_id: article.id,
+            charge: { image_url: image, ...(nom && nom !== article.libelle ? { libelle: nom } : {}) },
+          }).then(rafraichir)
+        }}
+      />
 
       <ModeMagasin
         ouvert={magasinOuvert}

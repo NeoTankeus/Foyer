@@ -35,6 +35,55 @@ async function parBing(requete: string): Promise<string | null> {
   return turl ? turl.replace(/\\u0026/g, '&') : null
 }
 
+async function plusieursParDuckDuckGo(requete: string, max: number): Promise<string[]> {
+  const q = encodeURIComponent(requete)
+  const page = await fetch(`https://duckduckgo.com/?q=${q}&iax=images&ia=images`, {
+    headers: { 'user-agent': UA },
+  })
+  const vqd = /vqd=["']?([\d-]+)["']?/.exec(await page.text())?.[1]
+  if (!vqd) return []
+  const reponse = await fetch(
+    `https://duckduckgo.com/i.js?l=fr-fr&o=json&q=${q}&vqd=${vqd}&p=1`,
+    { headers: { 'user-agent': UA, referer: 'https://duckduckgo.com/' } },
+  )
+  if (!reponse.ok) return []
+  const donnees = (await reponse.json()) as { results?: { thumbnail?: string; image?: string }[] }
+  return (donnees.results ?? [])
+    .map((r) => r.thumbnail ?? r.image)
+    .filter((u): u is string => Boolean(u))
+    .slice(0, max)
+}
+
+function plusieursParBingHtml(html: string, max: number): string[] {
+  const urls: string[] = []
+  const motif = /turl&quot;:&quot;(https:\/\/[^&"]+?)&quot;|"turl":"(https:\/\/[^"]+?)"/g
+  let m: RegExpExecArray | null
+  while ((m = motif.exec(html)) && urls.length < max) {
+    const u = (m[1] ?? m[2] ?? '').replace(/\\u0026/g, '&')
+    if (u && !urls.includes(u)) urls.push(u)
+  }
+  return urls
+}
+
+/** Jusqu'à `max` images candidates pour un libellé — l'utilisateur choisit. */
+export async function chercherImages(requete: string, max = 8): Promise<string[]> {
+  try {
+    const ddg = await plusieursParDuckDuckGo(requete, max)
+    if (ddg.length > 0) return ddg
+  } catch {
+    // on passe à Bing
+  }
+  try {
+    const q = encodeURIComponent(requete)
+    const page = await fetch(`https://www.bing.com/images/search?q=${q}&count=${max * 2}&setlang=fr`, {
+      headers: { 'user-agent': UA, 'accept-language': 'fr-FR' },
+    })
+    return plusieursParBingHtml(await page.text(), max)
+  } catch {
+    return []
+  }
+}
+
 /** La première image trouvée pour un libellé de produit, ou null. */
 export async function chercherImage(requete: string): Promise<string | null> {
   try {
