@@ -326,6 +326,23 @@ function FicheRestaurant({
   const [confirme, setConfirme] = useState(false)
   const [choixCarte, setChoixCarte] = useState(false)
   const [photoEnCours, setPhotoEnCours] = useState(false)
+  const [localisation, setLocalisation] = useState<'repos' | 'en-cours' | 'echec'>('repos')
+
+  // Position manquante (l'adresse n'avait pas été trouvée) : on retente.
+  const localiser = async () => {
+    setLocalisation('en-cours')
+    const osm = await chercherSurOsm(resto.nom, resto.ville ?? '')
+    if (osm) {
+      await surMaj({
+        latitude: Number(osm.lat),
+        longitude: Number(osm.lon),
+        adresse: resto.adresse ?? osm.display_name.split(',').slice(0, 3).join(','),
+      })
+      setLocalisation('repos')
+    } else {
+      setLocalisation('echec')
+    }
+  }
 
   const q = encodeURIComponent(`${resto.nom} ${resto.ville ?? ''}`.trim())
 
@@ -355,6 +372,30 @@ function FicheRestaurant({
           {resto.favori ? '⭐' : '☆'}
         </button>
       </div>
+
+      {resto.latitude === null && (
+        <div>
+          <Bouton pleineLargeur variante="discret" desactive={localisation === 'en-cours'} onClick={() => void localiser()}>
+            {localisation === 'en-cours' ? 'Localisation…' : '📍 Localiser sur la carte (par l’adresse)'}
+          </Bouton>
+          {localisation === 'echec' && (
+            <p className="mt-1 text-legende text-encre-3">
+              Adresse introuvable — précise la ville dans le nom (ex. « Chez Louise Lille ») et réessaie,
+              ou ajoute-le depuis « Autour de moi » (position exacte garantie).
+            </p>
+          )}
+        </div>
+      )}
+      {resto.latitude !== null && (
+        <a
+          href={`https://www.google.com/maps/dir/?api=1&destination=${resto.latitude},${resto.longitude}&travelmode=driving`}
+          target="_blank"
+          rel="noopener"
+          className="btn-3d btn-clair inline-flex min-h-sur-tactile items-center justify-center px-4 py-2.5 text-corps-2 leading-tight"
+        >
+          🧭 Itinéraire depuis ma position
+        </a>
+      )}
 
       <div className="rounded-lg bg-fond-sourd px-3 py-2">
         <p className="mb-1 text-legende font-[590] text-encre-3">NOTRE NOTE</p>
@@ -540,6 +581,7 @@ function AutourDeMoi({
   const [rayon, setRayon] = useState(2000)
   const [etat, setEtat] = useState<'attente' | 'geoloc' | 'recherche' | 'pret' | 'erreur'>('attente')
   const [resultats, setResultats] = useState<RestoAutour[]>([])
+  const [ici, setIci] = useState<[number, number] | null>(null)
   const [gouts, setGouts] = useState(false)
   const [ajoutes, setAjoutes] = useState<Set<string>>(new Set())
   const [avisStiga, setAvisStiga] = useState<string | null>(null)
@@ -563,6 +605,7 @@ function AutourDeMoi({
     setAvisStiga(null)
     navigator.geolocation?.getCurrentPosition(
       (pos) => {
+        setIci([pos.coords.latitude, pos.coords.longitude])
         setEtat('recherche')
         void chercherAutour(pos.coords.latitude, pos.coords.longitude, rayonChoisi)
           .then((liste) => {
@@ -655,6 +698,9 @@ function AutourDeMoi({
 
       {etat === 'pret' && (
         <>
+          {ici && (
+            <CarteAutour ici={ici} resultats={visibles.slice(0, 30)} enGout={dansNosGouts} />
+          )}
           <p className="text-legende text-encre-3">
             {visibles.length} table{visibles.length > 1 ? 's' : ''} trouvée{visibles.length > 1 ? 's' : ''}
             {cuisinesAimees.length > 0 ? ` — vos goûts : ${cuisinesAimees.slice(0, 4).join(', ')}` : ''}
@@ -684,7 +730,16 @@ function AutourDeMoi({
                     </p>
                   </div>
                   <a
-                    href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(r.nom)}&query_place_id=`}
+                    href={`https://www.google.com/maps/dir/?api=1&destination=${r.latitude},${r.longitude}&travelmode=walking`}
+                    target="_blank"
+                    rel="noopener"
+                    aria-label={`Itinéraire vers ${r.nom}`}
+                    className="flex min-h-sur-tactile min-w-sur-tactile items-center justify-center rounded-full bg-fond-sourd text-[16px]"
+                  >
+                    🧭
+                  </a>
+                  <a
+                    href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(r.nom)}%20${r.latitude},${r.longitude}`}
                     target="_blank"
                     rel="noopener"
                     aria-label={`Avis Google de ${r.nom}`}
@@ -708,6 +763,65 @@ function AutourDeMoi({
           </ul>
         </>
       )}
+    </div>
+  )
+}
+
+/** La mini-carte d'« Autour de moi » : moi en bleu, les tables épinglées autour. */
+function CarteAutour({
+  ici,
+  resultats,
+  enGout,
+}: {
+  ici: [number, number]
+  resultats: RestoAutour[]
+  enGout: (r: RestoAutour) => boolean
+}) {
+  const conteneur = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    let detruire: (() => void) | null = null
+    void (async () => {
+      const L = (await import('leaflet')).default
+      await import('leaflet/dist/leaflet.css')
+      if (!conteneur.current) return
+      const carte = L.map(conteneur.current, { zoomControl: false })
+      L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap',
+        maxZoom: 19,
+      }).addTo(carte)
+
+      L.circleMarker(ici, { radius: 9, color: '#4a6fa5', fillColor: '#4a6fa5', fillOpacity: 0.9 })
+        .addTo(carte)
+        .bindPopup('Moi 📍')
+
+      const positions: [number, number][] = [ici]
+      for (const r of resultats) {
+        positions.push([r.latitude, r.longitude])
+        L.marker([r.latitude, r.longitude], {
+          icon: L.divIcon({
+            className: '',
+            html: `<div style="font-size:22px;line-height:1;filter:drop-shadow(0 2px 3px rgb(0 0 0/.4))">${enGout(r) ? '💛' : '📍'}</div>`,
+            iconSize: [22, 22],
+            iconAnchor: [11, 20],
+          }),
+        })
+          .addTo(carte)
+          .bindPopup(
+            `<strong>${r.nom}</strong><br>${r.cuisine ?? ''} · ${r.distanceM < 1000 ? `${r.distanceM} m` : `${(r.distanceM / 1000).toFixed(1)} km`}<br>` +
+              `<a href="https://www.google.com/maps/dir/?api=1&destination=${r.latitude},${r.longitude}&travelmode=walking" target="_blank" rel="noopener">🧭 Itinéraire</a>`,
+          )
+      }
+      carte.fitBounds(positions, { padding: [30, 30], maxZoom: 16 })
+      detruire = () => carte.remove()
+    })()
+    return () => detruire?.()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ici[0], ici[1], resultats.length])
+
+  return (
+    <div className="overflow-hidden rounded-xl shadow-carte">
+      <div ref={conteneur} style={{ height: '34vh' }} aria-label="Carte des tables autour de moi" />
     </div>
   )
 }
