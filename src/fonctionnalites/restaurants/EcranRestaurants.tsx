@@ -688,7 +688,26 @@ function FicheRestaurant({
   )
 }
 
-/** La carte mondiale (OpenStreetMap/Leaflet) : nos restaurants + ma position. */
+// Les grandes familles de cuisine — pour filtrer la carte mondiale.
+const CATEGORIES_CARTE: { cle: string; libelle: string; emoji: string; motif: RegExp | null }[] = [
+  { cle: 'tous', libelle: '🍽 Tous', emoji: '🔴', motif: /./ },
+  { cle: 'italien', libelle: '🍕 Italien', emoji: '🍕', motif: /italian|pizza|pasta/i },
+  { cle: 'asiatique', libelle: '🍣 Asiatique', emoji: '🍣', motif: /japanese|sushi|chinese|thai|vietnam|korean|asian|ramen|wok|indones/i },
+  { cle: 'gastro', libelle: '🥂 Gastro / français', emoji: '🥂', motif: /french|fine_dining|gastronom|regional|bistro|brasserie/i },
+  { cle: 'oriental', libelle: '🥙 Oriental', emoji: '🥙', motif: /kebab|turkish|lebanese|moroccan|oriental|couscous|syrian|falafel/i },
+  { cle: 'indien', libelle: '🍛 Indien', emoji: '🍛', motif: /indian|curry/i },
+  { cle: 'burger', libelle: '🍔 Burgers', emoji: '🍔', motif: /burger|american|steak|grill|barbecue/i },
+  { cle: 'monde', libelle: '🌮 Monde', emoji: '🌮', motif: /mexican|spanish|tapas|greek|portugu|african|peruv|brazil|caribbean/i },
+]
+
+const categorieDe = (cuisine: string | null): (typeof CATEGORIES_CARTE)[number] | null => {
+  if (!cuisine) return null
+  return CATEGORIES_CARTE.slice(1).find((c) => c.motif?.test(cuisine)) ?? null
+}
+
+/** La carte mondiale (OpenStreetMap/Leaflet) : nos restaurants ⭐ + TOUS les
+ *  restaurants du monde chargés automatiquement dans la zone affichée, avec
+ *  filtres par catégorie de cuisine. */
 function CarteMonde({
   restaurants,
   surChoix,
@@ -698,6 +717,13 @@ function CarteMonde({
 }) {
   const conteneur = useRef<HTMLDivElement>(null)
   const [pret, setPret] = useState(false)
+  const [filtre, setFiltre] = useState('tous')
+  const [etatZone, setEtatZone] = useState<'zoome' | 'charge' | 'pret'>('zoome')
+  const [nbZone, setNbZone] = useState(0)
+  const filtreRef = useRef('tous')
+  const decouvertsRef = useRef<RestoAutour[]>([])
+  const redessinerRef = useRef<(() => void) | null>(null)
+  const chargerRef = useRef<(() => void) | null>(null)
 
   useEffect(() => {
     let detruire: (() => void) | null = null
@@ -743,6 +769,74 @@ function CarteMonde({
         { enableHighAccuracy: false, timeout: 8000 },
       )
 
+      // ——— Tous les restaurants du monde, zone par zone ———
+      const calqueMonde = L.layerGroup().addTo(carte)
+      const dejaAuCarnet = new Set(
+        restaurants.filter((r) => r.latitude !== null).map((r) => `${r.latitude?.toFixed(4)},${r.longitude?.toFixed(4)}`),
+      )
+
+      const redessiner = () => {
+        calqueMonde.clearLayers()
+        const actif = CATEGORIES_CARTE.find((c) => c.cle === filtreRef.current)
+        const visibles = decouvertsRef.current.filter((r) => {
+          if (dejaAuCarnet.has(`${r.latitude.toFixed(4)},${r.longitude.toFixed(4)}`)) return false
+          if (!actif || actif.cle === 'tous') return true
+          return actif.motif?.test(r.cuisine ?? '') ?? false
+        })
+        for (const r of visibles.slice(0, 80)) {
+          const categorie = categorieDe(r.cuisine)
+          const marqueur = L.marker([r.latitude, r.longitude], {
+            icon: L.divIcon({
+              className: '',
+              html: `<div style="font-size:17px;line-height:1;filter:drop-shadow(0 1px 2px rgb(0 0 0/.35))">${categorie?.emoji ?? '🔴'}</div>`,
+              iconSize: [17, 17],
+              iconAnchor: [8, 15],
+            }),
+          }).addTo(calqueMonde)
+          marqueur.bindPopup(
+            `<strong>${r.nom}</strong><br>${r.cuisine ?? 'cuisine inconnue'}<br>` +
+              `<a href="https://www.google.com/maps/dir/?api=1&destination=${r.latitude},${r.longitude}" target="_blank" rel="noopener">🧭 Itinéraire</a> · ` +
+              `<a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(r.nom)}%20${r.latitude},${r.longitude}" target="_blank" rel="noopener">💬 Avis</a>`,
+          )
+        }
+        setNbZone(visibles.length)
+      }
+      redessinerRef.current = redessiner
+
+      let jeton = 0
+      const chargerZone = async () => {
+        // En-dessous du niveau « ville », la Terre entière ne tient pas sur l'écran.
+        if (carte.getZoom() < 12) {
+          decouvertsRef.current = []
+          calqueMonde.clearLayers()
+          setEtatZone('zoome')
+          return
+        }
+        const moi = ++jeton
+        setEtatZone('charge')
+        const centre = carte.getCenter()
+        const coin = carte.getBounds().getNorthEast()
+        const rayon = Math.min(20000, Math.round(carte.distance(centre, coin)))
+        try {
+          const trouves = await chercherAutour(centre.lat, centre.lng, rayon)
+          if (moi !== jeton) return
+          decouvertsRef.current = trouves
+          redessiner()
+          setEtatZone('pret')
+        } catch {
+          if (moi !== jeton) return
+          setEtatZone('pret')
+        }
+      }
+      chargerRef.current = () => void chargerZone()
+
+      let minuteur: number | undefined
+      carte.on('moveend zoomend', () => {
+        window.clearTimeout(minuteur)
+        minuteur = window.setTimeout(() => void chargerZone(), 500)
+      })
+      void chargerZone()
+
       setPret(true)
       detruire = () => carte.remove()
     })()
@@ -751,9 +845,35 @@ function CarteMonde({
   }, [restaurants.length])
 
   return (
-    <div className="overflow-hidden rounded-xl shadow-carte">
-      <div ref={conteneur} style={{ height: '62vh' }} aria-label="Carte des restaurants" />
-      {!pret && <p className="py-4 text-center text-corps-2 text-encre-3">Chargement de la carte…</p>}
+    <div className="flex flex-col gap-2">
+      <div className="flex gap-2 overflow-x-auto pb-1">
+        {CATEGORIES_CARTE.map((c) => (
+          <button
+            key={c.cle}
+            onClick={() => {
+              setFiltre(c.cle)
+              filtreRef.current = c.cle
+              redessinerRef.current?.()
+            }}
+            aria-pressed={filtre === c.cle}
+            className={`min-h-sur-tactile shrink-0 rounded-full px-3 text-note font-[590]
+              ${filtre === c.cle ? 'bg-encre text-fond' : 'bg-fond-sourd text-encre-2'}`}
+          >
+            {c.libelle}
+          </button>
+        ))}
+      </div>
+      <div className="overflow-hidden rounded-xl shadow-carte">
+        <div ref={conteneur} style={{ height: '58vh' }} aria-label="Carte des restaurants du monde" />
+        {!pret && <p className="py-4 text-center text-corps-2 text-encre-3">Chargement de la carte…</p>}
+      </div>
+      <p className="text-legende text-encre-3">
+        {etatZone === 'zoome'
+          ? '🌍 Zoome sur une ville (n’importe où dans le monde) — les restaurants s’affichent tout seuls. ⭐ = ton carnet.'
+          : etatZone === 'charge'
+            ? '🔎 STG cherche les restaurants de cette zone…'
+            : `${nbZone} resto${nbZone > 1 ? 's' : ''} dans cette zone${filtre !== 'tous' ? ' (filtre actif)' : ''} — déplace la carte pour en découvrir d’autres.`}
+      </p>
     </div>
   )
 }
