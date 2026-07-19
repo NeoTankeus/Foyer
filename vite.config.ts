@@ -62,7 +62,10 @@ export default defineConfig({
       },
       workbox: {
         importScripts: ['sw-push.js'],
-        globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
+        // Les images (icônes, photo de famille) sortent du précache : elles se
+        // mettent en cache au premier usage — les mises à jour ne téléchargent
+        // plus que le code qui a VRAIMENT changé → installation bien plus rapide.
+        globPatterns: ['**/*.{js,css,html,svg,woff2}'],
         navigateFallback: '/index.html',
         // La nouvelle version s'active DÈS qu'elle est téléchargée et prend le
         // contrôle immédiatement — c'est ça qui rend la mise à jour en 1 appui.
@@ -78,6 +81,15 @@ export default defineConfig({
               cacheName: 'donnees-foyer',
               networkTimeoutSeconds: 4,
               expiration: { maxAgeSeconds: 60 * 60 * 24 * 7 },
+            },
+          },
+          {
+            // Icônes et images de l'app : cache au premier usage, un an.
+            urlPattern: ({ url, sameOrigin }) => sameOrigin && /\.(png|jpe?g|webp)$/.test(url.pathname),
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'images-app',
+              expiration: { maxEntries: 60, maxAgeSeconds: 60 * 60 * 24 * 365 },
             },
           },
         ],
