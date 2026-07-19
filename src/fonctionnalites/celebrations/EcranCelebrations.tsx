@@ -173,9 +173,12 @@ function CoffreAIdees({
   const [erreurAjout, setErreurAjout] = useState<string | null>(null)
   const [visuelsEnCours, setVisuelsEnCours] = useState(false)
   const [choixVisuelPour, setChoixVisuelPour] = useState<LigneIdeeCadeau | null>(null)
+  const [prixBrouillon, setPrixBrouillon] = useState('')
   const dejaReleve = useRef(false)
 
-  const analyserLien = async (url: string): Promise<{ titre: string | null; image: string | null; prix: number | null }> => {
+  const analyserLien = async (
+    url: string,
+  ): Promise<{ titre: string | null; image: string | null; prix: number | null; url: string | null }> => {
     const { data: session } = await supabase.auth.getSession()
     const reponse = await fetch('/api/analyser-lien', {
       method: 'POST',
@@ -185,41 +188,74 @@ function CoffreAIdees({
       },
       body: JSON.stringify({ url }),
     })
-    const donnees = (await reponse.json()) as { produit?: { titre: string | null; image: string | null; prix: number | null } }
-    return donnees.produit ?? { titre: null, image: null, prix: null }
+    const donnees = (await reponse.json()) as {
+      produit?: { titre: string | null; image: string | null; prix: number | null; url?: string | null }
+    }
+    const produit = donnees.produit
+    return {
+      titre: produit?.titre ?? null,
+      image: produit?.image ?? null,
+      prix: produit?.prix ?? null,
+      url: produit?.url ?? null,
+    }
   }
 
   const rafraichir = () => clientRequetes.invalidateQueries({ queryKey: ['idees', celebration.id] })
 
-  const ajouterDepuisLien = async () => {
+  /**
+   * UN seul ajout : le nom écrit par l'humain est TOUJOURS le patron.
+   * Le lien ne sert qu'à suivre le prix et à trouver la vraie photo.
+   */
+  const ajouterIdee = async () => {
+    const nom = idee.trim()
     const url = lien.trim()
-    if (!url || !foyer || !membre) return
+    if ((!nom && !url) || !foyer || !membre) return
     setAnalyseEnCours(true)
     try {
-      const produit = await analyserLien(url)
+      const produit = url
+        ? await analyserLien(url)
+        : { titre: null, image: null, prix: null, url: null }
+      const libelle =
+        nom ||
+        produit.titre ||
+        (url ? url.replace(/^https?:\/\//, '').split('/')[0] ?? 'Idée' : 'Idée')
       const id = crypto.randomUUID()
       const jour = new Date().toISOString().slice(0, 10)
       await muter({
         table: 'idees_cadeaux', type: 'insert', cible_id: id,
         charge: {
           id, foyer_id: foyer.id, celebration_id: celebration.id,
-          libelle: produit.titre ?? url.replace(/^https?:\/\//, '').slice(0, 60),
-          note: null, prix: produit.prix, url, image_url: produit.image,
+          libelle: libelle.slice(0, 120),
+          note: null, prix: produit.prix,
+          url: url ? (produit.url ?? url) : null,
+          image_url: produit.image,
           historique_prix: produit.prix !== null ? [{ date: jour, prix: produit.prix }] : [],
           offert: false, offert_le: null, cree_par: membre.id, cree_le: new Date().toISOString(),
         },
       })
+      setIdee('')
       setLien('')
       setErreurAjout(null)
       notifierLesAutres(
         '🎁 Nouvelle idée cadeau',
-        `${membre.prenom} a ajouté « ${(produit.titre ?? url).slice(0, 60)} » pour ${celebration.nom}.`,
+        `${membre.prenom} a ajouté « ${libelle.slice(0, 60)} » pour ${celebration.nom}.`,
         '/nous/celebrations',
         true, // adultes seulement — verrou Père Noël
       )
       await rafraichir()
+      // Pas de photo sur le site ? On la cherche avec le VRAI nom (jamais un titre-poubelle).
+      if (!produit.image && libelle.length > 2) {
+        void chercherVisuels([libelle])
+          .then((images) => {
+            const image = images[libelle]
+            if (image) {
+              return muter({ table: 'idees_cadeaux', type: 'update', cible_id: id, charge: { image_url: image } }).then(rafraichir)
+            }
+          })
+          .catch(() => undefined)
+      }
     } catch {
-      setErreurAjout('Impossible d’ajouter ce lien — vérifie l’adresse et le réseau, puis réessaie.')
+      setErreurAjout('Impossible d’ajouter — vérifie le réseau, puis réessaie.')
     } finally {
       setAnalyseEnCours(false)
     }
@@ -333,69 +369,35 @@ function CoffreAIdees({
         Le coffre à idées — invisible pour Gabriel, verrouillé au niveau de la base.
       </p>
       <form
-        className="flex gap-2"
+        className="flex flex-col gap-2 rounded-lg bg-fond-sourd p-3"
         onSubmit={(e) => {
           e.preventDefault()
-          if (!idee.trim() || !foyer || !membre) return
-          const id = crypto.randomUUID()
-          const libelleIdee = idee.trim()
-          // Visuel automatique en arrière-plan, comme pour les courses.
-          void chercherVisuels([libelleIdee])
-            .then((images) => {
-              const image = images[libelleIdee]
-              if (image) return muter({ table: 'idees_cadeaux', type: 'update', cible_id: id, charge: { image_url: image } }).then(rafraichir)
-            })
-            .catch(() => undefined)
-          void muter({
-            table: 'idees_cadeaux', type: 'insert', cible_id: id,
-            charge: {
-              id, foyer_id: foyer.id, celebration_id: celebration.id, libelle: idee.trim(),
-              note: null, prix: null, offert: false, offert_le: null,
-              cree_par: membre.id, cree_le: new Date().toISOString(),
-            },
-          })
-            .then(() => {
-              setErreurAjout(null)
-              notifierLesAutres(
-                '🎁 Nouvelle idée cadeau',
-                `${membre.prenom} a noté « ${idee.trim().slice(0, 60)} » pour ${celebration.nom}.`,
-                '/nous/celebrations',
-                true, // adultes seulement — verrou Père Noël
-              )
-              return rafraichir()
-            })
-            .catch(() => setErreurAjout('L’idée n’a pas pu être enregistrée — réessaie dans un instant.'))
-          setIdee('')
+          void ajouterIdee()
         }}
       >
         <input
           value={idee}
           onChange={(e) => setIdee(e.target.value)}
-          placeholder="✏️ Noter une idée : « il/elle a parlé de… »"
-          aria-label="Nouvelle idée cadeau"
-          className="min-h-sur-tactile w-full min-w-0 flex-1 rounded-md border border-trait bg-fond-eleve px-3 text-corps"
+          placeholder="✏️ Nom de l’idée — ex. Lego Ninjago 71818"
+          aria-label="Nom de l'idée cadeau"
+          className="min-h-sur-tactile w-full rounded-md border border-trait bg-fond-eleve px-3 text-corps"
         />
-        <Bouton type="submit" variante="discret" desactive={!idee.trim()}>Ajouter</Bouton>
-      </form>
-
-      <form
-        className="flex gap-2"
-        onSubmit={(e) => {
-          e.preventDefault()
-          void ajouterDepuisLien()
-        }}
-      >
-        <input
-          value={lien}
-          onChange={(e) => setLien(e.target.value)}
-          placeholder="🔗 Coller le lien du produit (Amazon, Fnac…)"
-          aria-label="Lien du produit"
-          inputMode="url"
-          className="min-h-sur-tactile w-full min-w-0 flex-1 rounded-md border border-trait bg-fond-eleve px-3 text-corps-2"
-        />
-        <Bouton type="submit" variante="valider" desactive={analyseEnCours || !lien.trim()}>
-          {analyseEnCours ? '…' : 'OK'}
-        </Bouton>
+        <div className="flex gap-2">
+          <input
+            value={lien}
+            onChange={(e) => setLien(e.target.value)}
+            placeholder="🔗 Lien (facultatif) — suivra le prix et la photo"
+            aria-label="Lien du produit (facultatif)"
+            inputMode="url"
+            className="min-h-sur-tactile w-full min-w-0 flex-1 rounded-md border border-trait bg-fond-eleve px-3 text-corps-2"
+          />
+          <Bouton type="submit" variante="valider" desactive={analyseEnCours || (!idee.trim() && !lien.trim())}>
+            {analyseEnCours ? '…' : 'Ajouter'}
+          </Bouton>
+        </div>
+        <p className="text-legende text-encre-3">
+          Ton nom reste le titre — le lien sert seulement au prix et à la vraie photo.
+        </p>
       </form>
       {erreurAjout && <p className="-mt-1 text-legende text-urgent">{erreurAjout}</p>}
       {(idees.data ?? []).some((i) => i.url) && (
@@ -467,6 +469,7 @@ function CoffreAIdees({
                   onClick={() => {
                     setConfirmeSuppr(null)
                     setNoteBrouillon(i.note ?? '')
+                    setPrixBrouillon(i.prix !== null ? i.prix.toFixed(2).replace('.', ',') : '')
                     setDepliee(estDepliee ? null : i.id)
                   }}
                   aria-expanded={estDepliee}
@@ -514,6 +517,50 @@ function CoffreAIdees({
                       Idée notée à la main — colle le lien du produit pour suivre son prix.
                     </p>
                   )}
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    <label htmlFor={`prix-${i.id}`} className="text-legende font-[590] text-encre-3">
+                      💶 Prix
+                    </label>
+                    <input
+                      id={`prix-${i.id}`}
+                      inputMode="decimal"
+                      value={prixBrouillon}
+                      onChange={(e) => setPrixBrouillon(e.target.value)}
+                      placeholder="49,99"
+                      className="chiffres min-h-sur-tactile w-28 rounded-md border border-trait bg-fond-eleve px-3 text-corps-2 text-encre"
+                    />
+                    <span className="text-corps-2 text-encre-3">€</span>
+                    {(() => {
+                      const valeur = Number(prixBrouillon.replace(/\s/g, '').replace(',', '.'))
+                      const valide = Number.isFinite(valeur) && valeur > 0
+                      const change = valide && Math.abs(valeur - (i.prix ?? 0)) > 0.001
+                      if (!change) return null
+                      return (
+                        <Bouton
+                          variante="valider"
+                          onClick={() => {
+                            const jour = new Date().toISOString().slice(0, 10)
+                            const historique = [...(i.historique_prix ?? [])]
+                            const dernier = historique[historique.length - 1]
+                            if (dernier?.date === jour) historique[historique.length - 1] = { date: jour, prix: valeur }
+                            else historique.push({ date: jour, prix: valeur })
+                            void muter({
+                              table: 'idees_cadeaux', type: 'update', cible_id: i.id,
+                              charge: { prix: valeur, historique_prix: historique.slice(-90) },
+                            }).then(rafraichir)
+                          }}
+                        >
+                          OK
+                        </Bouton>
+                      )
+                    })()}
+                    {i.url && i.prix === null && (
+                      <p className="w-full text-legende text-encre-3">
+                        Ce site bloque parfois la lecture automatique — mets le prix à la main, la courbe et l’alerte 💸 suivront.
+                      </p>
+                    )}
+                  </div>
 
                   <div>
                     <label htmlFor={`note-${i.id}`} className="mb-1 block text-legende font-[590] text-encre-3">

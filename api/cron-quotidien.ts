@@ -101,13 +101,16 @@ interface Idee {
 function extrairePrix(html: string): number | null {
   const motifs = [
     /<meta[^>]+property=["'](?:og|product):price:amount["'][^>]+content=["']([\d.,]+)["']/i,
+    /"priceAmount"\s*:\s*([\d.]+)/,
+    /class=["']a-offscreen["'][^>]*>\s*([\d\s]{1,7}[,.][\d]{2})\s*€/,
     /"price"\s*:\s*"?([\d]+[.,][\d]{2})"?/,
     /itemprop=["']price["'][^>]+content=["']([\d.,]+)["']/i,
+    /"displayPrice"\s*:\s*"([\d\s.,]+)\s*€/,
   ]
   for (const motif of motifs) {
     const r = motif.exec(html)
     if (r?.[1]) {
-      const valeur = Number(r[1].replace(',', '.'))
+      const valeur = Number(r[1].replace(/\s/g, '').replace(',', '.'))
       if (Number.isFinite(valeur) && valeur > 0) return valeur
     }
   }

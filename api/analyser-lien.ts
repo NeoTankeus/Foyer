@@ -36,26 +36,47 @@ export default async function handler(req: Request): Promise<Response> {
   }
 
   let html = ''
+  let urlFinale = cible.toString()
   try {
     const page = await fetch(cible.toString(), {
       headers: {
-        'user-agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15',
-        accept: 'text/html',
+        'user-agent':
+          'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+        accept: 'text/html,application/xhtml+xml',
+        'accept-language': 'fr-FR,fr;q=0.9',
       },
       redirect: 'follow',
     })
-    html = (await page.text()).slice(0, 400000)
+    urlFinale = page.url || urlFinale
+    html = (await page.text()).slice(0, 500000)
   } catch {
     return new Response(JSON.stringify({ erreur: 'inaccessible', message: 'Le site refuse la lecture — remplis à la main.' }), {
       status: 502, headers: { 'content-type': 'application/json' },
     })
   }
 
-  const titre = extraire(html, [
+  // Lien court Amazon (amzn.eu/…) : on canonise vers la vraie fiche produit —
+  // c'est elle qu'on gardera pour la veille des prix.
+  const asin = /\/(?:dp|gp\/product|gp\/aw\/d|d)\/([A-Z0-9]{10})(?:[/?]|$)/.exec(urlFinale)?.[1]
+    ?? /"asin"\s*:\s*"([A-Z0-9]{10})"/.exec(html)?.[1]
+  if (asin && /amazon\.|amzn\./i.test(urlFinale)) {
+    urlFinale = `https://www.amazon.fr/dp/${asin}`
+  }
+
+  let titre = extraire(html, [
     /<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i,
     /<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:title["']/i,
+    /<span[^>]+id=["']productTitle["'][^>]*>([^<]+)</i,
     /<title[^>]*>([^<]+)<\/title>/i,
   ])
+  // Titre-poubelle (page-barrière, accueil du site) : on n'en veut pas.
+  if (
+    titre &&
+    (/^(amazon|amazon\.fr|amazon\.com|fnac|fnac\.com|carrefour|cdiscount|e\.leclerc|robot check|captcha|accès refusé|access denied|attention required)/i.test(titre.trim()) ||
+      titre.trim().length < 4)
+  ) {
+    titre = null
+  }
   // L'image du SITE d'abord — og:image, JSON-LD marchand, puis les gabarits
   // spécifiques d'Amazon (qui ne met pas d'og:image sur ses fiches produit).
   const image = extraire(html, [
@@ -72,8 +93,11 @@ export default async function handler(req: Request): Promise<Response> {
   ])
   let prixBrut = extraire(html, [
     /<meta[^>]+property=["'](?:og|product):price:amount["'][^>]+content=["']([\d.,]+)["']/i,
+    /"priceAmount"\s*:\s*([\d.]+)/,
+    /class=["']a-offscreen["'][^>]*>\s*([\d\s]{1,7}[,.][\d]{2})\s*€/,
     /"price"\s*:\s*"?([\d]+[.,][\d]{2})"?/,
     /itemprop=["']price["'][^>]+content=["']([\d.,]+)["']/i,
+    /"displayPrice"\s*:\s*"([\d\s.,]+)\s*€/,
   ])
 
   // Secours IA : si le prix résiste aux motifs classiques, Gemini lit la page.
@@ -105,7 +129,7 @@ export default async function handler(req: Request): Promise<Response> {
     } catch { /* le prix restera vide */ }
   }
 
-  const prix = prixBrut ? Number(prixBrut.replace(',', '.')) : null
+  const prix = prixBrut ? Number(prixBrut.replace(/\s/g, '').replace(',', '.')) : null
   const titrePropre = titre ? titre.replace(/&amp;/g, '&').replace(/&#39;/g, '’').slice(0, 120) : null
 
   // Visuel garanti : si le site cache son image (Amazon…), on la cherche sur
@@ -136,7 +160,8 @@ export default async function handler(req: Request): Promise<Response> {
       produit: {
         titre: titrePropre,
         image: imageFinale,
-        prix: prix && Number.isFinite(prix) ? prix : null,
+        prix: prix && Number.isFinite(prix) && prix > 0 ? prix : null,
+        url: urlFinale,
       },
     }),
     { headers: { 'content-type': 'application/json' } },
