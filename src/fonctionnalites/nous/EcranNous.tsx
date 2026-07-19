@@ -35,6 +35,7 @@ export function EcranNous() {
     { chemin: '/nous/celebrations', libelle: 'Célébrations', detail: 'anniversaires et coffre à idées', icone: '🎂', couleur: 'var(--corail)' },
     { chemin: '/nous/voyages', libelle: 'Voyages', detail: 'valises, réservations, météo', icone: '✈️', couleur: 'var(--ardoise)' },
     { chemin: '/nous/concerts', libelle: 'Concerts & sorties', detail: 'billets scannés, prêts pour l’entrée', icone: '🎤', couleur: 'var(--corail)' },
+    { chemin: '/nous/comparateur', libelle: 'Comparateur de prix', detail: 'scanne en boutique, compare sur internet', icone: '🏷️', couleur: 'var(--or)' },
     { chemin: '/nous/souvenirs', libelle: 'Souvenirs', detail: 'photos par voyage, album imprimable', icone: '📷', couleur: 'var(--or)' },
     { chemin: '/nous/routines', libelle: 'Routines', detail: 'les matins et soirs, étape par étape', icone: '⏰', couleur: 'var(--sauge)' },
     { chemin: '/nous/coffre', libelle: 'Le Coffre', detail: 'papiers et échéances', icone: '🗄️', couleur: 'var(--encre-2)', adulte: true },

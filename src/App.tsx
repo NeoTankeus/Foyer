@@ -27,6 +27,7 @@ const EcranVoyage = paresseux(() => import('@/fonctionnalites/voyages/EcranVoyag
 const EcranSouvenirs = paresseux(() => import('@/fonctionnalites/souvenirs/EcranSouvenirs'), 'EcranSouvenirs')
 const EcranAlbum = paresseux(() => import('@/fonctionnalites/souvenirs/EcranAlbum'), 'EcranAlbum')
 const EcranCoffre = paresseux(() => import('@/fonctionnalites/coffre/EcranCoffre'), 'EcranCoffre')
+const EcranComparateur = paresseux(() => import('@/fonctionnalites/comparateur/EcranComparateur'), 'EcranComparateur')
 const EcranColis = paresseux(() => import('@/fonctionnalites/colis/EcranColis'), 'EcranColis')
 const EcranRoutines = paresseux(() => import('@/fonctionnalites/enfant/EcranRoutines'), 'EcranRoutines')
 
@@ -180,6 +181,7 @@ function Interieur() {
             <Route path="/nous/souvenirs" element={<EcranSouvenirs />} />
             <Route path="/nous/souvenirs/album/:voyageId" element={<EcranAlbum />} />
             <Route path="/nous/coffre" element={<EcranCoffre />} />
+            <Route path="/nous/comparateur" element={<EcranComparateur />} />
             <Route path="/nous/colis" element={<EcranColis />} />
             <Route path="/nous/routines" element={<EcranRoutines />} />
             <Route path="*" element={<Navigate to="/" replace />} />
