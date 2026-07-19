@@ -7,6 +7,7 @@ import type {
   LigneDepense,
   LignePersonne,
   LigneInventaire,
+  LigneRestaurant,
   LigneColis,
   LigneDocument,
   LigneEvenement,
@@ -56,6 +57,7 @@ export type TableSynchronisee =
   | 'depenses'
   | 'personnes'
   | 'inventaire'
+  | 'restaurants'
 
 export interface MutationEnAttente {
   id: string // uuid client, idempotent
@@ -93,6 +95,7 @@ class BaseFoyer extends Dexie {
   depenses!: Table<LigneDepense, string>
   personnes!: Table<LignePersonne, string>
   inventaire!: Table<LigneInventaire, string>
+  restaurants!: Table<LigneRestaurant, string>
   file_attente!: Table<MutationEnAttente, string>
 
   constructor() {
@@ -137,6 +140,9 @@ class BaseFoyer extends Dexie {
     this.version(7).stores({
       personnes: 'id',
       inventaire: 'id, zone, dlc',
+    })
+    this.version(8).stores({
+      restaurants: 'id, favori',
     })
   }
 }

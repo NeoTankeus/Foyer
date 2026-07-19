@@ -144,6 +144,7 @@ export interface Database {
       depenses: Table<LigneDepense>
       personnes: Table<LignePersonne>
       inventaire: Table<LigneInventaire>
+      restaurants: Table<LigneRestaurant>
       integrations: Table<LigneIntegration>
       push_abonnements: Table<LignePushAbonnement>
     }
@@ -384,6 +385,24 @@ export type LigneInventaire = {
   image_url: string | null
   quantite: number
   dlc: string | null
+  cree_le: string
+}
+
+export type LigneRestaurant = {
+  id: string
+  foyer_id: string
+  nom: string
+  ville: string | null
+  adresse: string | null
+  latitude: number | null
+  longitude: number | null
+  telephone: string | null
+  site: string | null
+  cuisine: string | null
+  note: number | null
+  avis: string | null
+  favori: boolean
+  carte_photos: string[]
   cree_le: string
 }
 

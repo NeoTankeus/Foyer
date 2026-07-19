@@ -37,6 +37,7 @@ export function EcranNous() {
     { chemin: '/nous/concerts', libelle: 'Concerts & sorties', detail: 'billets scannés, prêts pour l’entrée', icone: '🎤', couleur: 'var(--corail)' },
     { chemin: '/nous/comparateur', libelle: 'Comparateur de prix', detail: 'scanne en boutique, compare sur internet', icone: '🏷️', couleur: 'var(--or)' },
     { chemin: '/nous/inventaire', libelle: 'Placards & congélo', detail: 'stocks, DLC, anti-gaspi', icone: '🧊', couleur: 'var(--ardoise)' },
+    { chemin: '/nous/restaurants', libelle: 'Restaurants', detail: 'nos adresses, nos notes, la carte du monde', icone: '🍴', couleur: 'var(--ambre)' },
     { chemin: '/nous/personnes', libelle: 'Les proches', detail: 'goûts, tailles, cadeaux déjà offerts', icone: '👥', couleur: 'var(--prune)', adulte: true },
     { chemin: '/nous/rendez-vous', libelle: 'Mode Rendez-vous', detail: 'une soirée à deux, organisée', icone: '💞', couleur: 'var(--corail)', adulte: true },
     { chemin: '/nous/debrief', libelle: 'Le Débrief', detail: 'la semaine du foyer, en 2 minutes', icone: '📊', couleur: 'var(--sauge)' },

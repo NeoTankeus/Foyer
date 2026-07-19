@@ -39,7 +39,7 @@ export async function assemblerContexte(
   const [
     evenements, taches, tachesFaites, courses, repas, recettes,
     voyages, reservations, valises, documents, colis, celebrations,
-    souvenirs, mur, routines, concerts, personnes, inventaire,
+    souvenirs, mur, routines, concerts, personnes, inventaire, restaurants,
   ] = await Promise.all([
     supabase.from('evenements').select('*').gt('fin_a', debut).lt('debut_a', fin).order('debut_a'),
     supabase.from('taches').select('*').eq('statut', 'a_faire').order('echeance'),
@@ -59,6 +59,7 @@ export async function assemblerContexte(
     supabase.from('concerts').select('*'),
     supabase.from('personnes').select('*'),
     supabase.from('inventaire').select('*'),
+    supabase.from('restaurants').select('*'),
   ])
 
   const prenom = (id: string | null) => membres.find((m) => m.id === id)?.prenom ?? '?'
@@ -150,6 +151,12 @@ export async function assemblerContexte(
   for (const p of personnes.data ?? [])
     lignes.push(
       `Proche : ${p.prenom}${p.relation ? ` (${p.relation})` : ''}${p.gouts ? `, aime : ${p.gouts}` : ''}${p.tailles ? `, tailles : ${p.tailles}` : ''}${p.allergies ? `, ATTENTION : ${p.allergies}` : ''}${p.notes ? `, note : ${p.notes}` : ''}.`,
+    )
+
+  // Nos restaurants (notes du foyer, favoris)
+  for (const r of restaurants.data ?? [])
+    lignes.push(
+      `Restaurant : ${r.nom}${r.ville ? ` à ${r.ville}` : ''}${r.note !== null ? `, notre note ${r.note}/5` : ''}${r.favori ? ', FAVORI' : ''}${r.avis ? `, avis : ${r.avis}` : ''}.`,
     )
 
   // L'inventaire (placards, frigo, congélo) — pour proposer des menus anti-gaspi
