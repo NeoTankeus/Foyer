@@ -128,6 +128,62 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       quoi?: string
     }
 
+    // 🌊 Relais Hub'Eau/Vigicrues : stations hydrométriques autour d'un point
+    // + dernière hauteur et tendance 24 h — Safari bloque l'appel direct.
+    if (mode === 'crues') {
+      const la = Number(lat)
+      const lo = Number(lon)
+      if (!Number.isFinite(la) || !Number.isFinite(lo)) {
+        res.status(200).json({ stations: [], erreur: 'position invalide' })
+        return
+      }
+      const r = await fetch(
+        `https://hubeau.eaufrance.fr/api/v1/hydrometrie/referentiel/stations?latitude=${la}&longitude=${lo}&distance=25&size=8&format=json`,
+        { signal: AbortSignal.timeout(12000) },
+      )
+      if (!r.ok) {
+        res.status(200).json({ stations: [], erreur: `hubeau ${r.status}` })
+        return
+      }
+      const donnees = (await r.json()) as {
+        data?: { code_station: string; libelle_station: string; libelle_cours_eau?: string | null; en_service?: boolean }[]
+      }
+      const actives = (donnees.data ?? []).filter((s) => s.en_service !== false).slice(0, 5)
+      const stations = await Promise.all(
+        actives.map(async (s) => {
+          try {
+            const obs = await fetch(
+              `https://hubeau.eaufrance.fr/api/v1/hydrometrie/observations_tp?code_entite=${s.code_station}&grandeur_hydro=H&size=300&sort=desc`,
+              { signal: AbortSignal.timeout(12000) },
+            )
+            const mesures = obs.ok
+              ? (((await obs.json()) as { data?: { resultat_obs: number; date_obs: string }[] }).data ?? [])
+              : []
+            const derniere = mesures[0]
+            const cible = Date.now() - 24 * 3600 * 1000
+            const ancienne = [...mesures].sort(
+              (a, b) => Math.abs(new Date(a.date_obs).getTime() - cible) - Math.abs(new Date(b.date_obs).getTime() - cible),
+            )[0]
+            return {
+              code: s.code_station,
+              nom: s.libelle_station,
+              cours: s.libelle_cours_eau ?? null,
+              hauteurM: derniere ? derniere.resultat_obs / 1000 : null,
+              variation24hCm:
+                derniere && ancienne && ancienne !== derniere
+                  ? Math.round((derniere.resultat_obs - ancienne.resultat_obs) / 10)
+                  : null,
+              mesureA: derniere?.date_obs ?? null,
+            }
+          } catch {
+            return { code: s.code_station, nom: s.libelle_station, cours: s.libelle_cours_eau ?? null, hauteurM: null, variation24hCm: null, mesureA: null }
+          }
+        }),
+      )
+      res.status(200).json({ stations })
+      return
+    }
+
     // Relais Overpass : Safari bloque parfois l'appel direct depuis l'app,
     // alors le serveur de STG interroge les cartes à sa place.
     if (mode === 'autour') {

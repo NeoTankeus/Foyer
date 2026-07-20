@@ -2,6 +2,7 @@
 // par les stations du réseau Vigicrues (données Hub'Eau, service public) —
 // avec la tendance sur 24 h et le lien vers la carte officielle.
 import { useQuery } from '@tanstack/react-query'
+import { supabase } from '@/lib/supabase'
 import { utiliserSession } from '@/etat/session'
 import { BarreRetour } from '@/design/composants/BarreRetour'
 import { Carte } from '@/design/composants/Carte'
@@ -20,51 +21,25 @@ export function EcranCrues() {
   const { foyer } = utiliserSession()
   const maison = (foyer?.reglages['maison'] ?? null) as { lat?: number; lon?: number; adresse?: string } | null
 
+  // Tout passe par le relais serveur de STG — Safari bloque l'appel direct.
   const stations = useQuery({
     queryKey: ['crues', maison?.lat],
     enabled: maison?.lat !== undefined,
     staleTime: 30 * 60 * 1000,
     queryFn: async (): Promise<StationCrue[]> => {
-      const r = await fetch(
-        `https://hubeau.eaufrance.fr/api/v1/hydrometrie/referentiel/stations?latitude=${maison?.lat}&longitude=${maison?.lon}&distance=25&format=json&size=6&en_service=true`,
-      )
-      if (!r.ok) throw new Error(`hubeau ${r.status}`)
-      const donnees = (await r.json()) as {
-        data?: { code_station: string; libelle_station: string; libelle_cours_eau?: string | null }[]
-      }
-      const resultats: StationCrue[] = []
-      for (const s of (donnees.data ?? []).slice(0, 5)) {
-        try {
-          const obs = await fetch(
-            `https://hubeau.eaufrance.fr/api/v1/hydrometrie/observations_tp?code_entite=${s.code_station}&grandeur_hydro=H&size=300&sort=desc`,
-          )
-          if (!obs.ok) {
-            resultats.push({ code: s.code_station, nom: s.libelle_station, cours: s.libelle_cours_eau ?? null, hauteurM: null, variation24hCm: null, mesureA: null })
-            continue
-          }
-          const mesures = ((await obs.json()) as { data?: { resultat_obs: number; date_obs: string }[] }).data ?? []
-          const derniere = mesures[0]
-          // La mesure la plus proche d'il y a 24 h, pour la tendance.
-          const cible = Date.now() - 24 * 3600 * 1000
-          const ancienne = [...mesures].sort(
-            (a, b) => Math.abs(new Date(a.date_obs).getTime() - cible) - Math.abs(new Date(b.date_obs).getTime() - cible),
-          )[0]
-          resultats.push({
-            code: s.code_station,
-            nom: s.libelle_station,
-            cours: s.libelle_cours_eau ?? null,
-            hauteurM: derniere ? derniere.resultat_obs / 1000 : null, // mm → m
-            variation24hCm:
-              derniere && ancienne && ancienne !== derniere
-                ? Math.round((derniere.resultat_obs - ancienne.resultat_obs) / 10)
-                : null,
-            mesureA: derniere?.date_obs ?? null,
-          })
-        } catch {
-          resultats.push({ code: s.code_station, nom: s.libelle_station, cours: s.libelle_cours_eau ?? null, hauteurM: null, variation24hCm: null, mesureA: null })
-        }
-      }
-      return resultats
+      const { data: session } = await supabase.auth.getSession()
+      const r = await fetch('/api/chercher-resto', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${session.session?.access_token ?? ''}`,
+        },
+        body: JSON.stringify({ mode: 'crues', lat: maison?.lat, lon: maison?.lon }),
+      })
+      if (!r.ok) throw new Error(`relais ${r.status}`)
+      const donnees = (await r.json()) as { stations?: StationCrue[]; erreur?: string }
+      if (donnees.erreur) throw new Error(donnees.erreur)
+      return donnees.stations ?? []
     },
   })
 
