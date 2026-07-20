@@ -66,10 +66,12 @@ createRoot(racine).render(
   </StrictMode>,
 )
 
-// L'écran « Coucou Gastif ! » s'efface en douceur une fois l'app montée.
+// Filet de sécurité : le splash « Coucou STG ! » est normalement retiré par
+// l'app dès qu'elle est prête (App.tsx) — s'il traîne encore après 5 s,
+// quelque chose cloche et on le retire quand même.
 window.setTimeout(() => {
   const splash = document.getElementById('coucou-gastif')
   if (!splash) return
   splash.classList.add('cg-sortie')
   window.setTimeout(() => splash.remove(), 600)
-}, 500)
+}, 5000)

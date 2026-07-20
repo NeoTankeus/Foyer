@@ -160,18 +160,33 @@ function EcranSansMembre() {
   )
 }
 
+/** Le splash « Coucou STG ! » s'efface quand l'app est VRAIMENT prête. */
+function retirerSplash() {
+  const splash = document.getElementById('coucou-gastif')
+  if (!splash) return
+  splash.classList.add('cg-sortie')
+  window.setTimeout(() => splash.remove(), 600)
+}
+
 export function App() {
-  const { pret, session, membre, demarrer } = utiliserSession()
+  const { pret, session, sessionProbable, membre, demarrer } = utiliserSession()
 
   useEffect(() => {
     demarrer()
   }, [demarrer])
 
+  // Dès qu'on a quelque chose de réel à montrer, le splash laisse la place.
+  useEffect(() => {
+    if (pret) retirerSplash()
+  }, [pret])
+
   if (!pret) {
     return <div className="min-h-dvh bg-fond" aria-busy="true" />
   }
 
-  if (!session) return <EcranConnexion />
+  // sessionProbable : un jeton existe sur l'appareil — on affiche l'app tout de
+  // suite avec le profil en cache, la session réelle arrive juste derrière.
+  if (!session && !sessionProbable) return <EcranConnexion />
   if (!membre) return <EcranSansMembre />
 
   return <Interieur />
