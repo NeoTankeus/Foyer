@@ -318,12 +318,12 @@ export function EcranCiel() {
               </p>
             )}
             <a
-              href="https://spotthestation.nasa.gov/tracking_map.cfm"
+              href="https://www.n2yo.com/?s=25544"
               target="_blank"
               rel="noopener"
               className="btn-3d btn-clair inline-flex min-h-sur-tactile items-center justify-center px-4 py-2.5 text-corps-2"
             >
-              🗺 Le traceur officiel de la NASA (Spot the Station)
+              🗺 Sa position réelle seconde par seconde (carte mondiale)
             </a>
             <a
               href="https://www.youtube.com/@NASA/streams"
@@ -333,9 +333,14 @@ export function EcranCiel() {
             >
               🎥 La VUE depuis la Station — caméras NASA en direct
             </a>
-            <p className="text-legende text-encre-3">
-              💡 Sur le traceur NASA tu peux aussi t'inscrire pour être prévenu des passages visibles à l'œil nu au-dessus de chez vous.
-            </p>
+            <a
+              href="https://spotthestation.nasa.gov/"
+              target="_blank"
+              rel="noopener"
+              className="btn-3d btn-clair inline-flex min-h-sur-tactile items-center justify-center px-4 py-2.5 text-corps-2"
+            >
+              🔔 Être prévenu des passages visibles (NASA Spot the Station)
+            </a>
           </div>
         </Feuille>
 
