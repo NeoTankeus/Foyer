@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { utiliserSession } from '@/etat/session'
 import { BarreRetour } from '@/design/composants/BarreRetour'
+import { Bouton } from '@/design/composants/Bouton'
 import { Carte } from '@/design/composants/Carte'
 import { EtatVide } from '@/design/composants/EtatVide'
 
@@ -59,7 +60,18 @@ export function EcranCrues() {
           />
         )}
         {stations.isLoading && <p className="py-6 text-center text-corps-2 text-encre-3">🌊 Relevé des stations…</p>}
-        {stations.isError && <p className="py-4 text-center text-corps-2 text-encre-3">Les stations ne répondent pas — réessaie plus tard.</p>}
+        {stations.isError && (
+          <div className="flex flex-col gap-2">
+            <p className="text-center text-corps-2 text-encre-3">
+              Les stations ne répondent pas.
+              <br />
+              <span className="text-legende">Diagnostic pour STG : {String(stations.error instanceof Error ? stations.error.message : stations.error).slice(0, 90)}</span>
+            </p>
+            <Bouton pleineLargeur variante="primaire" onClick={() => void stations.refetch()}>
+              🔄 Réessayer
+            </Bouton>
+          </div>
+        )}
         {stations.data?.length === 0 && (
           <EtatVide titre="Aucune station à moins de 25 km" message="Bonne nouvelle : pas de rivière instrumentée tout près = risque de crue limité chez vous." />
         )}

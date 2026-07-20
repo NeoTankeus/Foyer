@@ -43,6 +43,15 @@ const clientRequetes = new QueryClient({
 // rafraîchit en arrière-plan. Le cache saute à chaque nouvelle version.
 const persistant = createSyncStoragePersister({ storage: window.localStorage, key: 'gastif-cache' })
 
+// OUVERTURE RAPIDE : les requêtes qui charrient des photos en base64 (des
+// mégaoctets !) ne vont PAS dans ce cache — relire/réécrire un bloc géant à
+// chaque ouverture ralentissait toute l'app. Le hors-ligne de ces modules
+// reste assuré par la base locale (Dexie), rien n'est perdu.
+const CLEFS_LOURDES = new Set([
+  'souvenirs', 'journal', 'journal-annee', 'livre', 'ilyaunan',
+  'sante', 'capsules', 'mur', 'restaurants', 'tribunal', 'interviews',
+])
+
 demarrerSyncAuRetourDuReseau()
 
 // Après un déploiement, un ancien onglet peut charger un morceau d'app périmé :
@@ -59,7 +68,15 @@ createRoot(racine).render(
   <StrictMode>
     <PersistQueryClientProvider
       client={clientRequetes}
-      persistOptions={{ persister: persistant, maxAge: 24 * 3600 * 1000, buster: __DATE_VERSION__ }}
+      persistOptions={{
+        persister: persistant,
+        maxAge: 24 * 3600 * 1000,
+        buster: __DATE_VERSION__,
+        dehydrateOptions: {
+          shouldDehydrateQuery: (requete) =>
+            requete.state.status === 'success' && !CLEFS_LOURDES.has(String(requete.queryKey[0])),
+        },
+      }}
     >
       <App />
     </PersistQueryClientProvider>
