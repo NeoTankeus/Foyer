@@ -102,6 +102,8 @@ export function EcranAujourdhui() {
   const [blocs, setBlocs] = useState(chargerBlocs)
   const [ordre, setOrdre] = useState<CleBloc[]>(chargerOrdre)
   const [personnaliser, setPersonnaliser] = useState(false)
+  const [meteoDetail, setMeteoDetail] = useState(false)
+  const [vacancesDetail, setVacancesDetail] = useState(false)
 
   const enregistrerOrdre = (suivant: CleBloc[]) => {
     setOrdre(suivant)
@@ -364,17 +366,17 @@ export function EcranAujourdhui() {
 
   // Les relances : tout ce qui est en retard ou imminent, en rouge, une seule fois.
   const relances = useMemo(() => {
-    const liste: { id: string; texte: string; action?: () => void }[] = []
+    const liste: { id: string; texte: string; vers: string }[] = []
     for (const t of taches.data ?? []) {
       if (t.echeance !== null && t.echeance < aujourdHui) {
-        liste.push({ id: `t-${t.id}`, texte: `En retard : ${t.titre}` })
+        liste.push({ id: `t-${t.id}`, texte: `En retard : ${t.titre}`, vers: '/maison?volet=taches' })
       }
     }
     for (const d of documents.data ?? []) {
       if (!d.expire_le) continue
       const dans = differenceInCalendarDays(new Date(`${d.expire_le}T12:00:00`), maintenantLocal())
-      if (dans < 0) liste.push({ id: `d-${d.id}`, texte: `Expiré : ${d.titre}` })
-      else if (dans <= 15) liste.push({ id: `d-${d.id}`, texte: `${d.titre} expire dans ${dans} j` })
+      if (dans < 0) liste.push({ id: `d-${d.id}`, texte: `Expiré : ${d.titre}`, vers: '/nous/coffre' })
+      else if (dans <= 15) liste.push({ id: `d-${d.id}`, texte: `${d.titre} expire dans ${dans} j`, vers: '/nous/coffre' })
     }
     for (const c of celebrations.data ?? []) {
       const date = new Date(c.date)
@@ -382,7 +384,7 @@ export function EcranAujourdhui() {
       if (prochaine < new Date(maintenantLocal().getFullYear(), maintenantLocal().getMonth(), maintenantLocal().getDate()))
         prochaine.setFullYear(prochaine.getFullYear() + 1)
       const dans = differenceInCalendarDays(prochaine, maintenantLocal())
-      if (dans <= 1) liste.push({ id: `c-${c.id}`, texte: dans === 0 ? `Aujourd’hui : ${c.nom} 🎂` : `Demain : ${c.nom} 🎂` })
+      if (dans <= 1) liste.push({ id: `c-${c.id}`, texte: dans === 0 ? `Aujourd’hui : ${c.nom} 🎂` : `Demain : ${c.nom} 🎂`, vers: '/nous/celebrations' })
     }
     return liste
   }, [taches.data, documents.data, celebrations.data, aujourdHui])
@@ -456,15 +458,23 @@ export function EcranAujourdhui() {
               🔴 Relances — {relances.length}
             </h2>
             {relances.map((r) => (
-              <p key={r.id} className="text-corps-2 font-[590]">• {r.texte}</p>
+              <button key={r.id} onClick={() => naviguer(r.vers)} className="flex w-full items-center justify-between py-0.5 text-left text-corps-2 font-[590]">
+                <span>• {r.texte}</span>
+                <span aria-hidden="true" className="opacity-80">›</span>
+              </button>
             ))}
           </section>
         )}
 
         {blocs.brief && (
-          <section className="rounded-xl bg-fond-eleve p-4 shadow-carte" style={{ order: position('brief') }}>
+          <button
+            onClick={() => naviguer('/agenda')}
+            className="rounded-xl bg-fond-eleve p-4 text-left shadow-carte active:bg-fond-sourd"
+            style={{ order: position('brief') }}
+            aria-label="Ouvrir l'agenda du jour"
+          >
             <BriefGastif evenements={evenements.data ?? []} taches={taches.data ?? []} />
-          </section>
+          </button>
         )}
 
         {/* 🤖 Le Pilote — Gastif propose, calculé sur les vraies données du foyer */}
@@ -521,7 +531,11 @@ export function EcranAujourdhui() {
                 <Bouton type="submit" variante="valider" desactive={!saisieVille.trim()}>OK</Bouton>
               </form>
             ) : (
-              <div className="mt-2 flex justify-between">
+              <button
+                onClick={() => setMeteoDetail(true)}
+                aria-label="Voir la météo en détail"
+                className="mt-2 flex w-full justify-between active:opacity-70"
+              >
                 {(meteo.data ?? []).map((j, idx) => (
                   <div key={j.date} className="flex flex-col items-center gap-0.5">
                     <span className="text-legende capitalize text-encre-3">
@@ -536,16 +550,24 @@ export function EcranAujourdhui() {
                     )}
                   </div>
                 ))}
-              </div>
+              </button>
             )}
           </section>
         )}
 
         {/* 🎒 Vacances scolaires zone B — calendrier officiel */}
         {blocs.vacances && (vacances.data?.length ?? 0) > 0 && (
-          <section className="rounded-xl bg-fond-eleve p-4 shadow-carte" style={{ order: position('vacances') }}>
-            <h2 className="mb-1 text-note font-[700] uppercase tracking-wide text-encre-3">
-              🎒 Vacances scolaires — zone B
+          <section
+            className="cursor-pointer rounded-xl bg-fond-eleve p-4 shadow-carte active:bg-fond-sourd"
+            style={{ order: position('vacances') }}
+            onClick={() => setVacancesDetail(true)}
+            role="button"
+            tabIndex={0}
+            aria-label="Voir toutes les vacances scolaires"
+          >
+            <h2 className="mb-1 flex items-center justify-between text-note font-[700] uppercase tracking-wide text-encre-3">
+              <span>🎒 Vacances scolaires — zone B</span>
+              <span aria-hidden="true">›</span>
             </h2>
             {(vacances.data ?? []).slice(0, 2).map((v) => {
               const dans = differenceInCalendarDays(new Date(v.debut), maintenantLocal())
@@ -605,7 +627,11 @@ export function EcranAujourdhui() {
               <p className="text-corps-2 text-encre-3">Rien au programme aujourd’hui.</p>
             ) : (
               evenementsDuJour.map((e) => (
-                <div key={e.id} className="flex items-center gap-3 border-b border-trait py-1.5 last:border-0">
+                <button
+                  key={e.id}
+                  onClick={() => naviguer('/agenda')}
+                  className="flex w-full items-center gap-3 border-b border-trait py-1.5 text-left last:border-0 active:bg-fond-sourd"
+                >
                   <span className="chiffres w-12 text-note font-[590] text-encre-3">{formatHeure(e.debut_a)}</span>
                   <span className="flex-1 text-corps text-encre">{e.titre}</span>
                   <span className="flex gap-0.5">
@@ -616,20 +642,23 @@ export function EcranAujourdhui() {
                       <span key={m.id} className="h-2 w-2 rounded-full" style={{ background: couleurMembre(m.couleur) }} />
                     ))}
                   </span>
-                </div>
+                </button>
               ))
             )}
             {(() => {
               const prochain = evenementsAVenir.data?.[0]
               if (!prochain) return null
               return (
-                <p className="mt-1 border-t border-trait pt-1.5 text-corps-2 text-encre-3">
+                <button
+                  onClick={() => naviguer('/agenda')}
+                  className="mt-1 block w-full border-t border-trait pt-1.5 text-left text-corps-2 text-encre-3 active:bg-fond-sourd"
+                >
                   À venir :{' '}
                   <span className="capitalize">
                     {new Date(prochain.debut_a).toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' })}
                   </span>
                   {prochain.journee_entiere ? '' : ` · ${formatHeure(prochain.debut_a)}`} — {prochain.titre}
-                </p>
+                </button>
               )
             })()}
           </section>
@@ -661,7 +690,9 @@ export function EcranAujourdhui() {
                     etiquette={`Marquer « ${t.titre} » comme faite`}
                     couleur={assignee ? couleurMembre(assignee.couleur) : undefined}
                   />
-                  <span className="flex-1 text-corps text-encre">{t.titre}</span>
+                  <button onClick={() => naviguer('/maison?volet=taches')} className="flex-1 text-left text-corps text-encre">
+                    {t.titre}
+                  </button>
                   <span
                     className={`text-legende ${echeance === 'retard' ? 'font-[700] text-urgent' : 'chiffres text-encre-3'}`}
                   >
@@ -719,7 +750,9 @@ export function EcranAujourdhui() {
                   }}
                   etiquette={`Cocher ${a.libelle}`}
                 />
-                <span className="text-corps-2 text-encre">{a.libelle}</span>
+                <button onClick={() => naviguer('/maison?volet=courses')} className="flex-1 text-left text-corps-2 text-encre">
+                  {a.libelle}
+                </button>
               </div>
             ))}
             {articlesRestants.length > 8 && (
@@ -747,15 +780,21 @@ export function EcranAujourdhui() {
               <span className="text-encre-3">›</span>
             </button>
             {(repasDuJour.data?.length ?? 0) === 0 ? (
-              <p className="mt-1 text-corps text-encre">Rien de prévu — tape ici pour poser le menu.</p>
+              <button onClick={() => naviguer('/maison?volet=menus')} className="mt-1 block w-full text-left text-corps text-encre">
+                Rien de prévu — tape ici pour poser le menu.
+              </button>
             ) : (
               (repasDuJour.data ?? []).map((r) => (
-                <p key={r.creneau} className="mt-1 text-corps text-encre">
+                <button
+                  key={r.creneau}
+                  onClick={() => naviguer('/maison?volet=menus')}
+                  className="mt-1 block w-full text-left text-corps text-encre active:bg-fond-sourd"
+                >
                   <span className="text-note font-[590] uppercase text-encre-3">
                     {{ matin: 'Matin', midi: 'Midi', gouter: 'Goûter', soir: 'Soir' }[r.creneau] ?? r.creneau}
                   </span>{' '}
                   — {r.texte}
-                </p>
+                </button>
               ))
             )}
           </section>
@@ -771,7 +810,7 @@ export function EcranAujourdhui() {
               <h2 className="text-note font-[700] uppercase tracking-wide text-encre-3">🕰 Il y a un an jour pour jour</h2>
               <span className="text-encre-3">›</span>
             </button>
-            <div className="mt-2 flex gap-2 overflow-x-auto pb-1">
+            <div className="mt-2 flex gap-2 overflow-x-auto pb-1" onClick={() => naviguer('/nous/journal')} role="button" tabIndex={0} aria-label="Ouvrir le Journal">
               {(souvenirsUnAn.data ?? []).map((s) => (
                 <img
                   key={s.id}
@@ -896,6 +935,62 @@ export function EcranAujourdhui() {
           <Bouton pleineLargeur variante="valider" onClick={() => setPersonnaliser(false)}>
             C’est réglé
           </Bouton>
+        </div>
+      </Feuille>
+
+      {/* 🌤 La météo en détail — chaque jour développé */}
+      <Feuille ouverte={meteoDetail} onFermer={() => setMeteoDetail(false)} titre={`🌤 Météo — ${ville?.nom ?? ''}`}>
+        <div className="flex flex-col gap-2">
+          {(meteo.data ?? []).map((j, idx) => (
+            <div key={j.date} className="flex items-center gap-3 rounded-xl bg-fond-sourd px-3 py-2.5">
+              <span className="text-[30px]" aria-hidden="true">{iconeMeteo(j.code)}</span>
+              <div className="flex-1">
+                <p className="text-corps-2 font-[590] capitalize text-encre">
+                  {idx === 0
+                    ? 'Aujourd’hui'
+                    : new Date(`${j.date}T12:00:00`).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}
+                </p>
+                <p className="text-legende text-encre-3">
+                  ☔ {j.probaPluie} % de pluie{j.pluieMm >= 1 ? ` (${Math.round(j.pluieMm)} mm attendus)` : ''}
+                </p>
+              </div>
+              <p className="chiffres text-corps font-[700] text-encre">
+                {j.tMax}° <span className="font-[400] text-encre-3">{j.tMin}°</span>
+              </p>
+            </div>
+          ))}
+          <Bouton
+            pleineLargeur
+            variante="discret"
+            onClick={() => {
+              setMeteoDetail(false)
+              setVille(null)
+            }}
+          >
+            ✏️ Changer de ville
+          </Bouton>
+          <p className="text-legende text-encre-3">Prévisions Météo-France (via Open-Meteo), actualisées toutes les 2 h.</p>
+        </div>
+      </Feuille>
+
+      {/* 🎒 Toutes les vacances scolaires à venir */}
+      <Feuille ouverte={vacancesDetail} onFermer={() => setVacancesDetail(false)} titre="🎒 Vacances scolaires — zone B">
+        <div className="flex flex-col gap-2">
+          {(vacances.data ?? []).map((v) => {
+            const dans = differenceInCalendarDays(new Date(v.debut), maintenantLocal())
+            const duree = differenceInCalendarDays(new Date(v.fin), new Date(v.debut))
+            return (
+              <div key={v.debut} className="rounded-xl bg-fond-sourd px-3 py-2.5">
+                <p className="text-corps-2 font-[590] text-encre">{v.description}</p>
+                <p className="text-legende text-encre-3">
+                  {new Date(v.debut).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })} →{' '}
+                  {new Date(v.fin).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}
+                  {' '}· {duree} jours · {dans <= 0 ? 'EN COURS 🎉' : `dans ${dans} jour${dans > 1 ? 's' : ''}`}
+                </p>
+              </div>
+            )
+          })}
+          <p className="text-legende text-encre-3">Calendrier officiel de l'Éducation nationale, zone B.</p>
         </div>
       </Feuille>
     </div>
