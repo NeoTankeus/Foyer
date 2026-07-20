@@ -3,6 +3,7 @@
 // de toi, et combien tu économises sur un plein.
 import { useState } from 'react'
 import { utiliserSession } from '@/etat/session'
+import { chercherLieux } from '@/lib/lieux'
 import { BarreRetour } from '@/design/composants/BarreRetour'
 import { Bouton } from '@/design/composants/Bouton'
 import { EtatVide } from '@/design/composants/EtatVide'
@@ -44,7 +45,7 @@ async function chercherStations(lat: number, lon: number, carburant: string): Pr
       if (!geom?.lat || !geom.lon || !Number.isFinite(prix) || prix <= 0) return null
       return {
         id: String(r['id'] ?? `${geom.lat},${geom.lon}`),
-        nom: String(r['enseigne'] ?? r['brand'] ?? '').trim() || 'Station',
+        nom: String(r['enseigne'] ?? r['brand'] ?? '').trim() || 'Station-service',
         adresse: String(r['adresse'] ?? ''),
         ville: String(r['ville'] ?? ''),
         prix,
@@ -67,9 +68,33 @@ export function EcranCarburant() {
   const [erreur, setErreur] = useState('')
 
   const chercherDepuis = (lat: number, lon: number, choix: string) => {
-    chercherStations(lat, lon, choix)
-      .then((liste) => {
-        setStations(liste)
+    // Les prix officiels n'ont pas les enseignes — OpenStreetMap les connaît :
+    // on croise les deux par distance (< 250 m) pour afficher NOM et MARQUE.
+    const metres = (la1: number, lo1: number, la2: number, lo2: number) => {
+      const rad = (d: number) => (d * Math.PI) / 180
+      const a =
+        Math.sin(rad(la2 - la1) / 2) ** 2 +
+        Math.cos(rad(la1)) * Math.cos(rad(la2)) * Math.sin(rad(lo2 - lo1) / 2) ** 2
+      return 6371000 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+    }
+    Promise.all([
+      chercherStations(lat, lon, choix),
+      chercherLieux(lat, lon, 15000, 'fuel', 'stations').catch(() => []),
+    ])
+      .then(([officielles, osm]) => {
+        const enrichies = officielles.map((s) => {
+          let nomTrouve: string | null = null
+          let plusProche = 250
+          for (const o of osm) {
+            const d = metres(s.lat, s.lon, o.latitude, o.longitude)
+            if (d < plusProche) {
+              plusProche = d
+              nomTrouve = o.nom
+            }
+          }
+          return nomTrouve ? { ...s, nom: nomTrouve } : s
+        })
+        setStations(enrichies)
         setEtat('pret')
       })
       .catch((e: unknown) => {

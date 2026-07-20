@@ -138,9 +138,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         res.status(200).json({ elements: [], erreur: 'position invalide' })
         return
       }
-      // Le même relais sert plusieurs types de lieux (restaurants, pharmacies…).
-      const amenity = quoi === 'pharmacies' ? 'pharmacy' : 'restaurant|bistro|brasserie'
-      const motNominatim = quoi === 'pharmacies' ? 'pharmacie' : 'restaurant'
+      // Le même relais sert plusieurs types de lieux (restaurants, pharmacies, stations…).
+      const amenity = quoi === 'pharmacies' ? 'pharmacy' : quoi === 'stations' ? 'fuel' : 'restaurant|bistro|brasserie'
+      const motNominatim = quoi === 'pharmacies' ? 'pharmacie' : quoi === 'stations' ? 'station essence' : 'restaurant'
       // Toutes les sources sont interrogées EN MÊME TEMPS — la première qui
       // répond avec des tables gagne. Fini l'attente en cascade.
       const requeteOsm = `[out:json][timeout:10];(node(around:${ra},${la},${lo})[amenity~"${amenity}"][name];way(around:${ra},${la},${lo})[amenity~"${amenity}"][name];);out center 80;`
