@@ -34,11 +34,13 @@ import { BoutonMiseAJour } from '@/design/composants/BoutonMiseAJour'
 import { importerAgendaSiBesoin } from '@/lib/synchro-agenda'
 import { choisirVille, iconeMeteo, previsions, villeMeteo, type JourMeteo } from '@/lib/meteo'
 import { prochainesVacances, type Vacances } from '@/lib/scolaire'
+import { prochainFerie } from '@/lib/feries'
+import { Gerard } from './Gerard'
 import { majBadgeIcone } from '@/lib/badge'
 
 type CleBloc =
   | 'urgent' | 'brief' | 'pilote' | 'meteo' | 'prix' | 'agenda' | 'taches'
-  | 'penser' | 'courses' | 'menus' | 'mur' | 'vacances' | 'fil' | 'ilyaunan'
+  | 'penser' | 'courses' | 'menus' | 'mur' | 'vacances' | 'fil' | 'ilyaunan' | 'gerard'
 
 const BLOCS: { cle: CleBloc; libelle: string }[] = [
   { cle: 'urgent', libelle: '🔴 Relances urgentes' },
@@ -53,6 +55,7 @@ const BLOCS: { cle: CleBloc; libelle: string }[] = [
   { cle: 'courses', libelle: '🛒 Courses' },
   { cle: 'menus', libelle: '🍽️ Ce soir on mange' },
   { cle: 'ilyaunan', libelle: '🕰 Il y a un an jour pour jour' },
+  { cle: 'gerard', libelle: '🐸 Gérard (l’humeur de la maison)' },
   { cle: 'mur', libelle: '🧲 Le Mur (mots de la famille)' },
   { cle: 'fil', libelle: '🕐 Chronologie du jour' },
 ]
@@ -60,7 +63,7 @@ const BLOCS: { cle: CleBloc; libelle: string }[] = [
 const DEFAUT: Record<CleBloc, boolean> = {
   urgent: true, brief: true, pilote: true, meteo: true, vacances: true,
   prix: true, agenda: true, taches: true,
-  penser: true, courses: true, menus: true, mur: true, fil: false, ilyaunan: true,
+  penser: true, courses: true, menus: true, mur: true, fil: false, ilyaunan: true, gerard: true,
 }
 
 const ORDRE_DEFAUT: CleBloc[] = BLOCS.map((b) => b.cle)
@@ -120,6 +123,9 @@ export function EcranAujourdhui() {
     importerAgendaSiBesoin(clientRequetes)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // 🎉 Le prochain jour férié (calendrier officiel) — pour le bloc vacances.
+  const ferie = useQuery({ queryKey: ['ferie'], staleTime: 24 * 3600 * 1000, queryFn: prochainFerie })
 
   // 🕰 Les photos du même jour, l'année dernière.
   const souvenirsUnAn = useQuery({
@@ -273,6 +279,24 @@ export function EcranAujourdhui() {
 
   // 🌤 Météo (ville mémorisée sur ce téléphone) + 🎒 vacances zone B.
   const [ville, setVille] = useState(villeMeteo())
+
+  // 🧺 Séchage du linge : radiation solaire, chargée quand on ouvre le détail météo.
+  const sechage = useQuery({
+    queryKey: ['sechage', ville?.nom ?? ''],
+    enabled: meteoDetail && ville !== null,
+    staleTime: 2 * 3600 * 1000,
+    queryFn: async (): Promise<Record<string, number>> => {
+      const r = await fetch(
+        `https://api.open-meteo.com/v1/forecast?latitude=${ville?.latitude}&longitude=${ville?.longitude}` +
+          `&daily=shortwave_radiation_sum&timezone=Europe%2FParis&forecast_days=4`,
+      )
+      if (!r.ok) return {}
+      const d = (await r.json()) as { daily?: { time?: string[]; shortwave_radiation_sum?: number[] } }
+      const carte: Record<string, number> = {}
+      for (const [i, date] of (d.daily?.time ?? []).entries()) carte[date] = d.daily?.shortwave_radiation_sum?.[i] ?? 0
+      return carte
+    },
+  })
   const [saisieVille, setSaisieVille] = useState('')
   const meteo = useQuery<JourMeteo[]>({
     queryKey: ['meteo', ville?.nom ?? ''],
@@ -827,6 +851,21 @@ export function EcranAujourdhui() {
           </section>
         )}
 
+        {/* 🐸 Gérard — l'humeur de la maison, en direct et sans réseau */}
+        {blocs.gerard && (
+          <section
+            className="rounded-xl p-4 shadow-carte"
+            style={{ background: 'color-mix(in srgb, var(--sauge) 12%, var(--fond-eleve))', order: position('gerard') }}
+          >
+            <Gerard
+              retards={tachesOuvertes.filter((t) => t.echeance !== null && t.echeance < aujourdHui).length}
+              aFaire={tachesOuvertes.length}
+              nonLus={murNonVus}
+              courses={articlesRestants.length}
+            />
+          </section>
+        )}
+
         {/* 🧲 Le Mur — le frigo de la famille, avec pastille rouge des non-lus */}
         {blocs.mur && (
           <section className="rounded-xl bg-fond-eleve p-4 shadow-carte" style={{ order: position('mur') }}>
@@ -953,6 +992,18 @@ export function EcranAujourdhui() {
                 <p className="text-legende text-encre-3">
                   ☔ {j.probaPluie} % de pluie{j.pluieMm >= 1 ? ` (${Math.round(j.pluieMm)} mm attendus)` : ''}
                 </p>
+                <p className="text-legende text-encre-3">
+                  🧺 Séchage dehors :{' '}
+                  {sechage.data?.[j.date] === undefined
+                    ? '…'
+                    : j.probaPluie >= 50
+                      ? '👎 pluie probable'
+                      : (sechage.data[j.date] ?? 0) >= 14
+                        ? '👍 soleil au rendez-vous'
+                        : (sechage.data[j.date] ?? 0) >= 8
+                          ? '🤏 ça peut le faire'
+                          : '👎 pas assez de soleil'}
+                </p>
               </div>
               <p className="chiffres text-corps font-[700] text-encre">
                 {j.tMax}° <span className="font-[400] text-encre-3">{j.tMin}°</span>
@@ -976,6 +1027,18 @@ export function EcranAujourdhui() {
       {/* 🎒 Toutes les vacances scolaires à venir */}
       <Feuille ouverte={vacancesDetail} onFermer={() => setVacancesDetail(false)} titre="🎒 Vacances scolaires — zone B">
         <div className="flex flex-col gap-2">
+          {ferie.data && (
+            <div className="rounded-xl bg-ambre/15 px-3 py-2.5">
+              <p className="text-corps-2 font-[590] text-encre">
+                🎉 Prochain jour férié : {ferie.data.nom}
+              </p>
+              <p className="text-legende text-encre-3">
+                {new Date(`${ferie.data.date}T12:00:00`).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}
+                {' '}— {ferie.data.dans === 0 ? "c'est aujourd'hui !" : ferie.data.dans === 1 ? 'demain !' : `dans ${ferie.data.dans} jours`}
+                {' '}(calendrier officiel)
+              </p>
+            </div>
+          )}
           {(vacances.data ?? []).map((v) => {
             const dans = differenceInCalendarDays(new Date(v.debut), maintenantLocal())
             const duree = differenceInCalendarDays(new Date(v.fin), new Date(v.debut))

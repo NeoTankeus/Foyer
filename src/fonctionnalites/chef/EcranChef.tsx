@@ -29,6 +29,38 @@ function extraireManquants(texte: string): string[] {
     .slice(0, 12)
 }
 
+interface RecetteMonde {
+  nom: string
+  image: string | null
+  origine: string | null
+  ingredients: string[]
+}
+
+/** 🎲 Une recette du monde tirée au sort (TheMealDB, gratuit). */
+async function recetteSurprise(): Promise<RecetteMonde | null> {
+  try {
+    const r = await fetch('https://www.themealdb.com/api/json/v1/1/random.php')
+    if (!r.ok) return null
+    const d = (await r.json()) as { meals?: Record<string, string | null>[] }
+    const meal = d.meals?.[0]
+    if (!meal) return null
+    const ingredients: string[] = []
+    for (let i = 1; i <= 20; i++) {
+      const ing = meal[`strIngredient${i}`]
+      const mesure = meal[`strMeasure${i}`]
+      if (ing?.trim()) ingredients.push(`${ing.trim()}${mesure?.trim() ? ` (${mesure.trim()})` : ''}`)
+    }
+    return {
+      nom: meal['strMeal'] ?? '?',
+      image: meal['strMealThumb'] ?? null,
+      origine: meal['strArea'] ?? null,
+      ingredients,
+    }
+  } catch {
+    return null
+  }
+}
+
 export function EcranChef() {
   const { membre } = utiliserSession()
   const courses = utiliserListeCourses()
@@ -37,6 +69,10 @@ export function EcranChef() {
   const [enCours, setEnCours] = useState(false)
   const [erreur, setErreur] = useState<string | null>(null)
   const [ajoutes, setAjoutes] = useState(false)
+  const [monde, setMonde] = useState<RecetteMonde | null>(null)
+  const [mondeEnCours, setMondeEnCours] = useState(false)
+  const [traduction, setTraduction] = useState<string | null>(null)
+  const [traduit, setTraduit] = useState(false)
 
   const inventaire = useQuery({
     queryKey: ['inventaire'],
@@ -151,6 +187,60 @@ export function EcranChef() {
             )}
             {manquants.length === 0 && (
               <p className="mt-2 text-legende text-fait">✓ Tout est déjà dans tes placards.</p>
+            )}
+          </Carte>
+        )}
+
+        {/* 🎲 L'inspiration du monde entier (TheMealDB) */}
+        <Bouton
+          pleineLargeur
+          variante="soleil"
+          desactive={mondeEnCours}
+          onClick={() => {
+            setMondeEnCours(true)
+            setTraduction(null)
+            setTraduit(false)
+            void recetteSurprise()
+              .then(setMonde)
+              .finally(() => setMondeEnCours(false))
+          }}
+        >
+          {mondeEnCours ? '🌍 Le Chef fait tourner le globe…' : '🎲 Une recette surprise du monde'}
+        </Bouton>
+
+        {monde && (
+          <Carte>
+            <div className="flex items-start gap-3">
+              {monde.image && <img src={monde.image} alt="" className="h-24 w-24 rounded-lg object-cover" />}
+              <div className="min-w-0 flex-1">
+                <p className="break-words text-corps font-[590] text-encre">{monde.nom}</p>
+                {monde.origine && <p className="text-legende text-encre-3">🌍 Cuisine {monde.origine.toLowerCase()}</p>}
+                <p className="mt-1 text-legende text-encre-3">{monde.ingredients.slice(0, 8).join(' · ')}{monde.ingredients.length > 8 ? '…' : ''}</p>
+              </div>
+            </div>
+            {traduction ? (
+              <p className="mt-2 whitespace-pre-wrap border-t border-trait pt-2 text-corps-2 leading-relaxed text-encre">{traduction}</p>
+            ) : (
+              <div className="mt-2">
+                <Bouton
+                  pleineLargeur
+                  variante="discret"
+                  desactive={traduit}
+                  onClick={() => {
+                    setTraduit(true)
+                    void demanderAStiga(
+                      `Traduis et adapte cette recette pour une famille française (2 adultes + enfant de 7 ans) : ` +
+                        `« ${monde.nom} » (cuisine ${monde.origine ?? '?'}), ingrédients : ${monde.ingredients.join(', ')}. ` +
+                        `Donne le nom français, les ingrédients en français avec quantités simples, et la recette en 5-6 étapes courtes.`,
+                    )
+                      .then(setTraduction)
+                      .catch(() => setTraduction('Traduction impossible pour le moment — réessaie.'))
+                      .finally(() => setTraduit(false))
+                  }}
+                >
+                  {traduit ? '👨‍🍳 STG traduit…' : '👨‍🍳 STG, traduis et adapte en français'}
+                </Bouton>
+              </div>
             )}
           </Carte>
         )}

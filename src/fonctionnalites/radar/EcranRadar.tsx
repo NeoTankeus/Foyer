@@ -62,6 +62,21 @@ export function EcranRadar() {
   const [adresse, setAdresse] = useState('')
   const [etatMaison, setEtatMaison] = useState<'repos' | 'cherche' | 'echec' | 'ok'>('repos')
 
+  // La commune officielle de la maison (API Découpage administratif, data.gouv).
+  const commune = useQuery({
+    queryKey: ['commune', maison?.lat],
+    enabled: maison !== null,
+    staleTime: 7 * 24 * 3600 * 1000,
+    queryFn: async (): Promise<{ nom: string; codeDepartement: string } | null> => {
+      const r = await fetch(
+        `https://geo.api.gouv.fr/communes?lat=${maison?.lat}&lon=${maison?.lon}&fields=nom,codeDepartement&format=json`,
+      )
+      if (!r.ok) return null
+      const liste = (await r.json()) as { nom: string; codeDepartement: string }[]
+      return liste[0] ?? null
+    },
+  })
+
   const departs = useQuery({
     queryKey: ['radar', maison?.lat],
     enabled: maison !== null,
@@ -166,7 +181,10 @@ export function EcranRadar() {
 
         {maison && (
           <>
-            <p className="text-legende text-encre-3">🏡 Maison : {maison.adresse}</p>
+            <p className="text-legende text-encre-3">
+              🏡 Maison : {maison.adresse}
+              {commune.data ? ` — commune de ${commune.data.nom} (${commune.data.codeDepartement})` : ''}
+            </p>
             {departs.isLoading && <p className="py-6 text-center text-corps-2 text-encre-3">Calcul des trajets…</p>}
             {departs.data && departs.data.calcules.length === 0 && (
               <EtatVide

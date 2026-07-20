@@ -31,6 +31,10 @@ export function EcranNous() {
   const estAdulte = membre?.role === 'adult'
 
   const MODULES: { chemin: string; libelle: string; detail: string; icone: string; couleur: string; adulte?: boolean }[] = [
+    { chemin: '/nous/courrier', libelle: 'La Boîte aux lettres', detail: 'colle un email — STG range tout', icone: '📬', couleur: 'var(--ardoise)' },
+    { chemin: '/nous/stock', libelle: 'Le Stock fantôme', detail: 'STG rachète avant la panne', icone: '📦', couleur: 'var(--sauge)' },
+    { chemin: '/nous/corvees', libelle: 'Corvées équitables', detail: 'la balance des minutes répartit', icone: '🔄', couleur: 'var(--prune)', adulte: true },
+    { chemin: '/nous/ecole', libelle: 'L’École', detail: 'sorties, réunions, fournitures de Gabriel', icone: '🚸', couleur: 'var(--ambre)' },
     { chemin: '/nous/chef', libelle: 'Le Chef', detail: 'le menu du soir avec ce qu’on a déjà', icone: '🧑‍🍳', couleur: 'var(--sauge)' },
     { chemin: '/nous/weekend', libelle: 'Week-end surprise', detail: 'un budget, un rayon — STG compose tout', icone: '🧭', couleur: 'var(--ambre)' },
     { chemin: '/nous/quiz', libelle: 'Quiz du dîner', detail: '3 questions à table, dont une sur VOTRE vie', icone: '🏆', couleur: 'var(--or)' },
@@ -47,6 +51,17 @@ export function EcranNous() {
     { chemin: '/nous/capsules', libelle: 'Capsules temporelles', detail: 'des mots d’aujourd’hui pour plus tard', icone: '💌', couleur: 'var(--corail)', adulte: true },
     { chemin: '/nous/budget', libelle: 'Le Trésorier', detail: 'scanne le ticket, STG classe tout', icone: '💰', couleur: 'var(--or)', adulte: true },
     { chemin: '/nous/sante', libelle: 'Carnet santé', detail: 'vaccins, ordonnances, rappels', icone: '🩺', couleur: 'var(--ardoise)', adulte: true },
+    { chemin: '/nous/adn', libelle: 'L’ADN du foyer', detail: 'votre portrait et ses prédictions', icone: '🧬', couleur: 'var(--prune)' },
+    { chemin: '/nous/detective', libelle: 'Détective des prix', detail: 'photographie l’étiquette, il juge', icone: '🕵️', couleur: 'var(--or)' },
+    { chemin: '/nous/tribunal', libelle: 'Le Tribunal', detail: 'verdicts solennels, mauvaise foi assumée', icone: '⚖️', couleur: 'var(--encre-2)', adulte: true },
+    { chemin: '/nous/olympiades', libelle: 'Les Olympiades', detail: 'épreuves maison, gloire éternelle', icone: '🏅', couleur: 'var(--corail)' },
+    { chemin: '/nous/horoscope', libelle: 'L’Horoscope du foyer', detail: 'les astres ont lu vos placards', icone: '🔮', couleur: 'var(--prune)' },
+    { chemin: '/nous/interviews', libelle: 'Les Interviews', detail: 'les mêmes questions, année après année', icone: '🎤', couleur: 'var(--or)' },
+    { chemin: '/nous/arbre', libelle: 'L’Arbre de la famille', detail: 'toutes les branches, tous les goûts', icone: '🌳', couleur: 'var(--sauge)' },
+    { chemin: '/nous/livre', libelle: 'Le Livre de l’année', detail: 'votre année, prête à imprimer', icone: '📖', couleur: 'var(--ambre)' },
+    { chemin: '/nous/trains', libelle: 'Les trains', detail: 'départs en temps réel, retards compris', icone: '🚆', couleur: 'var(--ardoise)' },
+    { chemin: '/nous/crues', libelle: 'Les cours d’eau', detail: 'hauteurs Vigicrues autour de la maison', icone: '🌊', couleur: 'var(--ardoise)' },
+    { chemin: '/nous/annuaire', libelle: 'Annuaire officiel', detail: 'toute entreprise de France (Sirene)', icone: '🏢', couleur: 'var(--encre-2)' },
     { chemin: '/nous/equilibre', libelle: 'Équilibre', detail: 'la répartition réelle, en minutes', icone: '⚖️', couleur: 'var(--ardoise)', adulte: true },
     { chemin: '/nous/celebrations', libelle: 'Célébrations', detail: 'anniversaires et coffre à idées', icone: '🎂', couleur: 'var(--corail)' },
     { chemin: '/nous/voyages', libelle: 'Voyages', detail: 'valises, réservations, météo', icone: '✈️', couleur: 'var(--ardoise)' },

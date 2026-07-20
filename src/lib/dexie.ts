@@ -11,6 +11,8 @@ import type {
   LigneHabitude,
   LigneCapsule,
   LigneSante,
+  LigneTribunal,
+  LigneInterview,
   LigneColis,
   LigneDocument,
   LigneEvenement,
@@ -64,6 +66,8 @@ export type TableSynchronisee =
   | 'habitudes'
   | 'capsules'
   | 'sante'
+  | 'tribunal'
+  | 'interviews'
 
 export interface MutationEnAttente {
   id: string // uuid client, idempotent
@@ -105,6 +109,8 @@ class BaseFoyer extends Dexie {
   habitudes!: Table<LigneHabitude, string>
   capsules!: Table<LigneCapsule, string>
   sante!: Table<LigneSante, string>
+  tribunal!: Table<LigneTribunal, string>
+  interviews!: Table<LigneInterview, string>
   file_attente!: Table<MutationEnAttente, string>
 
   constructor() {
@@ -157,6 +163,10 @@ class BaseFoyer extends Dexie {
       habitudes: 'id, membre_id',
       capsules: 'id, ouvrir_le',
       sante: 'id, personne, rappel_le',
+    })
+    this.version(10).stores({
+      tribunal: 'id, cree_le',
+      interviews: 'id, personne, annee',
     })
   }
 }

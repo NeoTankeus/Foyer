@@ -148,6 +148,8 @@ export interface Database {
       habitudes: Table<LigneHabitude>
       capsules: Table<LigneCapsule>
       sante: Table<LigneSante>
+      tribunal: Table<LigneTribunal>
+      interviews: Table<LigneInterview>
       notifications: Table<LigneNotification>
       integrations: Table<LigneIntegration>
       push_abonnements: Table<LignePushAbonnement>
@@ -466,6 +468,28 @@ export type LigneSante = {
   rappel_le: string | null
   image_donnees: string | null
   notes: string | null
+  cree_le: string
+}
+
+export type LigneTribunal = {
+  id: string
+  foyer_id: string
+  affaire: string
+  plaignant: string
+  accuse: string
+  plaidoirie_plaignant: string | null
+  plaidoirie_accuse: string | null
+  verdict: string | null
+  cree_le: string
+}
+
+export type LigneInterview = {
+  id: string
+  foyer_id: string
+  personne: string
+  question: string
+  reponse: string
+  annee: number
   cree_le: string
 }
 

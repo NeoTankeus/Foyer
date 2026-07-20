@@ -52,6 +52,21 @@ const EcranRadarPrix = paresseux(() => import('@/fonctionnalites/prix/EcranRadar
 const EcranCiel = paresseux(() => import('@/fonctionnalites/ciel/EcranCiel'), 'EcranCiel')
 const EcranQuiz = paresseux(() => import('@/fonctionnalites/quiz/EcranQuiz'), 'EcranQuiz')
 const EcranWeekend = paresseux(() => import('@/fonctionnalites/weekend/EcranWeekend'), 'EcranWeekend')
+const EcranCourrier = paresseux(() => import('@/fonctionnalites/courrier/EcranCourrier'), 'EcranCourrier')
+const EcranCorvees = paresseux(() => import('@/fonctionnalites/corvees/EcranCorvees'), 'EcranCorvees')
+const EcranStock = paresseux(() => import('@/fonctionnalites/stock/EcranStock'), 'EcranStock')
+const EcranEcole = paresseux(() => import('@/fonctionnalites/ecole/EcranEcole'), 'EcranEcole')
+const EcranAdn = paresseux(() => import('@/fonctionnalites/adn/EcranAdn'), 'EcranAdn')
+const EcranDetective = paresseux(() => import('@/fonctionnalites/detective/EcranDetective'), 'EcranDetective')
+const EcranTribunal = paresseux(() => import('@/fonctionnalites/tribunal/EcranTribunal'), 'EcranTribunal')
+const EcranOlympiades = paresseux(() => import('@/fonctionnalites/olympiades/EcranOlympiades'), 'EcranOlympiades')
+const EcranHoroscope = paresseux(() => import('@/fonctionnalites/horoscope/EcranHoroscope'), 'EcranHoroscope')
+const EcranInterviews = paresseux(() => import('@/fonctionnalites/interviews/EcranInterviews'), 'EcranInterviews')
+const EcranArbre = paresseux(() => import('@/fonctionnalites/arbre/EcranArbre'), 'EcranArbre')
+const EcranLivre = paresseux(() => import('@/fonctionnalites/journal/EcranLivre'), 'EcranLivre')
+const EcranAnnuaire = paresseux(() => import('@/fonctionnalites/annuaire/EcranAnnuaire'), 'EcranAnnuaire')
+const EcranCrues = paresseux(() => import('@/fonctionnalites/crues/EcranCrues'), 'EcranCrues')
+const EcranTrains = paresseux(() => import('@/fonctionnalites/trains/EcranTrains'), 'EcranTrains')
 
 function IconeOnglet({ nom }: { nom: string }) {
   const traits = { fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round' as const }
@@ -242,6 +257,21 @@ function Interieur() {
             <Route path="/nous/ciel" element={<EcranCiel />} />
             <Route path="/nous/quiz" element={<EcranQuiz />} />
             <Route path="/nous/weekend" element={<EcranWeekend />} />
+            <Route path="/nous/courrier" element={<EcranCourrier />} />
+            <Route path="/nous/corvees" element={<EcranCorvees />} />
+            <Route path="/nous/stock" element={<EcranStock />} />
+            <Route path="/nous/ecole" element={<EcranEcole />} />
+            <Route path="/nous/adn" element={<EcranAdn />} />
+            <Route path="/nous/detective" element={<EcranDetective />} />
+            <Route path="/nous/tribunal" element={<EcranTribunal />} />
+            <Route path="/nous/olympiades" element={<EcranOlympiades />} />
+            <Route path="/nous/horoscope" element={<EcranHoroscope />} />
+            <Route path="/nous/interviews" element={<EcranInterviews />} />
+            <Route path="/nous/arbre" element={<EcranArbre />} />
+            <Route path="/nous/livre" element={<EcranLivre />} />
+            <Route path="/nous/annuaire" element={<EcranAnnuaire />} />
+            <Route path="/nous/crues" element={<EcranCrues />} />
+            <Route path="/nous/trains" element={<EcranTrains />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </Suspense>

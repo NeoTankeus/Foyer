@@ -378,6 +378,8 @@ export function EcranAdministration() {
         </div>
       </Carte>
 
+      <CarteFenetreGrandsParents />
+
       <Carte>
         <h3 className="mb-2 text-note font-[590] uppercase tracking-wide text-encre-3">
           Journal d’audit — qui a touché aux données sensibles
@@ -534,5 +536,86 @@ function FormMembre({
         {enCours ? 'Enregistrement…' : 'Enregistrer'}
       </Bouton>
     </div>
+  )
+}
+
+/** 👵 La Fenêtre des grands-parents : un lien secret, en lecture seule, sans
+ *  compte — photos récentes, semaine de la famille, anniversaires. */
+function CarteFenetreGrandsParents() {
+  const { foyer } = utiliserSession()
+  const [jeton, setJeton] = useState<string | null>(() => {
+    const brut = foyer?.reglages['fenetre_jeton']
+    return typeof brut === 'string' ? brut : null
+  })
+  const [etat, setEtat] = useState<'repos' | 'en-cours' | 'copie' | 'erreur'>('repos')
+
+  const enregistrerJeton = async (valeur: string | null) => {
+    if (!foyer) return
+    setEtat('en-cours')
+    const { data: frais } = await supabase.from('foyers').select('reglages').eq('id', foyer.id).single()
+    const base = (frais?.reglages ?? foyer.reglages) as Record<string, unknown>
+    const suivants = { ...base } as Record<string, unknown>
+    if (valeur) suivants['fenetre_jeton'] = valeur
+    else delete suivants['fenetre_jeton']
+    const { error } = await supabase.from('foyers').update({ reglages: suivants }).eq('id', foyer.id)
+    if (error) {
+      setEtat('erreur')
+      return
+    }
+    setJeton(valeur)
+    setEtat('repos')
+  }
+
+  const lien = jeton ? `${window.location.origin}/api/fenetre?jeton=${jeton}` : null
+
+  return (
+    <Carte>
+      <h3 className="mb-1 text-note font-[590] uppercase tracking-wide text-encre-3">
+        👵 La Fenêtre des grands-parents
+      </h3>
+      <p className="mb-2 text-corps-2 text-encre-2">
+        Un lien privé à envoyer à papi et mamie : une page toute simple, en gros caractères, avec les dernières
+        photos, la semaine de la famille et les anniversaires. Sans compte, sans installation — ils l'ajoutent
+        à leurs favoris et la page se met à jour toute seule.
+      </p>
+      {lien ? (
+        <div className="flex flex-col gap-2">
+          <p className="break-all rounded-lg bg-fond-sourd px-3 py-2 text-legende text-encre-2">{lien}</p>
+          <div className="flex gap-2">
+            <Bouton
+              pleineLargeur
+              variante="valider"
+              onClick={() => {
+                void navigator.clipboard?.writeText(lien).then(() => {
+                  setEtat('copie')
+                  window.setTimeout(() => setEtat('repos'), 2000)
+                })
+              }}
+            >
+              {etat === 'copie' ? '✓ Copié !' : '📋 Copier le lien'}
+            </Bouton>
+            <Bouton
+              variante="discret"
+              onClick={() => {
+                if (confirm('Révoquer ce lien ? Les grands-parents ne verront plus la page (tu pourras en créer un nouveau).'))
+                  void enregistrerJeton(null)
+              }}
+            >
+              Révoquer
+            </Bouton>
+          </div>
+        </div>
+      ) : (
+        <Bouton
+          pleineLargeur
+          variante="primaire"
+          desactive={etat === 'en-cours'}
+          onClick={() => void enregistrerJeton(crypto.randomUUID().replace(/-/g, '') + crypto.randomUUID().replace(/-/g, ''))}
+        >
+          {etat === 'en-cours' ? 'Création…' : '🔗 Créer le lien pour les grands-parents'}
+        </Bouton>
+      )}
+      {etat === 'erreur' && <p className="mt-1 text-legende text-urgent">Enregistrement impossible — réessaie.</p>}
+    </Carte>
   )
 }

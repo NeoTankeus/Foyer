@@ -213,6 +213,18 @@ async function composerBrief(): Promise<string> {
   else if (taches.length > 1) morceaux.push(`${taches.length} choses à faire.`)
   const soir = repas[0]
   if (soir?.notes) morceaux.push(`Ce soir : ${soir.notes}.`)
+  // 🎉 Férié aujourd'hui ou demain (calendrier officiel) ?
+  try {
+    const r = await fetch('https://calendrier.api.gouv.fr/jours-feries/metropole.json')
+    if (r.ok) {
+      const feries = (await r.json()) as Record<string, string>
+      const demain = new Intl.DateTimeFormat('fr-CA', { timeZone: 'Europe/Paris' }).format(new Date(Date.now() + 86400000))
+      if (feries[jour]) morceaux.push(`🎉 C'est férié aujourd'hui (${feries[jour]}) !`)
+      else if (feries[demain]) morceaux.push(`🎉 Demain c'est férié (${feries[demain]}) !`)
+    }
+  } catch {
+    // le calendrier attendra
+  }
   return morceaux.join(' ')
 }
 
@@ -432,7 +444,60 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return souvenirs.length
   }
 
-  const resultat = { ics: 0, colis: 0, prix: 0, anniversaires: 0, capsules: 0, sante: 0, alertes: 0, garanties: 0, souvenirs: 0, brief: '', notifies: abonnements.length }
+  // 📦 Le Stock fantôme : les produits à échéance partent AUX COURSES tout seuls.
+  const stockFantome = async (): Promise<number> => {
+    const { jour } = bornesJourParis()
+    const foyers = await sb<{ id: string; reglages?: Record<string, unknown> }[]>('foyers?select=id,reglages&limit=1')
+    const foyer = foyers[0]
+    const produits = foyer?.reglages?.['stock_fantome']
+    if (!foyer || !Array.isArray(produits) || produits.length === 0) return 0
+    const listes = await sb<{ id: string }[]>('listes?type=eq.courses&select=id&limit=1')
+    const liste = listes[0]
+    if (!liste) return 0
+    const articles = await sb<{ libelle: string }[]>(`articles?liste_id=eq.${liste.id}&coche=eq.false&select=libelle`)
+    const dejaLa = new Set(articles.map((a) => a.libelle.toLowerCase()))
+
+    let ajoutes = 0
+    const suivants = (produits as { libelle: string; jours: number; dernier: string }[]).map((p) => {
+      const echeance = new Date(`${p.dernier}T12:00:00`)
+      echeance.setDate(echeance.getDate() + p.jours)
+      const du = echeance <= new Date(`${jour}T12:00:00`)
+      if (!du || dejaLa.has(p.libelle.toLowerCase())) return p
+      ajoutes += 1
+      return { ...p, dernier: jour } // le compteur repart — pas de doublon demain
+    })
+
+    if (ajoutes > 0) {
+      const aAjouter = (produits as { libelle: string; jours: number; dernier: string }[]).filter((p, i) => {
+        const s = suivants[i]
+        return s !== undefined && s.dernier !== p.dernier
+      })
+      for (const p of aAjouter) {
+        await sb('articles', {
+          method: 'POST',
+          body: JSON.stringify({
+            liste_id: liste.id, libelle: p.libelle, rayon: 'autre', coche: false,
+            position: 999999, ajoute_par: null, quantite: null, unite: null,
+          }),
+        }).catch(() => undefined)
+      }
+      // Réglages relus à l'instant T pour ne rien écraser d'autre.
+      const frais = await sb<{ reglages?: Record<string, unknown> }[]>('foyers?select=reglages&limit=1')
+      await sb(`foyers?id=eq.${foyer.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ reglages: { ...(frais[0]?.reglages ?? {}), stock_fantome: suivants } }),
+      }).catch(() => undefined)
+      await pousser(
+        '📦 Le Stock fantôme a fait les courses',
+        `${aAjouter.map((p) => p.libelle).join(', ')} ajouté${ajoutes > 1 ? 's' : ''} à la liste — avant la panne.`,
+        '/maison?volet=courses',
+      )
+    }
+    return ajoutes
+  }
+
+  const resultat = { ics: 0, colis: 0, prix: 0, anniversaires: 0, capsules: 0, sante: 0, alertes: 0, garanties: 0, souvenirs: 0, stock: 0, brief: '', notifies: abonnements.length }
+  try { resultat.stock = await stockFantome() } catch { /* section suivante */ }
   try { resultat.alertes = await alerterMeteo() } catch { /* section suivante */ }
   try { resultat.garanties = await rappelerGaranties() } catch { /* section suivante */ }
   try { resultat.souvenirs = await ilYaUnAn() } catch { /* section suivante */ }

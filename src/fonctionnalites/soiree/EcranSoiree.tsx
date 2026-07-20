@@ -16,8 +16,11 @@ import { Carte } from '@/design/composants/Carte'
 const PLATEFORMES = ['Canal+', 'Prime Video', 'Netflix', 'Disney+', 'Chaînes TV (TF1, France 2/3, M6, Arte…)']
 const CLE_PLATEFORMES = 'stiga-soiree-plateformes'
 
+interface Affiche { titre: string; affiche: string | null; synopsis: string | null; lien: string | null; annee: string | null }
+
 export function EcranSoiree() {
   const [avec, setAvec] = useState<'gabriel' | 'a-deux'>('gabriel')
+  const [affiches, setAffiches] = useState<Affiche[]>([])
   const [plateformes, setPlateformes] = useState<string[]>(() => {
     try {
       const brut = JSON.parse(localStorage.getItem(CLE_PLATEFORMES) ?? 'null') as string[] | null
@@ -63,7 +66,17 @@ export function EcranSoiree() {
         `🍲 À LA MAISON — le plat simple qui va avec la soirée et la météo, en une ligne.\n` +
         `🍴 OU RESTO — ${favoris ? 'UN de nos favoris ci-dessus (redonne son téléphone pour réserver)' : 'dis simplement qu’on n’a pas encore de favoris dans le carnet'}.\n` +
         `Termine par une phrase d'ambiance courte. Pas de blabla autour.`
-      setProposition(await demanderAStiga(question))
+      const reponse = await demanderAStiga(question)
+      setProposition(reponse)
+      // 🎬 L'affiche et le synopsis du film proposé (iTunes, via notre relais).
+      setAffiches([])
+      const titreFilm = /🎬\s*FILM\s*[—:\-–]\s*«?\s*([^,\n»(—]+)/.exec(reponse)?.[1]?.trim()
+      if (titreFilm && titreFilm.length > 1) {
+        void fetch(`/api/itunes?terme=${encodeURIComponent(titreFilm)}&media=movie`)
+          .then((r) => (r.ok ? r.json() : { resultats: [] }))
+          .then((d: { resultats?: Affiche[] }) => setAffiches((d.resultats ?? []).slice(0, 2)))
+          .catch(() => undefined)
+      }
     } catch (e) {
       setErreur(String(e instanceof Error ? e.message : e))
     } finally {
@@ -129,6 +142,16 @@ export function EcranSoiree() {
 
         {proposition && (
           <Carte>
+            {affiches.length > 0 && (
+              <div className="mb-3 flex gap-3">
+                {affiches.map((a, i) => (
+                  <a key={i} href={a.lien ?? '#'} target="_blank" rel="noopener" className="flex-1">
+                    {a.affiche && <img src={a.affiche} alt={a.titre} className="w-full rounded-lg shadow-carte" />}
+                    <p className="mt-1 text-legende font-[590] text-encre">{a.titre}{a.annee ? ` (${a.annee})` : ''}</p>
+                  </a>
+                ))}
+              </div>
+            )}
             <p className="whitespace-pre-wrap text-corps-2 leading-relaxed text-encre">{proposition}</p>
             {telephone && (
               <a

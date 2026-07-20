@@ -2,12 +2,15 @@
 // passé (repas, photos, mur, restos, tâches, sorties…) — et la vue Année
 // raconte votre année sans que personne n'ait rien rédigé.
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { utiliserSession } from '@/etat/session'
+import { demanderAStiga } from '@/lib/stiga'
 import type { LigneDepense, LigneEvenement, LigneMur, LigneRepas, LigneRestaurant, LigneSouvenir, LigneTache } from '@/lib/basedonnees.types'
 import { BarreRetour } from '@/design/composants/BarreRetour'
 import { Carte } from '@/design/composants/Carte'
+import { Bouton } from '@/design/composants/Bouton'
 import { EtatVide } from '@/design/composants/EtatVide'
 
 const CRENEAUX: Record<string, string> = { matin: 'Petit-déj', midi: 'Déjeuner', gouter: 'Goûter', soir: 'Dîner' }
@@ -83,8 +86,11 @@ function utiliserAnnee(annee: number) {
 
 export function EcranJournal() {
   const { membres } = utiliserSession()
+  const naviguer = useNavigate()
   const [vue, setVue] = useState<'jour' | 'annee'>('jour')
   const [jour, setJour] = useState(jourIso(new Date()))
+  const [recit, setRecit] = useState<{ jour: string; texte: string } | null>(null)
+  const [raconte, setRaconte] = useState(false)
   const annee = new Date().getFullYear()
   const duJour = utiliserJour(jour)
   const deLAnnee = utiliserAnnee(annee)
@@ -141,6 +147,41 @@ export function EcranJournal() {
             {duJour.isLoading && <p className="py-6 text-center text-corps-2 text-encre-3">STG feuillette le journal…</p>}
             {duJour.isError && <p className="py-6 text-center text-corps-2 text-encre-3">Le journal a besoin de réseau pour se relire.</p>}
             {vide && <EtatVide titre="Page blanche" message="Rien d'enregistré ce jour-là — c'était peut-être un dimanche parfait à ne rien faire." />}
+
+            {/* ⏳ La Machine à remonter le temps : STG raconte la journée comme une histoire */}
+            {j && !vide && (
+              <Bouton
+                pleineLargeur
+                variante="soleil"
+                desactive={raconte}
+                onClick={() => {
+                  setRaconte(true)
+                  const morceaux = [
+                    j.evenements.length ? `événements : ${j.evenements.map((e) => e.titre).join(', ')}` : '',
+                    j.repas.length ? `repas : ${j.repas.map((r) => `${r.creneau} ${r.notes ?? ''}`).join(', ')}` : '',
+                    j.restaurants.length ? `nouveau resto : ${j.restaurants.map((r) => r.nom).join(', ')}` : '',
+                    j.taches.length ? `accompli : ${j.taches.map((t) => t.titre).join(', ')}` : '',
+                    j.souvenirs.length ? `${j.souvenirs.length} photo(s) prise(s)${j.souvenirs[0]?.titre ? ` dont « ${j.souvenirs[0].titre} »` : ''}` : '',
+                    j.mur.length ? `mots laissés : ${j.mur.map((m) => m.contenu).filter(Boolean).slice(0, 3).join(' / ')}` : '',
+                  ].filter(Boolean).join(' ; ')
+                  void demanderAStiga(
+                    `Raconte la journée du ${libelleJour(jour)} de notre famille (Stéphane, Tiphaine, Gabriel 7 ans) ` +
+                      `comme une petite histoire chaleureuse de 6-9 lignes, à partir de ces traces réelles : ${morceaux}. ` +
+                      `Uniquement ces faits — pas d'invention, mais de la tendresse et un sourire.`,
+                  )
+                    .then((texte) => setRecit({ jour, texte }))
+                    .catch(() => setRecit({ jour, texte: 'La machine à remonter le temps a calé — réessaie.' }))
+                    .finally(() => setRaconte(false))
+                }}
+              >
+                {raconte ? '⏳ STG remonte le temps…' : '⏳ Raconte-moi cette journée'}
+              </Bouton>
+            )}
+            {recit && recit.jour === jour && (
+              <Carte>
+                <p className="whitespace-pre-wrap text-corps-2 leading-relaxed text-encre">{recit.texte}</p>
+              </Carte>
+            )}
 
             {j && j.souvenirs.length > 0 && (
               <div className="grid grid-cols-3 gap-2">
@@ -257,6 +298,9 @@ export function EcranJournal() {
                     </div>
                   </>
                 )}
+                <Bouton pleineLargeur variante="soleil" onClick={() => naviguer('/nous/livre')}>
+                  📖 Générer le Livre de l'année (imprimable)
+                </Bouton>
                 <p className="text-legende text-encre-3">
                   Le Journal s'écrit tout seul : tout ce que vous faites dans STG devient une page. Au 31 décembre, cette vue devient votre rétrospective.
                 </p>
