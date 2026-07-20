@@ -143,7 +143,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const motNominatim = quoi === 'pharmacies' ? 'pharmacie' : quoi === 'stations' ? 'station essence' : 'restaurant'
       // Toutes les sources sont interrogées EN MÊME TEMPS — la première qui
       // répond avec des tables gagne. Fini l'attente en cascade.
-      const requeteOsm = `[out:json][timeout:10];(node(around:${ra},${la},${lo})[amenity~"${amenity}"][name];way(around:${ra},${la},${lo})[amenity~"${amenity}"][name];);out center 80;`
+      const filtreNom = quoi === 'stations' ? '' : '[name]'
+      const requeteOsm = `[out:json][timeout:10];(node(around:${ra},${la},${lo})[amenity~"${amenity}"]${filtreNom};way(around:${ra},${la},${lo})[amenity~"${amenity}"]${filtreNom};);out center 80;`
       const miroirs = [
         'https://overpass.kumi.systems/api/interpreter',
         'https://overpass.private.coffee/api/interpreter',

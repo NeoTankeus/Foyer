@@ -46,7 +46,10 @@ export async function chercherLieux(
   amenity: string,
   quoi: string,
 ): Promise<LieuAutour[]> {
-  const requete = `[out:json][timeout:20];(node(around:${rayonM},${lat},${lon})[amenity~"${amenity}"][name];way(around:${rayonM},${lat},${lon})[amenity~"${amenity}"][name];);out center 80;`
+  // Les stations-service ont souvent une MARQUE sans « name » dans OSM :
+  // pour elles, on ne filtre pas sur le nom (repli marque/exploitant plus bas).
+  const filtreNom = quoi === 'stations' ? '' : '[name]'
+  const requete = `[out:json][timeout:20];(node(around:${rayonM},${lat},${lon})[amenity~"${amenity}"]${filtreNom};way(around:${rayonM},${lat},${lon})[amenity~"${amenity}"]${filtreNom};);out center 80;`
   const controleurs = MIROIRS.map(() => new AbortController())
   const essais = MIROIRS.map(async (miroir, i) => {
     const coupure = controleurs[i]!
@@ -86,7 +89,7 @@ export async function chercherLieux(
   for (const e of donnees.elements ?? []) {
     const la = e.lat ?? e.center?.lat
     const lo = e.lon ?? e.center?.lon
-    const nom = e.tags?.['name']
+    const nom = e.tags?.['name'] ?? e.tags?.['brand'] ?? e.tags?.['operator']
     if (la === undefined || lo === undefined || !nom) continue
     resultats.push({
       id: String(e.id),
