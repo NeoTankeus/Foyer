@@ -146,7 +146,7 @@ export function BoutonPerroquet() {
         whileTap={{ scale: 0.92 }}
         transition={{ type: 'spring', stiffness: 400, damping: 32 }}
         aria-label="Le Perroquet — dicter à STG"
-        className="degrade-froid fixed right-4 z-30 flex h-14 w-14 items-center justify-center
+        className="degrade-froid calage-fixe fixed right-4 z-30 flex h-14 w-14 items-center justify-center
           rounded-full text-[26px] shadow-carte"
         style={{ bottom: 'calc(84px + env(safe-area-inset-bottom))' }}
       >

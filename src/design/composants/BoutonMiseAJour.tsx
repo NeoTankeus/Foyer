@@ -124,7 +124,7 @@ export function BoutonMiseAJour() {
       {(etat === 'installe' || etat === 'verifie') && (
         <div
           role="status"
-          className="verre verre-clair fixed inset-x-4 z-40 flex items-center gap-3 rounded-2xl border border-trait px-4 py-3 shadow-carte"
+          className="verre verre-clair calage-fixe fixed inset-x-4 z-40 flex items-center gap-3 rounded-2xl border border-trait px-4 py-3 shadow-carte"
           style={{ bottom: 'calc(96px + env(safe-area-inset-bottom))' }}
         >
           <span className={`text-[20px] ${fini ? '' : 'animate-pulse'}`} aria-hidden="true">

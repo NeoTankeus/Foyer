@@ -122,7 +122,7 @@ const ONGLETS = [
 function BarreOnglets() {
   return (
     <nav
-      className="verre verre-clair safe-bas fixed inset-x-0 bottom-0 z-30 border-t border-trait"
+      className="verre verre-clair safe-bas calage-fixe fixed inset-x-0 bottom-0 z-30 border-t border-trait"
       aria-label="Navigation principale"
     >
       <div className="flex px-1">

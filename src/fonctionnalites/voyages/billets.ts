@@ -88,6 +88,15 @@ export async function decoderBillet(source: File | string): Promise<BilletDecode
     decouper(plein, 0, H / 2, L / 2, H / 2, 2),
     decouper(plein, L / 2, H / 2, L / 2, H / 2, 2),
     decouper(plein, L * 0.1, H * 0.3, L * 0.8, H * 0.4, 2, 'grayscale(1) contrast(2)'),
+    // Les billets PDF placent souvent le code dans un COIN ou une bande :
+    // bandeau haut, bande droite, et les 4 coins zoomés très fort.
+    decouper(plein, 0, 0, L, H * 0.35, 2),
+    decouper(plein, L * 0.55, 0, L * 0.45, H, 2),
+    decouper(plein, L * 0.6, 0, L * 0.4, H * 0.4, 3),
+    decouper(plein, 0, 0, L * 0.4, H * 0.4, 3),
+    decouper(plein, L * 0.6, H * 0.6, L * 0.4, H * 0.4, 3),
+    decouper(plein, 0, H * 0.6, L * 0.4, H * 0.4, 3),
+    decouper(plein, L * 0.3, 0, L * 0.4, H * 0.4, 3, 'grayscale(1) contrast(1.8)'),
   ]
 
   for (const passe of passes) {

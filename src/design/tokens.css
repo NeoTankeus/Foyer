@@ -76,6 +76,13 @@ body {
   backdrop-filter: blur(24px) saturate(180%);
   -webkit-backdrop-filter: blur(24px) saturate(180%);
 }
+/* Bug iOS Safari : un élément `position: fixed` (surtout avec backdrop-filter)
+   peut se peindre au MILIEU de la page pendant le défilement. Sa propre couche
+   de composition le garde collé au bord de l'écran. */
+.calage-fixe {
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
+}
 .verre-clair {
   background: color-mix(in srgb, var(--fond) 72%, transparent);
 }

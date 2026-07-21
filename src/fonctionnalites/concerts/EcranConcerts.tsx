@@ -303,15 +303,18 @@ export function EcranConcerts() {
                 ) : null}
               </div>
             </div>
-            <div className="flex w-full gap-2">
-              <Bouton
+            {/* Toutes les actions BIEN RANGÉES sous le billet, en colonne —
+                rien ne déborde à droite de l'écran. */}
+            <div className="flex w-full flex-col gap-2">
+              <BoutonEnvoi
                 variante="soleil"
                 pleineLargeur
-                desactive={photosEnCours}
+                enCours={photosEnCours}
+                enfantsPendant="📷 Ajout des photos…"
                 onClick={() => champPhotos.current?.click()}
               >
-                {photosEnCours ? 'Ajout…' : '📷 Photos du concert'}
-              </Bouton>
+                📷 Photos du concert
+              </BoutonEnvoi>
               <Bouton
                 variante="discret"
                 pleineLargeur
@@ -325,12 +328,13 @@ export function EcranConcerts() {
               onChange={(e) => void ajouterPhotos(e.target.files)}
             />
             {estAdulte && (
-              <div className="flex w-full gap-2">
+              <div className="flex w-full flex-col gap-2">
                 <Bouton variante="discret" pleineLargeur onClick={() => { setACompleter(ouvert); setOuvert(null) }}>
-                  Modifier
+                  ✏️ Modifier
                 </Bouton>
                 <Bouton
                   variante="urgent"
+                  pleineLargeur
                   onClick={() => {
                     if (suppression !== 'feuille') {
                       demanderSuppression('feuille')
@@ -340,7 +344,7 @@ export function EcranConcerts() {
                     setOuvert(null)
                   }}
                 >
-                  {suppression === 'feuille' ? 'Confirmer ?' : 'Supprimer'}
+                  {suppression === 'feuille' ? 'Confirmer la suppression ?' : '🗑 Supprimer ce billet'}
                 </Bouton>
               </div>
             )}
