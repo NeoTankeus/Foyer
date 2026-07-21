@@ -1,14 +1,8 @@
 // Les nouveautés de la version en cours — affichées UNE fois dans le pop-up
 // « Quoi de neuf », signé ILY. Mises à jour à chaque déploiement.
 export const NOTES_VERSION: string[] = [
-  '📄 Les billets en PDF sont acceptés ! Dans la Boîte aux lettres comme dans le scanner de Concerts & sorties : chaque page du PDF devient un billet (QR décodé, prêt pour l’entrée).',
-  '🎫 La Boîte aux lettres accepte les pièces jointes (plusieurs !) : joins tes billets de concert, ils sont rangés dans Concerts & sorties.',
-  '🤖 Fini le « Quota IA atteint » : quatre modèles en cascade et trois vagues d’essais avant de rendre les armes.',
-  '⚡ Mise à jour en UN appui, garanti : si l’installation traîne plus de 10 secondes, l’app force le passage (remise à zéro des caches) — plus jamais besoin d’appuyer plusieurs fois.',
-  '🚀 Ouverture plus rapide : la vérification de version attend que l’app soit affichée, et chaque mise à jour télécharge ~1 Mo de moins.',
-  '🌊 Cours d’eau : les hauteurs s’affichent (repli automatique entre les versions du service Hub’Eau).',
-  '✏️ TOUT est maintenant modifiable et supprimable : événements de l’agenda, tâches, articles de courses, entrées santé, documents du Coffre, dépenses, garanties, objets d’inventaire, habitudes du Jardin, notes du Mur, colis, produits du Stock, fournitures d’École, options de la Roue, réponses d’Interviews, recettes… un appui sur l’élément (ou ✏️) ouvre le formulaire pré-rempli.',
-  '🏅 Olympiades : bouton −1 pour corriger des points mal comptés.',
-  '🌊 Cours d’eau réparés : deux chemins interrogés en même temps, le premier qui répond affiche les stations.',
-  '🧹 La fonctionnalité Routines a été retirée, comme demandé.',
+  '🪟 Le pop-up des nouveautés ne prend plus tout l’écran : petite fenêtre, texte qui défile à l’intérieur, bouton toujours accessible.',
+  '📄 Billets en PDF acceptés (Boîte aux lettres + scanner Concerts) : chaque page devient un billet, QR prêt pour l’entrée.',
+  '⚡ Mise à jour en UN appui garanti, et ouverture plus rapide.',
+  '✏️ Tout est modifiable et supprimable partout — un appui sur un élément ouvre son formulaire pré-rempli.',
 ]

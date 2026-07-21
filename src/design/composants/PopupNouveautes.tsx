@@ -42,29 +42,38 @@ export function PopupNouveautes() {
             role="dialog"
             aria-modal="true"
             aria-label="Nouveautés de la mise à jour"
-            className="fixed inset-x-5 top-1/2 z-50 mx-auto max-w-md rounded-xl bg-fond-eleve p-5 shadow-feuille"
+            // Petite fenêtre BORNÉE (jamais tout l'écran) : le texte défile à
+            // l'intérieur avec un ascenseur, le bouton reste toujours visible.
+            className="fixed inset-x-5 top-1/2 z-50 mx-auto flex max-h-[62dvh] max-w-md flex-col rounded-xl bg-fond-eleve p-5 shadow-feuille"
             initial={{ opacity: 0, y: '-42%', scale: 0.92 }}
             animate={{ opacity: 1, y: '-50%', scale: 1 }}
             exit={{ opacity: 0, y: '-46%', scale: 0.96 }}
             transition={{ type: 'spring', stiffness: 400, damping: 32 }}
           >
-            <h2 className="text-titre-3 text-encre">Mise à jour installée ✨</h2>
-            <p className="mb-3 text-legende text-encre-3">Version du {__DATE_VERSION__}</p>
-            <ul className="mb-4 flex flex-col gap-2">
+            <div className="shrink-0">
+              <h2 className="text-titre-3 text-encre">Mise à jour installée ✨</h2>
+              <p className="mb-3 text-legende text-encre-3">Version du {__DATE_VERSION__}</p>
+            </div>
+            <ul
+              className="mb-4 flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto overscroll-contain pr-1"
+              style={{ WebkitOverflowScrolling: 'touch' }}
+            >
               {NOTES_VERSION.map((note, i) => (
                 <li key={i} className="text-corps-2 leading-snug text-encre-2">
                   {note}
                 </li>
               ))}
             </ul>
-            <Bouton pleineLargeur variante="valider" onClick={fermer}>
-              Compris !
-            </Bouton>
-            {/* La signature de la maison */}
-            <div className="mt-4 flex justify-center">
-              <span className="badge-ily h-8 w-12 text-[13px]" aria-label="Signé ILY">
-                ILY
-              </span>
+            <div className="shrink-0">
+              <Bouton pleineLargeur variante="valider" onClick={fermer}>
+                Compris !
+              </Bouton>
+              {/* La signature de la maison */}
+              <div className="mt-3 flex justify-center">
+                <span className="badge-ily h-8 w-12 text-[13px]" aria-label="Signé ILY">
+                  ILY
+                </span>
+              </div>
             </div>
           </motion.div>
         </>
