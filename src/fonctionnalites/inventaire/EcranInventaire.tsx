@@ -1,6 +1,6 @@
 // L'inventaire du foyer : congélo, frigo, placard. On scanne à l'entrée,
 // on décompte à la sortie, les DLC proches remontent — anti-gaspi réel.
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { muter } from '@/lib/sync'
@@ -11,6 +11,7 @@ import { ficheParCodeBarres } from '@/lib/openfoodfacts'
 import type { LigneInventaire } from '@/lib/basedonnees.types'
 import { ScannerYuka } from '@/fonctionnalites/courses/ScannerYuka'
 import { Bouton } from '@/design/composants/Bouton'
+import { BoutonEnvoi } from '@/design/composants/BoutonEnvoi'
 import { ChampTexte } from '@/design/composants/ChampTexte'
 import { Feuille } from '@/design/composants/Feuille'
 import { EtatVide } from '@/design/composants/EtatVide'
@@ -35,6 +36,7 @@ export function EcranInventaire() {
   const [codePret, setCodePret] = useState<string | null>(null)
   const [enEdition, setEnEdition] = useState<LigneInventaire | null>(null)
   const [confirmeSuppr, setConfirmeSuppr] = useState<string | null>(null)
+  const fichierRef = useRef<HTMLInputElement>(null)
 
   const inventaire = useQuery({
     queryKey: ['inventaire'],
@@ -177,20 +179,25 @@ export function EcranInventaire() {
 
       <Feuille ouverte={ajoutOuvert} onFermer={() => setAjoutOuvert(false)} titre="Ajouter un produit">
         <div className="flex flex-col gap-3">
-          <label className="btn-3d btn-clair inline-flex min-h-sur-tactile cursor-pointer items-center justify-center px-4 py-2.5 text-center text-corps-2 leading-tight">
-            {scanEnCours ? 'Lecture…' : '📷 Scanner le code-barres'}
-            <input
-              type="file"
-              accept="image/*"
-              capture="environment"
-              className="hidden"
-              onChange={(e) => {
-                const fichier = e.target.files?.[0]
-                if (fichier) void scanner(fichier)
-                e.target.value = ''
-              }}
-            />
-          </label>
+          <BoutonEnvoi
+            variante="discret" pleineLargeur enCours={scanEnCours}
+            onClick={() => fichierRef.current?.click()} enfantsPendant="Lecture…"
+          >
+            📷 Scanner le code-barres
+          </BoutonEnvoi>
+          <input
+            ref={fichierRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            className="hidden"
+            aria-hidden="true"
+            onChange={(e) => {
+              const fichier = e.target.files?.[0]
+              if (fichier) void scanner(fichier)
+              e.target.value = ''
+            }}
+          />
           {imagePrete && <img src={imagePrete} alt="" className="mx-auto h-24 rounded-md object-contain" />}
           <ChampTexte etiquette="Produit" value={nom} onChange={(e) => setNom(e.target.value)} placeholder="Steaks hachés x4" />
           <ChampTexte etiquette="DLC (facultatif)" type="date" value={dlc} onChange={(e) => setDlc(e.target.value)} />
@@ -207,9 +214,9 @@ export function EcranInventaire() {
               </button>
             ))}
           </div>
-          <Bouton pleineLargeur variante="valider" desactive={!nom.trim()} onClick={() => void ajouter()}>
+          <BoutonEnvoi pleineLargeur variante="valider" desactive={!nom.trim()} onEnvoi={ajouter} enfantsPendant="Ajout…">
             Ajouter au {ZONES.find((z) => z.cle === zone)?.libelle.split(' ')[1] ?? 'stock'}
-          </Bouton>
+          </BoutonEnvoi>
         </div>
       </Feuille>
 

@@ -7,6 +7,7 @@ import { utiliserSession } from '@/etat/session'
 import { ajouterArticle, utiliserListeCourses } from '@/lib/requetes'
 import { devinerRayon } from '@/fonctionnalites/courses/rayons'
 import { Bouton } from '@/design/composants/Bouton'
+import { BoutonEnvoi } from '@/design/composants/BoutonEnvoi'
 import { Carte } from '@/design/composants/Carte'
 import { BarreRetour } from '@/design/composants/BarreRetour'
 
@@ -60,6 +61,7 @@ export function EcranComparateur() {
   const [analysePhoto, setAnalysePhoto] = useState(false)
   const video = useRef<HTMLVideoElement>(null)
   const controles = useRef<IScannerControls | null>(null)
+  const fichierRef = useRef<HTMLInputElement>(null)
 
   const traiterCode = async (brut: string) => {
     const propre = brut.trim()
@@ -156,20 +158,25 @@ export function EcranComparateur() {
             </p>
           )}
           <div className="mt-3 flex flex-col gap-2">
-            <label className="btn-3d btn-clair inline-flex min-h-sur-tactile cursor-pointer items-center justify-center px-4 py-2.5 text-center text-corps-2 leading-tight">
-              {analysePhoto ? 'Analyse…' : '📷 Photographier le code-barres'}
-              <input
-                type="file"
-                accept="image/*"
-                capture="environment"
-                className="hidden"
-                onChange={(e) => {
-                  const fichier = e.target.files?.[0]
-                  if (fichier) void photoSecours(fichier)
-                  e.target.value = ''
-                }}
-              />
-            </label>
+            <BoutonEnvoi
+              variante="discret" pleineLargeur enCours={analysePhoto}
+              onClick={() => fichierRef.current?.click()} enfantsPendant="Analyse…"
+            >
+              📷 Photographier le code-barres
+            </BoutonEnvoi>
+            <input
+              ref={fichierRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              className="hidden"
+              aria-hidden="true"
+              onChange={(e) => {
+                const fichier = e.target.files?.[0]
+                if (fichier) void photoSecours(fichier)
+                e.target.value = ''
+              }}
+            />
             <form
               className="flex gap-2"
               onSubmit={(e) => {

@@ -10,6 +10,7 @@ import { compresserImage } from '@/fonctionnalites/souvenirs/donnees'
 import type { LigneDepense } from '@/lib/basedonnees.types'
 import { BarreRetour } from '@/design/composants/BarreRetour'
 import { Bouton } from '@/design/composants/Bouton'
+import { BoutonEnvoi } from '@/design/composants/BoutonEnvoi'
 import { Carte } from '@/design/composants/Carte'
 import { EtatVide } from '@/design/composants/EtatVide'
 import { Feuille } from '@/design/composants/Feuille'
@@ -163,14 +164,15 @@ export function EcranBudget() {
 
       <div className="flex flex-col gap-3 px-5 pt-3">
         <div className="flex gap-2">
-          <Bouton
+          <BoutonEnvoi
             pleineLargeur
             variante="primaire"
-            desactive={scanEnCours}
+            enCours={scanEnCours}
             onClick={() => fichierRef.current?.click()}
+            enfantsPendant="STG lit le ticket…"
           >
-            {scanEnCours ? 'STG lit le ticket…' : '📸 Scanner un ticket'}
-          </Bouton>
+            📸 Scanner un ticket
+          </BoutonEnvoi>
           <Bouton pleineLargeur variante="discret" onClick={ouvrirSaisie}>
             ✍️ À la main
           </Bouton>
@@ -285,9 +287,13 @@ export function EcranBudget() {
               className="min-h-sur-tactile rounded-md border border-trait bg-fond-eleve px-3 text-corps"
             />
           </label>
-          <Bouton pleineLargeur variante="valider" desactive={!brouillon.libelle.trim() || !brouillon.montant} onClick={() => void enregistrer()}>
+          <BoutonEnvoi
+            pleineLargeur variante="valider"
+            desactive={!brouillon.libelle.trim() || !brouillon.montant}
+            onEnvoi={() => enregistrer()} enfantsPendant="Enregistrement…"
+          >
             Enregistrer
-          </Bouton>
+          </BoutonEnvoi>
         </div>
       </Feuille>
     </div>

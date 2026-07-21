@@ -9,6 +9,7 @@ import { utiliserVoyages } from '@/fonctionnalites/voyages/donnees'
 import { ajouterSouvenir, compresserImage, positionActuelle, utiliserSouvenirs } from './donnees'
 import type { LigneSouvenir } from '@/lib/basedonnees.types'
 import { Bouton } from '@/design/composants/Bouton'
+import { BoutonEnvoi } from '@/design/composants/BoutonEnvoi'
 import { Feuille } from '@/design/composants/Feuille'
 import { EtatVide } from '@/design/composants/EtatVide'
 import { BarreRetour } from '@/design/composants/BarreRetour'
@@ -169,20 +170,34 @@ export function EcranSouvenirs() {
           </div>
 
           <div className="mb-3 flex gap-2">
-            <Bouton variante="valider" pleineLargeur onClick={() => champCamera.current?.click()} desactive={ajoutEnCours}>
-              {ajoutEnCours ? 'Ajout…' : '📷 Photo'}
-            </Bouton>
-            <Bouton variante="discret" pleineLargeur onClick={() => champPellicule.current?.click()} desactive={ajoutEnCours}>
+            <BoutonEnvoi
+              variante="valider" pleineLargeur enCours={ajoutEnCours}
+              onClick={() => champCamera.current?.click()} enfantsPendant="Ajout…"
+            >
+              📷 Photo
+            </BoutonEnvoi>
+            <BoutonEnvoi
+              variante="discret" pleineLargeur enCours={ajoutEnCours}
+              onClick={() => champPellicule.current?.click()} enfantsPendant="Ajout…"
+            >
               Pellicule
-            </Bouton>
+            </BoutonEnvoi>
           </div>
           <input
             ref={champCamera} type="file" accept="image/*" capture="environment" hidden
-            aria-hidden="true" onChange={(e) => void importer(e.target.files)}
+            aria-hidden="true"
+            onChange={(e) => {
+              void importer(e.target.files)
+              e.target.value = '' // pour pouvoir reprendre la même photo
+            }}
           />
           <input
             ref={champPellicule} type="file" accept="image/*" multiple hidden
-            aria-hidden="true" onChange={(e) => void importer(e.target.files)}
+            aria-hidden="true"
+            onChange={(e) => {
+              void importer(e.target.files)
+              e.target.value = '' // pour pouvoir rechoisir les mêmes fichiers
+            }}
           />
           {progres && (
             <div className="mb-2">

@@ -11,6 +11,7 @@ import { compresserImage } from '@/fonctionnalites/souvenirs/donnees'
 import { ChoixVisuel } from '@/design/composants/ChoixVisuel'
 import type { LigneRestaurant } from '@/lib/basedonnees.types'
 import { Bouton } from '@/design/composants/Bouton'
+import { BoutonEnvoi } from '@/design/composants/BoutonEnvoi'
 import { Feuille } from '@/design/composants/Feuille'
 import { ChampTexte } from '@/design/composants/ChampTexte'
 import { EtatVide } from '@/design/composants/EtatVide'
@@ -418,6 +419,7 @@ function FicheRestaurant({
   const [confirme, setConfirme] = useState(false)
   const [choixCarte, setChoixCarte] = useState(false)
   const [photoEnCours, setPhotoEnCours] = useState(false)
+  const champCarte = useRef<HTMLInputElement>(null)
   const [localisation, setLocalisation] = useState<'repos' | 'en-cours' | 'echec'>('repos')
   const [adresseManuelle, setAdresseManuelle] = useState('')
   const [pageTheFork, setPageTheFork] = useState<string | null | 'cherche'>('cherche')
@@ -633,20 +635,25 @@ function FicheRestaurant({
           </div>
         )}
         <div className="flex flex-wrap gap-2">
-          <label className="btn-3d btn-clair inline-flex min-h-sur-tactile cursor-pointer items-center justify-center px-4 py-2.5 text-corps-2 leading-tight">
-            {photoEnCours ? 'Ajout…' : '📷 Photographier la carte'}
-            <input
-              type="file"
-              accept="image/*"
-              capture="environment"
-              className="hidden"
-              onChange={(e) => {
-                const fichier = e.target.files?.[0]
-                if (fichier) void ajouterPhotoCarte(fichier)
-                e.target.value = ''
-              }}
-            />
-          </label>
+          <BoutonEnvoi
+            variante="discret" enCours={photoEnCours}
+            onClick={() => champCarte.current?.click()} enfantsPendant="Ajout…"
+          >
+            📷 Photographier la carte
+          </BoutonEnvoi>
+          <input
+            ref={champCarte}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            className="hidden"
+            aria-hidden="true"
+            onChange={(e) => {
+              const fichier = e.target.files?.[0]
+              if (fichier) void ajouterPhotoCarte(fichier)
+              e.target.value = ''
+            }}
+          />
           <Bouton variante="discret" onClick={() => setChoixCarte(true)}>
             🔎 Chercher la carte {resto.site ? 'sur le site du resto' : 'sur internet'}
           </Bouton>

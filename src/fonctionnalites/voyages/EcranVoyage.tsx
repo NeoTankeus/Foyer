@@ -21,6 +21,7 @@ import { Coche } from '@/design/composants/Coche'
 import { couleurMembre } from '@/lib/couleurs'
 import { PastilleMembre } from '@/design/composants/PastilleMembre'
 import { Bouton } from '@/design/composants/Bouton'
+import { BoutonEnvoi } from '@/design/composants/BoutonEnvoi'
 import { Feuille } from '@/design/composants/Feuille'
 import { ChampTexte } from '@/design/composants/ChampTexte'
 
@@ -46,6 +47,7 @@ export function EcranVoyage() {
   const champTicket = useRef<HTMLInputElement>(null)
   const champPhotoResa = useRef<HTMLInputElement>(null)
   const [resaPourPhoto, setResaPourPhoto] = useState<string | null>(null)
+  const [photoResaEnCours, setPhotoResaEnCours] = useState(false)
   const [nouvelArticleValise, setNouvelArticleValise] = useState('')
   const [nouvelleTacheMaison, setNouvelleTacheMaison] = useState('')
   const [depenseManuelle, setDepenseManuelle] = useState<Partial<LigneDepense> | null>(null)
@@ -322,10 +324,15 @@ export function EcranVoyage() {
   const attacherPhotoResa = async (fichiers: FileList | null) => {
     const fichier = fichiers?.[0]
     if (!fichier || !resaPourPhoto || !voyage) return
-    const image = await compresserImage(fichier)
-    await muter({ table: 'reservations', type: 'update', cible_id: resaPourPhoto, charge: { doc_path: image } })
-    setResaPourPhoto(null)
-    await clientRequetes.invalidateQueries({ queryKey: ['reservations', voyage.id] })
+    setPhotoResaEnCours(true)
+    try {
+      const image = await compresserImage(fichier)
+      await muter({ table: 'reservations', type: 'update', cible_id: resaPourPhoto, charge: { doc_path: image } })
+      await clientRequetes.invalidateQueries({ queryKey: ['reservations', voyage.id] })
+    } finally {
+      setPhotoResaEnCours(false)
+      setResaPourPhoto(null)
+    }
   }
 
   const basculerMaison = async (index: number) => {
@@ -446,15 +453,19 @@ export function EcranVoyage() {
               <Bouton variante="soleil" onClick={() => setCollerEmail(true)}>
                 📧 Email
               </Bouton>
-              <Bouton variante="valider" onClick={() => champBillet.current?.click()} desactive={scanEnCours}>
-                {scanEnCours ? '…' : '🎫 Scanner'}
-              </Bouton>
+              <BoutonEnvoi variante="valider" enCours={scanEnCours} onClick={() => champBillet.current?.click()} enfantsPendant="…">
+                🎫 Scanner
+              </BoutonEnvoi>
               <Bouton variante="discret" onClick={() => setAjoutResa(true)} etiquette="Ajouter une réservation">+</Bouton>
             </div>
           )}
           <input
             ref={champBillet} type="file" accept="image/*" capture="environment" hidden
-            aria-hidden="true" onChange={(e) => void scannerBillet(e.target.files)}
+            aria-hidden="true"
+            onChange={(e) => {
+              void scannerBillet(e.target.files)
+              e.target.value = '' // pour pouvoir reprendre le même billet
+            }}
           />
         </div>
         {(reservations.data?.length ?? 0) === 0 ? (
@@ -486,17 +497,20 @@ export function EcranVoyage() {
                     </p>
                   </div>
                   {membre?.role === 'adult' && !r.doc_path && (
-                    <button
-                      aria-label="Ajouter une photo (chambre, hôtel…)"
-                      className="min-h-[36px] min-w-[36px] rounded-full bg-fond-sourd text-note"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        setResaPourPhoto(r.id)
-                        champPhotoResa.current?.click()
-                      }}
-                    >
-                      📷
-                    </button>
+                    // Le span coupe la propagation : ne pas ouvrir le billet en même temps.
+                    <span onClick={(e) => e.stopPropagation()}>
+                      <BoutonEnvoi
+                        variante="discret"
+                        etiquette="Ajouter une photo (chambre, hôtel…)"
+                        enCours={photoResaEnCours && resaPourPhoto === r.id}
+                        onClick={() => {
+                          setResaPourPhoto(r.id)
+                          champPhotoResa.current?.click()
+                        }}
+                      >
+                        📷
+                      </BoutonEnvoi>
+                    </span>
                   )}
                 </div>
                 {r.debut_a && (
@@ -521,15 +535,19 @@ export function EcranVoyage() {
           <div className="flex items-center justify-between gap-3">
             <h3 className="text-titre-3 text-encre">💶 Budget du séjour</h3>
             <div className="flex gap-1">
-              <Bouton variante="soleil" onClick={() => champTicket.current?.click()} desactive={ticketEnCours}>
-                {ticketEnCours ? 'Lecture…' : '🧾 Ticket'}
-              </Bouton>
+              <BoutonEnvoi variante="soleil" enCours={ticketEnCours} onClick={() => champTicket.current?.click()} enfantsPendant="Lecture…">
+                🧾 Ticket
+              </BoutonEnvoi>
               <Bouton variante="discret" onClick={() => setDepenseManuelle({})} etiquette="Dépense manuelle">+</Bouton>
             </div>
           </div>
           <input
             ref={champTicket} type="file" accept="image/*" capture="environment" hidden
-            aria-hidden="true" onChange={(e) => void scannerTicket(e.target.files)}
+            aria-hidden="true"
+            onChange={(e) => {
+              void scannerTicket(e.target.files)
+              e.target.value = '' // pour pouvoir reprendre le même ticket
+            }}
           />
           {(() => {
             const totalResas = (reservations.data ?? []).reduce((somme, r) => somme + (r.prix ?? 0), 0)
@@ -574,7 +592,10 @@ export function EcranVoyage() {
 
       <input
         ref={champPhotoResa} type="file" accept="image/*" hidden aria-hidden="true"
-        onChange={(e) => void attacherPhotoResa(e.target.files)}
+        onChange={(e) => {
+          void attacherPhotoResa(e.target.files)
+          e.target.value = '' // pour pouvoir rechoisir la même photo
+        }}
       />
 
       {/* Checklist maison */}

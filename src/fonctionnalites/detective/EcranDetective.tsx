@@ -6,7 +6,7 @@ import { supabase } from '@/lib/supabase'
 import { demanderAStiga } from '@/lib/stiga'
 import { compresserImage } from '@/fonctionnalites/souvenirs/donnees'
 import { BarreRetour } from '@/design/composants/BarreRetour'
-import { Bouton } from '@/design/composants/Bouton'
+import { BoutonEnvoi } from '@/design/composants/BoutonEnvoi'
 import { Carte } from '@/design/composants/Carte'
 import { EtatVide } from '@/design/composants/EtatVide'
 
@@ -75,9 +75,14 @@ export function EcranDetective() {
       </header>
 
       <div className="flex flex-col gap-3 px-5 pt-3">
-        <Bouton pleineLargeur variante="primaire" desactive={etat === 'lit' || etat === 'juge'} onClick={() => fichierRef.current?.click()}>
-          {etat === 'lit' ? '🔍 Lecture de l’étiquette…' : etat === 'juge' ? '⚖️ Le Détective délibère…' : '📸 Photographier une étiquette de rayon'}
-        </Bouton>
+        <BoutonEnvoi
+          pleineLargeur variante="primaire"
+          enCours={etat === 'lit' || etat === 'juge'}
+          onClick={() => fichierRef.current?.click()}
+          enfantsPendant={etat === 'lit' ? '🔍 Lecture de l’étiquette…' : '⚖️ Le Détective délibère…'}
+        >
+          📸 Photographier une étiquette de rayon
+        </BoutonEnvoi>
         <input
           ref={fichierRef} type="file" accept="image/*" capture="environment" hidden aria-hidden="true"
           onChange={(e) => {

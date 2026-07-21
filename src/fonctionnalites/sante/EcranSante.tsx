@@ -12,6 +12,7 @@ import { compresserImage } from '@/fonctionnalites/souvenirs/donnees'
 import type { LigneSante } from '@/lib/basedonnees.types'
 import { BarreRetour } from '@/design/composants/BarreRetour'
 import { Bouton } from '@/design/composants/Bouton'
+import { BoutonEnvoi } from '@/design/composants/BoutonEnvoi'
 import { Carte } from '@/design/composants/Carte'
 import { EtatVide } from '@/design/composants/EtatVide'
 import { Feuille } from '@/design/composants/Feuille'
@@ -35,6 +36,7 @@ export function EcranSante() {
     type: 'vaccin' as LigneSante['type'], libelle: '', date: '', rappel: '', notes: '',
   })
   const [photo, setPhoto] = useState<string | null>(null)
+  const [compressionEnCours, setCompressionEnCours] = useState(false)
   const [agrandie, setAgrandie] = useState<string | null>(null)
   const fichierRef = useRef<HTMLInputElement>(null)
 
@@ -228,22 +230,28 @@ export function EcranSante() {
             placeholder="Posologie, médecin, pharmacie…"
           />
           <div className="flex items-center gap-2">
-            <Bouton variante="discret" onClick={() => fichierRef.current?.click()}>
+            <BoutonEnvoi
+              variante="discret" enCours={compressionEnCours}
+              onClick={() => fichierRef.current?.click()} enfantsPendant="Photo en préparation…"
+            >
               {photo ? '✓ Photo jointe' : '📷 Photographier (ordonnance…)'}
-            </Bouton>
+            </BoutonEnvoi>
             {photo && <button onClick={() => setPhoto(null)} className="text-legende text-encre-3 underline">retirer</button>}
           </div>
           <input
             ref={fichierRef} type="file" accept="image/*" capture="environment" hidden aria-hidden="true"
             onChange={(e) => {
               const f = e.target.files?.[0]
-              if (f) void compresserImage(f).then(setPhoto)
+              if (f) {
+                setCompressionEnCours(true)
+                void compresserImage(f).then(setPhoto).finally(() => setCompressionEnCours(false))
+              }
               e.target.value = ''
             }}
           />
-          <Bouton pleineLargeur variante="valider" desactive={!brouillon.libelle.trim()} onClick={() => void enregistrer()}>
+          <BoutonEnvoi pleineLargeur variante="valider" desactive={!brouillon.libelle.trim()} onEnvoi={enregistrer} enfantsPendant="Enregistrement…">
             Enregistrer
-          </Bouton>
+          </BoutonEnvoi>
         </div>
       </Feuille>
     </div>

@@ -10,6 +10,7 @@ import { compresserImage } from '@/fonctionnalites/souvenirs/donnees'
 import type { LigneDocument } from '@/lib/basedonnees.types'
 import { BarreRetour } from '@/design/composants/BarreRetour'
 import { Bouton } from '@/design/composants/Bouton'
+import { BoutonEnvoi } from '@/design/composants/BoutonEnvoi'
 import { EtatVide } from '@/design/composants/EtatVide'
 import { Feuille } from '@/design/composants/Feuille'
 import { ChampTexte } from '@/design/composants/ChampTexte'
@@ -130,9 +131,12 @@ export function EcranGaranties() {
 
       <div className="flex flex-col gap-3 px-5 pt-3">
         <div className="flex gap-2">
-          <Bouton pleineLargeur variante="primaire" desactive={scanEnCours} onClick={() => fichierRef.current?.click()}>
-            {scanEnCours ? 'STG lit le ticket…' : '📸 Scanner le ticket d’achat'}
-          </Bouton>
+          <BoutonEnvoi
+            pleineLargeur variante="primaire" enCours={scanEnCours}
+            onClick={() => fichierRef.current?.click()} enfantsPendant="STG lit le ticket…"
+          >
+            📸 Scanner le ticket d’achat
+          </BoutonEnvoi>
           <Bouton pleineLargeur variante="discret" onClick={ouvrirCreation}>✍️ À la main</Bouton>
         </div>
         <input
@@ -232,9 +236,13 @@ export function EcranGaranties() {
               → couvert jusqu'au {new Date(`${plusMois(brouillon.achat, brouillon.mois)}T12:00:00`).toLocaleDateString('fr-FR')} · rappels à J-30 et J-7
             </p>
           )}
-          <Bouton pleineLargeur variante="valider" desactive={!brouillon.titre.trim() || !brouillon.achat} onClick={() => void enregistrer()}>
+          <BoutonEnvoi
+            pleineLargeur variante="valider"
+            desactive={!brouillon.titre.trim() || !brouillon.achat}
+            onEnvoi={enregistrer} enfantsPendant="Enregistrement…"
+          >
             {enEdition !== null && enEdition !== 'nouvelle' ? 'Enregistrer' : 'Suivre cette garantie'}
-          </Bouton>
+          </BoutonEnvoi>
         </div>
       </Feuille>
     </div>

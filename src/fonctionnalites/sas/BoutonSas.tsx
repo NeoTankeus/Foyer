@@ -15,6 +15,7 @@ import { useRef } from 'react'
 import { maintenantLocal, versUtc } from '@/lib/dates'
 import { Feuille } from '@/design/composants/Feuille'
 import { Bouton } from '@/design/composants/Bouton'
+import { BoutonEnvoi } from '@/design/composants/BoutonEnvoi'
 
 type Destination = 'courses' | 'tache' | 'evenement' | 'mur'
 
@@ -234,9 +235,9 @@ export function BoutonSas() {
                     )}
                   </div>
                   <div className="flex gap-2">
-                    <Bouton variante="valider" pleineLargeur onClick={() => void validerProposition()}>
+                    <BoutonEnvoi variante="valider" pleineLargeur onEnvoi={validerProposition} enfantsPendant="Création…">
                       Tout créer
-                    </Bouton>
+                    </BoutonEnvoi>
                     <Bouton variante="discret" onClick={() => setProposition(null)}>
                       Annuler
                     </Bouton>
@@ -280,17 +281,22 @@ export function BoutonSas() {
                 <Bouton variante="discret" onClick={() => void enregistrerSas('evenement')}>Événement</Bouton>
                 <Bouton variante="discret" onClick={() => void enregistrerSas('mur')}>Mot sur le Mur</Bouton>
               </div>
-              <Bouton
+              <BoutonEnvoi
                 variante="soleil"
                 pleineLargeur
-                desactive={lectureEnCours}
+                enCours={lectureEnCours}
                 onClick={() => champPhoto.current?.click()}
+                enfantsPendant="STG lit la photo…"
               >
-                {lectureEnCours ? 'STG lit la photo…' : '📷 Photographier un document'}
-              </Bouton>
+                📷 Photographier un document
+              </BoutonEnvoi>
               <input
                 ref={champPhoto} type="file" accept="image/*" capture="environment" hidden
-                aria-hidden="true" onChange={(e) => void lirePhoto(e.target.files)}
+                aria-hidden="true"
+                onChange={(e) => {
+                  void lirePhoto(e.target.files)
+                  e.target.value = '' // pour pouvoir reprendre la même photo
+                }}
               />
               <p className="text-legende text-encre-3">
                 Pour les courses, « piles et lait » fait deux articles. Le mot de l’école en photo →

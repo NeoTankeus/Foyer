@@ -11,6 +11,7 @@ import { compresserImage } from '@/fonctionnalites/souvenirs/donnees'
 import type { LigneCapsule } from '@/lib/basedonnees.types'
 import { BarreRetour } from '@/design/composants/BarreRetour'
 import { Bouton } from '@/design/composants/Bouton'
+import { BoutonEnvoi } from '@/design/composants/BoutonEnvoi'
 import { Carte } from '@/design/composants/Carte'
 import { EtatVide } from '@/design/composants/EtatVide'
 import { Feuille } from '@/design/composants/Feuille'
@@ -24,6 +25,7 @@ export function EcranCapsules() {
   const [contenu, setContenu] = useState('')
   const [ouvrirLe, setOuvrirLe] = useState('')
   const [photo, setPhoto] = useState<string | null>(null)
+  const [compressionEnCours, setCompressionEnCours] = useState(false)
   const fichierRef = useRef<HTMLInputElement>(null)
   const [reveleee, setRevelee] = useState<LigneCapsule | null>(null)
 
@@ -192,9 +194,12 @@ export function EcranCapsules() {
             />
           </label>
           <div className="flex items-center gap-2">
-            <Bouton variante="discret" onClick={() => fichierRef.current?.click()}>
+            <BoutonEnvoi
+              variante="discret" enCours={compressionEnCours}
+              onClick={() => fichierRef.current?.click()} enfantsPendant="Photo en préparation…"
+            >
               {photo ? '✓ Photo jointe' : '📷 Joindre une photo'}
-            </Bouton>
+            </BoutonEnvoi>
             {photo && (
               <button onClick={() => setPhoto(null)} className="text-legende text-encre-3 underline">retirer</button>
             )}
@@ -203,7 +208,10 @@ export function EcranCapsules() {
             ref={fichierRef} type="file" accept="image/*" hidden aria-hidden="true"
             onChange={(e) => {
               const f = e.target.files?.[0]
-              if (f) void compresserImage(f).then(setPhoto)
+              if (f) {
+                setCompressionEnCours(true)
+                void compresserImage(f).then(setPhoto).finally(() => setCompressionEnCours(false))
+              }
               e.target.value = ''
             }}
           />
@@ -217,9 +225,13 @@ export function EcranCapsules() {
               className="min-h-sur-tactile rounded-md border border-trait bg-fond-eleve px-3 text-corps"
             />
           </label>
-          <Bouton pleineLargeur variante="valider" desactive={!titre.trim() || !ouvrirLe || (!contenu.trim() && !photo)} onClick={() => void sceller()}>
+          <BoutonEnvoi
+            pleineLargeur variante="valider"
+            desactive={!titre.trim() || !ouvrirLe || (!contenu.trim() && !photo)}
+            onEnvoi={sceller} enfantsPendant="Scellage…"
+          >
             🔒 Sceller jusqu'au jour J
-          </Bouton>
+          </BoutonEnvoi>
           <p className="text-legende text-encre-3">
             Une fois scellée, plus personne ne peut la lire — pas même toi. Le jour J, tout le foyer reçoit une notification.
           </p>
