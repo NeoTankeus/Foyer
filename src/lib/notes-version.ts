@@ -1,7 +1,8 @@
 // Les nouveautés de la version en cours — affichées UNE fois dans le pop-up
 // « Quoi de neuf », signé ILY. Mises à jour à chaque déploiement.
 export const NOTES_VERSION: string[] = [
-  '🎫 La Boîte aux lettres accepte les pièces jointes (plusieurs !) : joins tes billets de concert, ils sont rangés dans Concerts & sorties avec le QR décodé, prêts pour l’entrée.',
+  '📄 Les billets en PDF sont acceptés ! Dans la Boîte aux lettres comme dans le scanner de Concerts & sorties : chaque page du PDF devient un billet (QR décodé, prêt pour l’entrée).',
+  '🎫 La Boîte aux lettres accepte les pièces jointes (plusieurs !) : joins tes billets de concert, ils sont rangés dans Concerts & sorties.',
   '🤖 Fini le « Quota IA atteint » : quatre modèles en cascade et trois vagues d’essais avant de rendre les armes.',
   '⚡ Mise à jour en UN appui, garanti : si l’installation traîne plus de 10 secondes, l’app force le passage (remise à zéro des caches) — plus jamais besoin d’appuyer plusieurs fois.',
   '🚀 Ouverture plus rapide : la vérification de version attend que l’app soit affichée, et chaque mise à jour télécharge ~1 Mo de moins.',

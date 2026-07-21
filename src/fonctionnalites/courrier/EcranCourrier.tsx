@@ -11,6 +11,7 @@ import { devinerRayon } from '@/fonctionnalites/courses/rayons'
 import { versUtc } from '@/lib/dates'
 import { compresserImage } from '@/fonctionnalites/souvenirs/donnees'
 import { decoderBillet } from '@/fonctionnalites/voyages/billets'
+import { enImages } from '@/lib/pdf'
 import { BarreRetour } from '@/design/composants/BarreRetour'
 import { Bouton } from '@/design/composants/Bouton'
 import { Carte } from '@/design/composants/Carte'
@@ -47,10 +48,17 @@ export function EcranCourrier() {
 
   const ajouterPieces = async (fichiers: FileList | null) => {
     if (!fichiers) return
-    const nouvelles = await Promise.all(
-      [...fichiers].map(async (fichier) => ({ apercu: await compresserImage(fichier), fichier })),
-    )
-    setPieces((p) => [...p, ...nouvelles])
+    setErreur(null)
+    try {
+      // Un PDF devient une image par page (billets multiples dans un seul PDF !).
+      const images = (await Promise.all([...fichiers].map((f) => enImages(f)))).flat()
+      const nouvelles = await Promise.all(
+        images.map(async (fichier) => ({ apercu: await compresserImage(fichier), fichier })),
+      )
+      setPieces((p) => [...p, ...nouvelles])
+    } catch {
+      setErreur('Cette pièce jointe n’a pas pu être lue — réessaie ou envoie une capture d’écran.')
+    }
   }
 
   // Chaque pièce jointe devient un billet du portefeuille Concerts & sorties :
@@ -207,11 +215,11 @@ export function EcranCourrier() {
         {/* 🎫 Les pièces jointes : billets, e-billets, captures d'écran — en
             plusieurs exemplaires. Elles filent dans le portefeuille de billets. */}
         <input
-          ref={champPieces} type="file" accept="image/*" multiple hidden aria-hidden="true"
+          ref={champPieces} type="file" accept="image/*,application/pdf,.pdf" multiple hidden aria-hidden="true"
           onChange={(e) => { void ajouterPieces(e.target.files); e.target.value = '' }}
         />
         <Bouton pleineLargeur variante="discret" onClick={() => champPieces.current?.click()}>
-          🎫 Joindre les billets / pièces jointes {pieces.length > 0 ? `(${pieces.length})` : ''}
+          🎫 Joindre les billets (PDF ou photos) {pieces.length > 0 ? `(${pieces.length})` : ''}
         </Bouton>
         {pieces.length > 0 && (
           <div className="flex flex-wrap gap-2">

@@ -10,6 +10,7 @@ import { utiliserSession } from '@/etat/session'
 import { differenceInCalendarDays, maintenantLocal } from '@/lib/dates'
 import { ajouterSouvenir, compresserImage } from '@/fonctionnalites/souvenirs/donnees'
 import { decoderBillet, genererCodeVisuel } from '@/fonctionnalites/voyages/billets'
+import { enImages } from '@/lib/pdf'
 import type { LigneConcert } from '@/lib/basedonnees.types'
 import { Bouton } from '@/design/composants/Bouton'
 import { Feuille } from '@/design/composants/Feuille'
@@ -76,28 +77,34 @@ export function EcranConcerts() {
   }
 
   const scanner = async (fichiers: FileList | null) => {
-    const fichier = fichiers?.[0]
-    if (!fichier || !foyer) return
+    if (!fichiers?.length || !foyer) return
     setScanEnCours(true)
     try {
-      // Le code se décode sur l'image ORIGINALE (pleine résolution, multi-passes) ;
-      // la version compressée ne sert qu'au stockage et à la lecture des infos.
-      const image = await compresserImage(fichier)
-      const [decode, infos] = await Promise.all([decoderBillet(fichier), lireInfos(image)])
-      const evenement = infos?.evenement
-      const dateEvenement = evenement?.date
-        ? new Date(`${evenement.date}T${evenement.heure ?? '20:00'}:00`).toISOString()
-        : null
-      const id = crypto.randomUUID()
-      const nouveau: Record<string, unknown> = {
-        id, foyer_id: foyer.id, titre: evenement?.titre ?? 'Nouveau billet',
-        lieu: evenement?.lieu ?? null, date_evenement: dateEvenement,
-        codes_acces: decode?.texte ?? null, format: decode?.format ?? null,
-        image_donnees: image, notes: infos?.resume ?? null,
+      // Les PDF (e-billets) deviennent une image par page ; chaque image
+      // devient un billet à part entière.
+      const images = (await Promise.all([...fichiers].map((f) => enImages(f)))).flat()
+      let premier: LigneConcert | null = null
+      for (const fichier of images) {
+        // Le code se décode sur l'image ORIGINALE (pleine résolution, multi-passes) ;
+        // la version compressée ne sert qu'au stockage et à la lecture des infos.
+        const image = await compresserImage(fichier)
+        const [decode, infos] = await Promise.all([decoderBillet(fichier), lireInfos(image)])
+        const evenement = infos?.evenement
+        const dateEvenement = evenement?.date
+          ? new Date(`${evenement.date}T${evenement.heure ?? '20:00'}:00`).toISOString()
+          : null
+        const id = crypto.randomUUID()
+        const nouveau: Record<string, unknown> = {
+          id, foyer_id: foyer.id, titre: evenement?.titre ?? 'Nouveau billet',
+          lieu: evenement?.lieu ?? null, date_evenement: dateEvenement,
+          codes_acces: decode?.texte ?? null, format: decode?.format ?? null,
+          image_donnees: image, notes: infos?.resume ?? null,
+        }
+        await muter({ table: 'concerts', type: 'insert', cible_id: id, charge: nouveau })
+        premier ??= nouveau as unknown as LigneConcert
       }
-      await muter({ table: 'concerts', type: 'insert', cible_id: id, charge: nouveau })
       await rafraichir()
-      setACompleter(nouveau as unknown as LigneConcert)
+      if (premier) setACompleter(premier)
     } finally {
       setScanEnCours(false)
     }
@@ -132,8 +139,8 @@ export function EcranConcerts() {
         )}
       </div>
       <input
-        ref={champBillet} type="file" accept="image/*" capture="environment" hidden
-        aria-hidden="true" onChange={(e) => void scanner(e.target.files)}
+        ref={champBillet} type="file" accept="image/*,application/pdf,.pdf" multiple hidden
+        aria-hidden="true" onChange={(e) => { void scanner(e.target.files); e.target.value = '' }}
       />
 
       {concerts.isError ? (
