@@ -431,7 +431,7 @@ export function EcranAdministration() {
                 email_invitation: valeurs.email_invitation ?? null,
                 actif_jusqu_au: valeurs.actif_jusqu_au ?? null,
                 points: 0,
-                modules_autorises: valeurs.role === 'guest' ? ['evenements', 'routines', 'mur'] : [],
+                modules_autorises: valeurs.role === 'guest' ? ['evenements', 'mur'] : [],
               })
               setCreation(false)
               window.location.reload()

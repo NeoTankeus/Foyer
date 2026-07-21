@@ -39,7 +39,7 @@ export async function assemblerContexte(
   const [
     evenements, taches, tachesFaites, courses, repas, recettes,
     voyages, reservations, valises, documents, colis, celebrations,
-    souvenirs, mur, routines, concerts, personnes, inventaire, restaurants,
+    souvenirs, mur, concerts, personnes, inventaire, restaurants,
     habitudes, capsules, sante, depenses,
   ] = await Promise.all([
     supabase.from('evenements').select('*').gt('fin_a', debut).lt('debut_a', fin).order('debut_a'),
@@ -56,7 +56,6 @@ export async function assemblerContexte(
     supabase.from('celebrations').select('*'),
     supabase.from('souvenirs').select('id, voyage_id, dossier, commentaire, lieu, pris_le, favori' as '*'),
     supabase.from('mur').select('*').order('cree_le', { ascending: false }).limit(15),
-    supabase.from('routines').select('*').eq('active', true),
     supabase.from('concerts').select('*'),
     supabase.from('personnes').select('*'),
     supabase.from('inventaire').select('*'),
@@ -148,10 +147,6 @@ export async function assemblerContexte(
   const sorties = (concerts.data ?? []) as { titre: string; lieu: string | null; date_evenement: string | null }[]
   if (sorties.length > 0)
     lignes.push(`Concerts et sorties : ${sorties.map((s) => `${s.titre}${s.lieu ? ` à ${s.lieu}` : ''}${s.date_evenement ? ` le ${jourCourt(s.date_evenement)}` : ''}`).join(' · ')}.`)
-
-  // Routines
-  for (const r of routines.data ?? [])
-    lignes.push(`Routine « ${r.nom} » (${prenom(r.membre_id)}, ${r.moment}) : ${r.etapes.map((e) => e.libelle).join(' → ')}.`)
 
   // La mémoire des gens (adultes seulement — la RLS filtre déjà)
   for (const p of personnes.data ?? [])

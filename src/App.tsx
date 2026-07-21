@@ -35,7 +35,6 @@ const EcranRendezVous = paresseux(() => import('@/fonctionnalites/rendezvous/Ecr
 const EcranDebrief = paresseux(() => import('@/fonctionnalites/debrief/EcranDebrief'), 'EcranDebrief')
 const EcranRestaurants = paresseux(() => import('@/fonctionnalites/restaurants/EcranRestaurants'), 'EcranRestaurants')
 const EcranColis = paresseux(() => import('@/fonctionnalites/colis/EcranColis'), 'EcranColis')
-const EcranRoutines = paresseux(() => import('@/fonctionnalites/enfant/EcranRoutines'), 'EcranRoutines')
 const EcranChef = paresseux(() => import('@/fonctionnalites/chef/EcranChef'), 'EcranChef')
 const EcranJournal = paresseux(() => import('@/fonctionnalites/journal/EcranJournal'), 'EcranJournal')
 const EcranRadar = paresseux(() => import('@/fonctionnalites/radar/EcranRadar'), 'EcranRadar')
@@ -240,7 +239,6 @@ function Interieur() {
             <Route path="/nous/debrief" element={<EcranDebrief />} />
             <Route path="/nous/restaurants" element={<EcranRestaurants />} />
             <Route path="/nous/colis" element={<EcranColis />} />
-            <Route path="/nous/routines" element={<EcranRoutines />} />
             <Route path="/nous/chef" element={<EcranChef />} />
             <Route path="/nous/journal" element={<EcranJournal />} />
             <Route path="/nous/radar" element={<EcranRadar />} />

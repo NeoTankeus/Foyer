@@ -73,7 +73,6 @@ export function EcranNous() {
     { chemin: '/nous/rendez-vous', libelle: 'Mode Rendez-vous', detail: 'une soirée à deux, organisée', icone: '💞', couleur: 'var(--corail)', adulte: true },
     { chemin: '/nous/debrief', libelle: 'Le Débrief', detail: 'la semaine du foyer, en 2 minutes', icone: '📊', couleur: 'var(--sauge)' },
     { chemin: '/nous/souvenirs', libelle: 'Souvenirs', detail: 'photos par voyage, album imprimable', icone: '📷', couleur: 'var(--or)' },
-    { chemin: '/nous/routines', libelle: 'Routines', detail: 'les matins et soirs, étape par étape', icone: '⏰', couleur: 'var(--sauge)' },
     { chemin: '/nous/coffre', libelle: 'Le Coffre', detail: 'papiers et échéances', icone: '🗄️', couleur: 'var(--encre-2)', adulte: true },
     { chemin: '/nous/colis', libelle: 'Colis', detail: 'suivis, invisibles pour Gabriel', icone: '📦', couleur: 'var(--ambre)', adulte: true },
     { chemin: '/nous/administration', libelle: 'Administration', detail: 'membres, rôles, journal d’audit', icone: '🛠️', couleur: 'var(--encre-2)', adulte: true },

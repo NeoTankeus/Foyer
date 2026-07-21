@@ -22,25 +22,80 @@ export function EcranCrues() {
   const { foyer } = utiliserSession()
   const maison = (foyer?.reglages['maison'] ?? null) as { lat?: number; lon?: number; adresse?: string } | null
 
-  // Tout passe par le relais serveur de STG — Safari bloque l'appel direct.
+  // DEUX chemins interrogés EN MÊME TEMPS — le premier qui répond gagne :
+  // le relais serveur de STG, ET l'appel direct à Hub'Eau depuis le téléphone
+  // (leur pare-feu bloque parfois les serveurs, mais pas les navigateurs).
+  const viaRelais = async (): Promise<StationCrue[]> => {
+    const { data: session } = await supabase.auth.getSession()
+    const r = await fetch('/api/chercher-resto', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${session.session?.access_token ?? ''}`,
+      },
+      body: JSON.stringify({ mode: 'crues', lat: maison?.lat, lon: maison?.lon }),
+    })
+    if (!r.ok) throw new Error(`relais ${r.status}`)
+    const donnees = (await r.json()) as { stations?: StationCrue[]; erreur?: string }
+    if (donnees.erreur) throw new Error(donnees.erreur)
+    return donnees.stations ?? []
+  }
+
+  const viaDirect = async (): Promise<StationCrue[]> => {
+    const r = await fetch(
+      `https://hubeau.eaufrance.fr/api/v2/hydrometrie/referentiel/stations?latitude=${maison?.lat}&longitude=${maison?.lon}&distance=25&size=8&format=json`,
+      { signal: AbortSignal.timeout(12000) },
+    )
+    if (!r.ok) throw new Error(`direct ${r.status}`)
+    const donnees = (await r.json()) as {
+      data?: { code_station: string; libelle_station: string; libelle_cours_eau?: string | null; en_service?: boolean }[]
+    }
+    const actives = (donnees.data ?? []).filter((s) => s.en_service !== false).slice(0, 5)
+    return Promise.all(
+      actives.map(async (s): Promise<StationCrue> => {
+        try {
+          const obs = await fetch(
+            `https://hubeau.eaufrance.fr/api/v2/hydrometrie/observations_tp?code_entite=${s.code_station}&grandeur_hydro=H&size=300&sort=desc`,
+            { signal: AbortSignal.timeout(12000) },
+          )
+          const mesures = obs.ok
+            ? (((await obs.json()) as { data?: { resultat_obs: number; date_obs: string }[] }).data ?? [])
+            : []
+          const derniere = mesures[0]
+          const cible = Date.now() - 24 * 3600 * 1000
+          const ancienne = [...mesures].sort(
+            (a, b) => Math.abs(new Date(a.date_obs).getTime() - cible) - Math.abs(new Date(b.date_obs).getTime() - cible),
+          )[0]
+          return {
+            code: s.code_station,
+            nom: s.libelle_station,
+            cours: s.libelle_cours_eau ?? null,
+            hauteurM: derniere ? derniere.resultat_obs / 1000 : null,
+            variation24hCm:
+              derniere && ancienne && ancienne !== derniere
+                ? Math.round((derniere.resultat_obs - ancienne.resultat_obs) / 10)
+                : null,
+            mesureA: derniere?.date_obs ?? null,
+          }
+        } catch {
+          return { code: s.code_station, nom: s.libelle_station, cours: s.libelle_cours_eau ?? null, hauteurM: null, variation24hCm: null, mesureA: null }
+        }
+      }),
+    )
+  }
+
   const stations = useQuery({
     queryKey: ['crues', maison?.lat],
     enabled: maison?.lat !== undefined,
     staleTime: 30 * 60 * 1000,
     queryFn: async (): Promise<StationCrue[]> => {
-      const { data: session } = await supabase.auth.getSession()
-      const r = await fetch('/api/chercher-resto', {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          authorization: `Bearer ${session.session?.access_token ?? ''}`,
-        },
-        body: JSON.stringify({ mode: 'crues', lat: maison?.lat, lon: maison?.lon }),
-      })
-      if (!r.ok) throw new Error(`relais ${r.status}`)
-      const donnees = (await r.json()) as { stations?: StationCrue[]; erreur?: string }
-      if (donnees.erreur) throw new Error(donnees.erreur)
-      return donnees.stations ?? []
+      try {
+        return await Promise.any([viaRelais(), viaDirect()])
+      } catch (e) {
+        // Les deux ont échoué : on assemble le diagnostic complet.
+        const causes = e instanceof AggregateError ? e.errors : [e]
+        throw new Error(causes.map((c) => (c instanceof Error ? c.message : String(c))).join(' · '))
+      }
     },
   })
 
