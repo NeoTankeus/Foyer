@@ -137,13 +137,29 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         res.status(200).json({ stations: [], erreur: 'position invalide' })
         return
       }
-      const r = await fetch(
-        `https://hubeau.eaufrance.fr/api/v1/hydrometrie/referentiel/stations?latitude=${la}&longitude=${lo}&distance=25&size=8&format=json`,
-        { signal: AbortSignal.timeout(12000) },
+      // Le pare-feu de Hub'Eau refuse (403) les requêtes sans identité : on se
+      // présente avec un User-Agent. Et on parle d'abord l'API v2 (actuelle),
+      // avec repli sur la v1 si besoin.
+      const entetesHubeau = {
+        'user-agent': 'Mozilla/5.0 (compatible; STG-Foyer/1.0; +https://foyer-ten-omega.vercel.app)',
+        accept: 'application/json',
+      }
+      let version = 'v2'
+      let r = await fetch(
+        `https://hubeau.eaufrance.fr/api/v2/hydrometrie/referentiel/stations?latitude=${la}&longitude=${lo}&distance=25&size=8&format=json`,
+        { headers: entetesHubeau, signal: AbortSignal.timeout(12000) },
       )
       if (!r.ok) {
-        res.status(200).json({ stations: [], erreur: `hubeau ${r.status}` })
-        return
+        const statutV2 = r.status
+        version = 'v1'
+        r = await fetch(
+          `https://hubeau.eaufrance.fr/api/v1/hydrometrie/referentiel/stations?latitude=${la}&longitude=${lo}&distance=25&size=8&format=json`,
+          { headers: entetesHubeau, signal: AbortSignal.timeout(12000) },
+        )
+        if (!r.ok) {
+          res.status(200).json({ stations: [], erreur: `hubeau v2:${statutV2} v1:${r.status}` })
+          return
+        }
       }
       const donnees = (await r.json()) as {
         data?: { code_station: string; libelle_station: string; libelle_cours_eau?: string | null; en_service?: boolean }[]
@@ -153,8 +169,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         actives.map(async (s) => {
           try {
             const obs = await fetch(
-              `https://hubeau.eaufrance.fr/api/v1/hydrometrie/observations_tp?code_entite=${s.code_station}&grandeur_hydro=H&size=300&sort=desc`,
-              { signal: AbortSignal.timeout(12000) },
+              `https://hubeau.eaufrance.fr/api/${version}/hydrometrie/observations_tp?code_entite=${s.code_station}&grandeur_hydro=H&size=300&sort=desc`,
+              { headers: entetesHubeau, signal: AbortSignal.timeout(12000) },
             )
             const mesures = obs.ok
               ? (((await obs.json()) as { data?: { resultat_obs: number; date_obs: string }[] }).data ?? [])
