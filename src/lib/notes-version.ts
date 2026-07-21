@@ -1,6 +1,8 @@
 // Les nouveautés de la version en cours — affichées UNE fois dans le pop-up
 // « Quoi de neuf », signé ILY. Mises à jour à chaque déploiement.
 export const NOTES_VERSION: string[] = [
+  '🗂 Le menu est réorganisé en 8 SECTEURS thématiques (Argent & achats, Cuisine, Famille, Jeux, Maison, Santé, Sorties, Transports) — un appui déplie le secteur, tout est classé alphabétiquement.',
+  '⭐ Mets une étoile sur tes modules préférés : ils se regroupent dans le secteur FAVORIS, épinglé tout en haut du menu.',
   '🔍 ZOOM sur les billets : touche l’image du billet → plein écran, pincement à deux doigts, boutons − / + — présente le code en grand au scanner, même si la détection a échoué.',
   '🔁 Bouton « Rechercher le code » sur chaque billet déjà importé : le décodeur (encore musclé : 25 passes, codes inversés, codes à la verticale) retente sans réimporter.',
   '📌 Corrigé : la barre du bas ne se retrouve plus au milieu de l’écran pendant le défilement.',
