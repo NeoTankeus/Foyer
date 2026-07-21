@@ -14,6 +14,7 @@ import { decoderBillet } from '@/fonctionnalites/voyages/billets'
 import { enImages } from '@/lib/pdf'
 import { BarreRetour } from '@/design/composants/BarreRetour'
 import { Bouton } from '@/design/composants/Bouton'
+import { BoutonEnvoi } from '@/design/composants/BoutonEnvoi'
 import { Carte } from '@/design/composants/Carte'
 
 // Une pièce jointe : l'aperçu compressé pour l'affichage/stockage, et le
@@ -21,6 +22,36 @@ import { Carte } from '@/design/composants/Carte'
 interface PieceJointe {
   apercu: string
   fichier: File
+}
+
+// 🗂 L'historique des courriers triés — gardé sur le téléphone (30 derniers).
+interface EntreeHistorique {
+  id: string
+  date: string
+  resume: string
+  texte: string
+  nb: number
+  billets: number
+}
+
+const CLE_HISTORIQUE = 'stg-courrier-historique'
+
+function lireHistorique(): EntreeHistorique[] {
+  try {
+    return (JSON.parse(localStorage.getItem(CLE_HISTORIQUE) ?? '[]') as EntreeHistorique[]).slice(0, 30)
+  } catch {
+    return []
+  }
+}
+
+function ecrireHistorique(entrees: EntreeHistorique[]): EntreeHistorique[] {
+  const bornees = entrees.slice(0, 30)
+  try {
+    localStorage.setItem(CLE_HISTORIQUE, JSON.stringify(bornees))
+  } catch {
+    // stockage plein — tant pis pour l'historique, jamais pour l'app
+  }
+  return bornees
 }
 
 interface Tri {
@@ -44,11 +75,29 @@ export function EcranCourrier() {
   const [enCours, setEnCours] = useState(false)
   const [erreur, setErreur] = useState<string | null>(null)
   const [fini, setFini] = useState<string | null>(null)
+  const [historique, setHistorique] = useState<EntreeHistorique[]>(lireHistorique)
+  const [ouvertHistorique, setOuvertHistorique] = useState<string | null>(null)
+  const [confirmeEffacer, setConfirmeEffacer] = useState(false)
   const champPieces = useRef<HTMLInputElement>(null)
+
+  const archiver = (resume: string, texteSource: string, nb: number, billets: number) => {
+    setHistorique(
+      ecrireHistorique([
+        {
+          id: crypto.randomUUID(), date: new Date().toISOString(),
+          resume: resume.slice(0, 160), texte: texteSource.slice(0, 4000), nb, billets,
+        },
+        ...lireHistorique(),
+      ]),
+    )
+  }
+
+  const [ajoutEnCours, setAjoutEnCours] = useState(false)
 
   const ajouterPieces = async (fichiers: FileList | null) => {
     if (!fichiers) return
     setErreur(null)
+    setAjoutEnCours(true)
     try {
       // Un PDF devient une image par page (billets multiples dans un seul PDF !).
       const images = (await Promise.all([...fichiers].map((f) => enImages(f)))).flat()
@@ -58,6 +107,8 @@ export function EcranCourrier() {
       setPieces((p) => [...p, ...nouvelles])
     } catch {
       setErreur('Cette pièce jointe n’a pas pu être lue — réessaie ou envoie une capture d’écran.')
+    } finally {
+      setAjoutEnCours(false)
     }
   }
 
@@ -118,6 +169,7 @@ export function EcranCourrier() {
   const toutRanger = async () => {
     if (!tri || !foyer || !membre) return
     let n = 0
+    const nbBillets = pieces.length
     n += await rangerPieces()
     for (const c of tri.colis ?? []) {
       if (!c.numero) continue
@@ -177,6 +229,7 @@ export function EcranCourrier() {
         clientRequetes.invalidateQueries({ queryKey: [cle] }),
       ),
     )
+    archiver(tri.resume ?? 'Courrier trié', texte, n, nbBillets)
     setTri(null)
     setTexte('')
     setFini(`📬 ${n} chose${n > 1 ? 's' : ''} rangée${n > 1 ? 's' : ''} au bon endroit ✓`)
@@ -218,9 +271,13 @@ export function EcranCourrier() {
           ref={champPieces} type="file" accept="image/*,application/pdf,.pdf" multiple hidden aria-hidden="true"
           onChange={(e) => { void ajouterPieces(e.target.files); e.target.value = '' }}
         />
-        <Bouton pleineLargeur variante="discret" onClick={() => champPieces.current?.click()}>
+        <BoutonEnvoi
+          pleineLargeur variante="discret" enCours={ajoutEnCours}
+          enfantsPendant="📄 Lecture des billets…"
+          onClick={() => champPieces.current?.click()}
+        >
           🎫 Joindre les billets (PDF ou photos) {pieces.length > 0 ? `(${pieces.length})` : ''}
-        </Bouton>
+        </BoutonEnvoi>
         {pieces.length > 0 && (
           <div className="flex flex-wrap gap-2">
             {pieces.map((piece, i) => (
@@ -247,18 +304,19 @@ export function EcranCourrier() {
 
         {/* Des billets sans texte à analyser ? On peut les ranger directement. */}
         {pieces.length > 0 && !tri && !enCours && (
-          <Bouton
+          <BoutonEnvoi
             pleineLargeur variante="valider"
-            onClick={() => {
-              void rangerPieces().then(async (n) => {
-                await clientRequetes.invalidateQueries({ queryKey: ['concerts'] })
-                setFini(`🎫 ${n} billet${n > 1 ? 's' : ''} rangé${n > 1 ? 's' : ''} dans Concerts & sorties ✓`)
-                window.setTimeout(() => setFini(null), 3000)
-              })
+            enfantsPendant="🎫 Rangement des billets…"
+            onEnvoi={async () => {
+              const n = await rangerPieces()
+              await clientRequetes.invalidateQueries({ queryKey: ['concerts'] })
+              archiver('Billets rangés dans Concerts & sorties', texte, n, n)
+              setFini(`🎫 ${n} billet${n > 1 ? 's' : ''} rangé${n > 1 ? 's' : ''} dans Concerts & sorties ✓`)
+              window.setTimeout(() => setFini(null), 3000)
             }}
           >
             🎫 Ranger {pieces.length > 1 ? `les ${pieces.length} billets` : 'le billet'} ✓
-          </Bouton>
+          </BoutonEnvoi>
         )}
 
         {erreur && <p className="text-corps-2 text-urgent">{erreur}</p>}
@@ -290,13 +348,76 @@ export function EcranCourrier() {
             </div>
             {total > 0 && (
               <div className="mt-3 flex gap-2">
-                <Bouton pleineLargeur variante="valider" onClick={() => void toutRanger()}>
+                <BoutonEnvoi pleineLargeur variante="valider" enfantsPendant="Rangement en cours…" onEnvoi={toutRanger}>
                   Tout ranger ({total}) ✓
-                </Bouton>
+                </BoutonEnvoi>
                 <Bouton variante="discret" onClick={() => setTri(null)}>Annuler</Bouton>
               </div>
             )}
           </Carte>
+        )}
+
+        {/* 🗂 L'historique : tout ce qui est passé par la Boîte aux lettres. */}
+        {historique.length > 0 && (
+          <div className="mt-2 flex flex-col gap-2">
+            <div className="flex items-center justify-between">
+              <h2 className="text-corps font-[590] text-encre">🗂 Historique ({historique.length})</h2>
+              <Bouton
+                variante={confirmeEffacer ? 'urgent' : 'discret'}
+                onClick={() => {
+                  if (!confirmeEffacer) {
+                    setConfirmeEffacer(true)
+                    window.setTimeout(() => setConfirmeEffacer(false), 3000)
+                    return
+                  }
+                  setHistorique(ecrireHistorique([]))
+                  setConfirmeEffacer(false)
+                }}
+              >
+                {confirmeEffacer ? 'Confirmer ?' : 'Tout effacer'}
+              </Bouton>
+            </div>
+            {historique.map((h) => (
+              <Carte key={h.id}>
+                <button
+                  className="flex w-full items-start justify-between gap-2 text-left"
+                  onClick={() => setOuvertHistorique((o) => (o === h.id ? null : h.id))}
+                >
+                  <span className="min-w-0">
+                    <span className="block break-words text-corps-2 font-[590] text-encre">{h.resume}</span>
+                    <span className="block text-legende text-encre-3">
+                      {new Date(h.date).toLocaleString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                      {' · '}{h.nb} rangé{h.nb > 1 ? 's' : ''}
+                      {h.billets > 0 ? ` · 🎫 ${h.billets}` : ''}
+                    </span>
+                  </span>
+                  <span className="text-legende text-encre-3">{ouvertHistorique === h.id ? '▲' : '▼'}</span>
+                </button>
+                {ouvertHistorique === h.id && (
+                  <div className="mt-2 flex flex-col gap-2">
+                    {h.texte && (
+                      <p className="max-h-40 overflow-y-auto whitespace-pre-wrap rounded-md bg-fond-sourd p-2 text-legende text-encre-2">
+                        {h.texte}
+                      </p>
+                    )}
+                    <div className="flex gap-2">
+                      {h.texte && (
+                        <Bouton variante="discret" onClick={() => { setTexte(h.texte); window.scrollTo({ top: 0, behavior: 'smooth' }) }}>
+                          ↩️ Réutiliser
+                        </Bouton>
+                      )}
+                      <Bouton
+                        variante="discret"
+                        onClick={() => setHistorique(ecrireHistorique(lireHistorique().filter((x) => x.id !== h.id)))}
+                      >
+                        ✕ Retirer
+                      </Bouton>
+                    </div>
+                  </div>
+                )}
+              </Carte>
+            ))}
+          </div>
         )}
       </div>
     </div>

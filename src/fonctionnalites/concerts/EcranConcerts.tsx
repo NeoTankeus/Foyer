@@ -11,6 +11,7 @@ import { differenceInCalendarDays, maintenantLocal } from '@/lib/dates'
 import { ajouterSouvenir, compresserImage } from '@/fonctionnalites/souvenirs/donnees'
 import { decoderBillet, genererCodeVisuel } from '@/fonctionnalites/voyages/billets'
 import { enImages } from '@/lib/pdf'
+import { BoutonEnvoi } from '@/design/composants/BoutonEnvoi'
 import type { LigneConcert } from '@/lib/basedonnees.types'
 import { Bouton } from '@/design/composants/Bouton'
 import { Feuille } from '@/design/composants/Feuille'
@@ -55,6 +56,18 @@ export function EcranConcerts() {
 
   const rafraichir = () => clientRequetes.invalidateQueries({ queryKey: ['concerts'] })
   const estAdulte = membre?.role === 'adult'
+
+  // Garde deux-taps pour les suppressions : id du billet (ou 'tout') en attente.
+  const [suppression, setSuppression] = useState<string | null>(null)
+  const demanderSuppression = (cle: string) => {
+    setSuppression(cle)
+    window.setTimeout(() => setSuppression((s) => (s === cle ? null : s)), 3000)
+  }
+  const supprimerBillet = async (id: string) => {
+    setSuppression(null)
+    await muter({ table: 'concerts', type: 'delete', cible_id: id, charge: {} })
+    await rafraichir()
+  }
 
   const lireInfos = async (image: string) => {
     try {
@@ -133,9 +146,12 @@ export function EcranConcerts() {
       <div className="flex items-center justify-between gap-3 pb-3">
         <h2 className="text-titre-3 text-encre">🎤 Concerts & sorties</h2>
         {estAdulte && (
-          <Bouton variante="valider" onClick={() => champBillet.current?.click()} desactive={scanEnCours}>
-            {scanEnCours ? '…' : '🎫 Scanner un billet'}
-          </Bouton>
+          <BoutonEnvoi
+            variante="valider" enCours={scanEnCours} enfantsPendant="📄 Lecture…"
+            onClick={() => champBillet.current?.click()}
+          >
+            🎫 Scanner un billet
+          </BoutonEnvoi>
         )}
       </div>
       <input
@@ -163,14 +179,14 @@ export function EcranConcerts() {
                 ? differenceInCalendarDays(new Date(c.date_evenement), maintenant)
                 : null
               return (
-                <li key={c.id}>
+                <li key={c.id} className="flex items-center gap-2">
                   <button
                     onClick={() => void ouvrir(c)}
-                    className="flex w-full items-center gap-3 rounded-xl bg-fond-eleve p-4 text-left shadow-carte"
+                    className="flex min-w-0 flex-1 items-center gap-3 rounded-xl bg-fond-eleve p-4 text-left shadow-carte"
                   >
                     <span className="text-[28px]" aria-hidden="true">🎫</span>
-                    <div className="flex-1">
-                      <p className="text-corps font-[590] text-encre">{c.titre}</p>
+                    <div className="min-w-0 flex-1">
+                      <p className="break-words text-corps font-[590] text-encre">{c.titre}</p>
                       <p className="text-note text-encre-3">
                         {c.lieu ?? ''}
                         {c.date_evenement
@@ -182,6 +198,16 @@ export function EcranConcerts() {
                       <span className="chiffres text-note font-[700] text-ardoise">J-{dans}</span>
                     )}
                   </button>
+                  {estAdulte && (
+                    <button
+                      aria-label={suppression === c.id ? `Confirmer la suppression de ${c.titre}` : `Supprimer ${c.titre}`}
+                      onClick={() => (suppression === c.id ? void supprimerBillet(c.id) : demanderSuppression(c.id))}
+                      className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[15px] shadow-carte
+                        ${suppression === c.id ? 'bg-urgent font-[700] text-white' : 'bg-fond-eleve text-encre-3'}`}
+                    >
+                      {suppression === c.id ? '!' : '✕'}
+                    </button>
+                  )}
                 </li>
               )
             })}
@@ -194,14 +220,49 @@ export function EcranConcerts() {
               </summary>
               <ul className="mt-1 flex flex-col gap-1 opacity-60">
                 {passes.map((c) => (
-                  <li key={c.id}>
-                    <button onClick={() => void ouvrir(c)} className="w-full rounded-md bg-fond-eleve px-3 py-2 text-left text-corps-2 text-encre-2">
+                  <li key={c.id} className="flex items-center gap-2">
+                    <button onClick={() => void ouvrir(c)} className="min-w-0 flex-1 rounded-md bg-fond-eleve px-3 py-2 text-left text-corps-2 text-encre-2">
                       {c.titre}
                     </button>
+                    {estAdulte && (
+                      <button
+                        aria-label={suppression === c.id ? `Confirmer la suppression de ${c.titre}` : `Supprimer ${c.titre}`}
+                        onClick={() => (suppression === c.id ? void supprimerBillet(c.id) : demanderSuppression(c.id))}
+                        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[14px]
+                          ${suppression === c.id ? 'bg-urgent font-[700] text-white' : 'bg-fond-eleve text-encre-3'}`}
+                      >
+                        {suppression === c.id ? '!' : '✕'}
+                      </button>
+                    )}
                   </li>
                 ))}
               </ul>
             </details>
+          )}
+
+          {/* 🗑 Le grand ménage : tout le portefeuille d'un coup (adultes). */}
+          {estAdulte && aVenir.length + passes.length > 0 && (
+            <div className="mt-4">
+              <Bouton
+                pleineLargeur
+                variante={suppression === 'tout' ? 'urgent' : 'discret'}
+                onClick={async () => {
+                  if (suppression !== 'tout') {
+                    demanderSuppression('tout')
+                    return
+                  }
+                  setSuppression(null)
+                  for (const c of concerts.data ?? []) {
+                    await muter({ table: 'concerts', type: 'delete', cible_id: c.id, charge: {} })
+                  }
+                  await rafraichir()
+                }}
+              >
+                {suppression === 'tout'
+                  ? `Confirmer : supprimer TOUS les billets (${aVenir.length + passes.length}) ?`
+                  : '🗑 Tout supprimer'}
+              </Bouton>
+            </div>
           )}
         </>
       )}
@@ -271,11 +332,15 @@ export function EcranConcerts() {
                 <Bouton
                   variante="urgent"
                   onClick={() => {
-                    void muter({ table: 'concerts', type: 'delete', cible_id: ouvert.id, charge: {} }).then(rafraichir)
+                    if (suppression !== 'feuille') {
+                      demanderSuppression('feuille')
+                      return
+                    }
+                    void supprimerBillet(ouvert.id)
                     setOuvert(null)
                   }}
                 >
-                  Supprimer
+                  {suppression === 'feuille' ? 'Confirmer ?' : 'Supprimer'}
                 </Bouton>
               </div>
             )}
