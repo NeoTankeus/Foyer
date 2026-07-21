@@ -17,6 +17,22 @@ function signalerInstallation(): void {
   abonnesInstallation.forEach((cb) => cb())
 }
 
+// ——— La progression de l'installation (0 → 100), pour l'anneau façon Apple.
+let progres = 0
+const abonnesProgres = new Set<(p: number) => void>()
+
+function signalerProgres(p: number): void {
+  progres = Math.max(progres, p)
+  abonnesProgres.forEach((cb) => cb(progres))
+}
+
+/** Prévenu à chaque jalon réel de l'installation (l'anneau se remplit). */
+export function surProgresMaj(cb: (p: number) => void): () => void {
+  abonnesProgres.add(cb)
+  cb(progres)
+  return () => abonnesProgres.delete(cb)
+}
+
 /** Prévenu dès qu'une nouvelle version est prête (pastille rouge du nuage). */
 export function surMiseAJourDisponible(cb: () => void): () => void {
   abonnes.add(cb)
@@ -85,12 +101,16 @@ const attendre = (ms: number) => new Promise((res) => setTimeout(res, ms))
  * contrôle (controllerchange) — plus jamais 3 ou 4 appuis.
  */
 export async function mettreAJourMaintenant(): Promise<never> {
+  progres = 0
   signalerInstallation()
+  signalerProgres(6)
   let recharge = false
   const recharger = () => {
     if (recharge) return
     recharge = true
-    window.location.reload()
+    // L'anneau se complète, le ✓ s'affiche un instant, PUIS on recharge.
+    signalerProgres(100)
+    window.setTimeout(() => window.location.reload(), 800)
   }
   // LE bon signal : la nouvelle version vient de prendre le contrôle.
   navigator.serviceWorker?.addEventListener('controllerchange', recharger)
@@ -104,10 +124,14 @@ export async function mettreAJourMaintenant(): Promise<never> {
       dernierUpdate = Date.now()
       try {
         await enregistrement?.update()
+        signalerProgres(20)
       } catch {
         // réseau capricieux — on retentera
       }
     }
+    // Les jalons réels du service worker font avancer l'anneau.
+    if (enregistrement?.installing) signalerProgres(45)
+    if (enregistrement?.waiting) signalerProgres(70)
     // Une version téléchargée qui patiente ? On la pousse à s'activer tout de suite.
     enregistrement?.waiting?.postMessage({ type: 'SKIP_WAITING' })
     await attendre(500)
@@ -118,6 +142,7 @@ export async function mettreAJourMaintenant(): Promise<never> {
       !enregistrement.installing &&
       !enregistrement.waiting
     ) {
+      signalerProgres(90)
       recharger()
       return new Promise<never>(() => undefined)
     }
