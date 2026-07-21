@@ -30,7 +30,8 @@ const STATUTS: { valeur: LigneColis['statut']; libelle: string }[] = [
 export function EcranColis() {
   const { membre, foyer } = utiliserSession()
   const clientRequetes = useQueryClient()
-  const [creation, setCreation] = useState(false)
+  const [enEdition, setEnEdition] = useState<LigneColis | 'nouvelle' | null>(null)
+  const [confirmeSuppr, setConfirmeSuppr] = useState<string | null>(null)
 
   const colis = useQuery({
     queryKey: ['colis'],
@@ -52,7 +53,7 @@ export function EcranColis() {
       <BarreRetour vers="/nous" />
       <div className="flex items-center justify-between gap-3 pb-3">
         <h2 className="text-titre-3 text-encre">Colis</h2>
-        <Bouton variante="discret" onClick={() => setCreation(true)} etiquette="Nouveau colis">+</Bouton>
+        <Bouton variante="discret" onClick={() => setEnEdition('nouvelle')} etiquette="Nouveau colis">+</Bouton>
       </div>
       <p className="mb-3 text-note text-encre-3">
         Invisible pour Gabriel — les surprises restent des surprises. Suivi automatique en phase 3.
@@ -68,9 +69,16 @@ export function EcranColis() {
           const lien = transporteur?.suivi(c.numero)
           return (
             <li key={c.id} className="rounded-md bg-fond-eleve p-3 shadow-carte">
-              <div className="flex items-baseline justify-between">
-                <p className="text-corps text-encre">{c.libelle ?? 'Colis'}</p>
+              <div className="flex items-center justify-between gap-2">
+                <p className="min-w-0 flex-1 truncate text-corps text-encre">{c.libelle ?? 'Colis'}</p>
                 <span className="chiffres text-legende text-encre-3">{c.numero}</span>
+                <button
+                  onClick={() => setEnEdition(c)}
+                  aria-label={`Modifier ${c.libelle ?? c.numero}`}
+                  className="min-h-[32px] min-w-[32px] rounded-full text-note text-encre-3"
+                >
+                  ✎
+                </button>
               </div>
               <div className="mt-2 flex items-center justify-between">
                 <div className="flex gap-1">
@@ -102,21 +110,48 @@ export function EcranColis() {
         })}
       </ul>
 
-      <Feuille ouverte={creation} onFermer={() => setCreation(false)} titre="Nouveau colis">
-        {foyer && (
+      <Feuille
+        ouverte={enEdition !== null}
+        onFermer={() => {
+          setEnEdition(null)
+          setConfirmeSuppr(null)
+        }}
+        titre={enEdition === 'nouvelle' ? 'Nouveau colis' : 'Modifier le colis'}
+      >
+        {enEdition !== null && foyer && (
           <FormColis
-            surCreation={async (b) => {
-              const id = crypto.randomUUID()
-              await muter({
-                table: 'colis', type: 'insert', cible_id: id,
-                charge: {
-                  id, foyer_id: foyer.id, statut: 'attendu', dernier_evenement: null,
-                  eta: null, destinataire_id: null, livre_le: null, ...b,
-                },
-              })
+            initiale={enEdition === 'nouvelle' ? null : enEdition}
+            surEnregistrement={async (b) => {
+              if (enEdition === 'nouvelle') {
+                const id = crypto.randomUUID()
+                await muter({
+                  table: 'colis', type: 'insert', cible_id: id,
+                  charge: {
+                    id, foyer_id: foyer.id, statut: 'attendu', dernier_evenement: null,
+                    eta: null, destinataire_id: null, livre_le: null, ...b,
+                  },
+                })
+              } else {
+                await muter({ table: 'colis', type: 'update', cible_id: enEdition.id, charge: b })
+              }
               await rafraichir()
-              setCreation(false)
+              setEnEdition(null)
             }}
+            surSuppression={
+              enEdition === 'nouvelle'
+                ? undefined
+                : async () => {
+                    if (confirmeSuppr !== enEdition.id) {
+                      setConfirmeSuppr(enEdition.id)
+                      return
+                    }
+                    await muter({ table: 'colis', type: 'delete', cible_id: enEdition.id, charge: {} })
+                    setConfirmeSuppr(null)
+                    await rafraichir()
+                    setEnEdition(null)
+                  }
+            }
+            confirme={enEdition !== 'nouvelle' && confirmeSuppr === enEdition.id}
           />
         )}
       </Feuille>
@@ -125,13 +160,19 @@ export function EcranColis() {
 }
 
 function FormColis({
-  surCreation,
+  initiale,
+  surEnregistrement,
+  surSuppression,
+  confirme,
 }: {
-  surCreation: (b: { numero: string; transporteur: LigneColis['transporteur']; libelle: string | null }) => Promise<void>
+  initiale: LigneColis | null
+  surEnregistrement: (b: { numero: string; transporteur: LigneColis['transporteur']; libelle: string | null }) => Promise<void>
+  surSuppression?: () => Promise<void>
+  confirme: boolean
 }) {
-  const [numero, setNumero] = useState('')
-  const [transporteur, setTransporteur] = useState<LigneColis['transporteur']>('laposte')
-  const [libelle, setLibelle] = useState('')
+  const [numero, setNumero] = useState(initiale?.numero ?? '')
+  const [transporteur, setTransporteur] = useState<LigneColis['transporteur']>(initiale?.transporteur ?? 'laposte')
+  const [libelle, setLibelle] = useState(initiale?.libelle ?? '')
   return (
     <div className="flex flex-col gap-3">
       <ChampTexte etiquette="Numéro de suivi" value={numero} onChange={(e) => setNumero(e.target.value)} placeholder="6A123456789FR" />
@@ -153,11 +194,16 @@ function FormColis({
         pleineLargeur
         onClick={() => {
           if (numero.trim())
-            void surCreation({ numero: numero.trim(), transporteur, libelle: libelle.trim() || null })
+            void surEnregistrement({ numero: numero.trim(), transporteur, libelle: libelle.trim() || null })
         }}
       >
-        Suivre ce colis
+        {initiale ? 'Enregistrer' : 'Suivre ce colis'}
       </Bouton>
+      {surSuppression && (
+        <Bouton pleineLargeur variante={confirme ? 'urgent' : 'discret'} onClick={() => void surSuppression()}>
+          {confirme ? 'Confirmer la suppression ?' : 'Supprimer ce colis'}
+        </Bouton>
+      )}
     </div>
   )
 }

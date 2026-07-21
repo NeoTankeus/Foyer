@@ -11,12 +11,16 @@ import { couleurMembre } from '@/lib/couleurs'
 import { notifierLesAutres } from '@/lib/notifications'
 import type { LigneMur } from '@/lib/basedonnees.types'
 import { Bouton } from '@/design/composants/Bouton'
+import { Feuille } from '@/design/composants/Feuille'
+import { ChampTexte } from '@/design/composants/ChampTexte'
 import { EtatVide } from '@/design/composants/EtatVide'
 
 export function EcranMur() {
   const { membre, membres, foyer } = utiliserSession()
   const clientRequetes = useQueryClient()
   const [texte, setTexte] = useState('')
+  const [enEdition, setEnEdition] = useState<LigneMur | null>(null)
+  const [texteEdition, setTexteEdition] = useState('')
 
   const mur = useQuery({
     queryKey: ['mur'],
@@ -80,6 +84,14 @@ export function EcranMur() {
     await clientRequetes.invalidateQueries({ queryKey: ['mur'] })
   }
 
+  // Corriger le texte d'une note existante (le sien uniquement).
+  const modifier = async () => {
+    if (!enEdition || !texteEdition.trim()) return
+    await muter({ table: 'mur', type: 'update', cible_id: enEdition.id, charge: { contenu: texteEdition.trim() } })
+    setEnEdition(null)
+    await clientRequetes.invalidateQueries({ queryKey: ['mur'] })
+  }
+
   const retirer = async (note: LigneMur) => {
     await muter({ table: 'mur', type: 'delete', cible_id: note.id, charge: {} })
     await clientRequetes.invalidateQueries({ queryKey: ['mur'] })
@@ -133,6 +145,18 @@ export function EcranMur() {
                   >
                     ⌖
                   </button>
+                  {mienne && (
+                    <button
+                      onClick={() => {
+                        setTexteEdition(note.contenu ?? '')
+                        setEnEdition(note)
+                      }}
+                      aria-label="Modifier"
+                      className="min-h-[32px] min-w-[32px] rounded-full text-note text-encre-3"
+                    >
+                      ✎
+                    </button>
+                  )}
                   {(mienne || membre?.role === 'adult') && (
                     <button
                       onClick={() => void retirer(note)}
@@ -148,6 +172,20 @@ export function EcranMur() {
           )
         })}
       </div>
+
+      <Feuille ouverte={enEdition !== null} onFermer={() => setEnEdition(null)} titre="Modifier la note">
+        <div className="flex flex-col gap-3">
+          <ChampTexte
+            etiquette="Le mot"
+            value={texteEdition}
+            onChange={(e) => setTexteEdition(e.target.value)}
+            placeholder="Un mot pour la maison…"
+          />
+          <Bouton pleineLargeur variante="valider" desactive={!texteEdition.trim()} onClick={() => void modifier()}>
+            Enregistrer
+          </Bouton>
+        </div>
+      </Feuille>
     </div>
   )
 }

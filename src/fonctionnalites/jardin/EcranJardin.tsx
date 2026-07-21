@@ -46,7 +46,7 @@ function plante(streak: number): { stade: string; suivant: string } {
 export function EcranJardin() {
   const { membre, membres, foyer } = utiliserSession()
   const clientRequetes = useQueryClient()
-  const [creation, setCreation] = useState(false)
+  const [enEdition, setEnEdition] = useState<LigneHabitude | 'nouvelle' | null>(null)
   const [nom, setNom] = useState('')
   const [emoji, setEmoji] = useState('🌱')
 
@@ -64,17 +64,23 @@ export function EcranJardin() {
   const prenom = (id: string) => membres.find((m) => m.id === id)?.prenom ?? '?'
   const aujourdHui = jourIso(0)
 
-  const planter = async () => {
-    if (!foyer || !membre || !nom.trim()) return
-    const id = crypto.randomUUID()
-    await muter({
-      table: 'habitudes', type: 'insert', cible_id: id,
-      charge: {
-        id, foyer_id: foyer.id, membre_id: membre.id,
-        nom: nom.trim(), emoji, jours: [], cree_le: new Date().toISOString(),
-      },
-    })
-    setCreation(false)
+  // Plante (insert) ou corrige (update) selon ce qui est en édition.
+  const enregistrer = async () => {
+    if (!nom.trim() || enEdition === null) return
+    if (enEdition === 'nouvelle') {
+      if (!foyer || !membre) return
+      const id = crypto.randomUUID()
+      await muter({
+        table: 'habitudes', type: 'insert', cible_id: id,
+        charge: {
+          id, foyer_id: foyer.id, membre_id: membre.id,
+          nom: nom.trim(), emoji, jours: [], cree_le: new Date().toISOString(),
+        },
+      })
+    } else {
+      await muter({ table: 'habitudes', type: 'update', cible_id: enEdition.id, charge: { nom: nom.trim(), emoji } })
+    }
+    setEnEdition(null)
     setNom('')
     await rafraichir()
   }
@@ -100,7 +106,16 @@ export function EcranJardin() {
           <h1 className="text-titre-2 text-encre">🌱 Le Jardin</h1>
           <p className="text-legende text-encre-3">Vos habitudes poussent un jour à la fois.</p>
         </div>
-        <Bouton variante="primaire" onClick={() => setCreation(true)}>+ Planter</Bouton>
+        <Bouton
+          variante="primaire"
+          onClick={() => {
+            setNom('')
+            setEmoji('🌱')
+            setEnEdition('nouvelle')
+          }}
+        >
+          + Planter
+        </Bouton>
       </header>
 
       <div className="flex flex-col gap-3 px-5 pt-3">
@@ -145,6 +160,19 @@ export function EcranJardin() {
                       )}
                       {aMoi && (
                         <button
+                          aria-label={`Modifier ${h.nom}`}
+                          onClick={() => {
+                            setNom(h.nom)
+                            setEmoji(h.emoji)
+                            setEnEdition(h)
+                          }}
+                          className="min-h-sur-tactile text-encre-3"
+                        >
+                          ✎
+                        </button>
+                      )}
+                      {aMoi && (
+                        <button
                           aria-label={`Arracher ${h.nom}`}
                           onClick={() => {
                             if (confirm(`Arracher « ${h.nom} » du jardin ?`))
@@ -168,7 +196,11 @@ export function EcranJardin() {
         </p>
       </div>
 
-      <Feuille ouverte={creation} onFermer={() => setCreation(false)} titre="Planter une graine">
+      <Feuille
+        ouverte={enEdition !== null}
+        onFermer={() => setEnEdition(null)}
+        titre={enEdition === 'nouvelle' ? 'Planter une graine' : 'Modifier la pousse'}
+      >
         <div className="flex flex-col gap-3">
           <ChampTexte etiquette="L'habitude" value={nom} onChange={(e) => setNom(e.target.value)} placeholder="20 min de lecture le soir" />
           <div className="flex flex-wrap gap-2">
@@ -184,8 +216,8 @@ export function EcranJardin() {
               </button>
             ))}
           </div>
-          <Bouton pleineLargeur variante="valider" desactive={!nom.trim()} onClick={() => void planter()}>
-            🌱 Planter
+          <Bouton pleineLargeur variante="valider" desactive={!nom.trim()} onClick={() => void enregistrer()}>
+            {enEdition === 'nouvelle' ? '🌱 Planter' : 'Enregistrer'}
           </Bouton>
         </div>
       </Feuille>
