@@ -37,38 +37,45 @@ export default async function handler(req: Request): Promise<Response> {
   const { texte, aujourdhui } = (await req.json()) as { texte?: string; aujourdhui?: string }
   if (!texte?.trim()) return new Response(JSON.stringify({ erreur: 'vide' }), { status: 400 })
 
-  const MODELES = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.0-flash']
-  for (const modele of MODELES) {
-    const reponse = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${modele}:generateContent?key=${cleGemini}`,
-      {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ role: 'user', parts: [{ text: `${CONSIGNE(aujourdhui ?? '')}\n\nCourrier :\n« ${texte.slice(0, 8000)} »` }] }],
-          generationConfig: { maxOutputTokens: 1536, temperature: 0.1, responseMimeType: 'application/json' },
-        }),
-      },
-    )
-    if (reponse.status === 429 || reponse.status === 404) continue
-    if (!reponse.ok) {
-      return new Response(JSON.stringify({ erreur: 'analyse', message: `Gemini ${reponse.status}` }), {
-        status: 502, headers: { 'content-type': 'application/json' },
-      })
-    }
-    const donnees = (await reponse.json()) as { candidates?: { content?: { parts?: { text?: string }[] } }[] }
-    const brut = donnees.candidates?.[0]?.content?.parts?.map((p) => p.text ?? '').join('') ?? '{}'
-    try {
-      return new Response(JSON.stringify({ proposition: JSON.parse(brut) as unknown }), {
-        headers: { 'content-type': 'application/json' },
-      })
-    } catch {
-      return new Response(JSON.stringify({ erreur: 'analyse', message: 'Réponse illisible' }), {
-        status: 502, headers: { 'content-type': 'application/json' },
-      })
+  // Quatre modèles en cascade, et si TOUS sont saturés (429), on attend un
+  // peu et on refait la tournée — jusqu'à 3 vagues. L'utilisateur ne doit
+  // (presque) jamais voir « quota atteint ».
+  const MODELES = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.0-flash', 'gemini-2.0-flash-lite']
+  const PAUSES = [0, 2500, 5000]
+  for (const pause of PAUSES) {
+    if (pause > 0) await new Promise((res) => setTimeout(res, pause))
+    for (const modele of MODELES) {
+      const reponse = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${modele}:generateContent?key=${cleGemini}`,
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ role: 'user', parts: [{ text: `${CONSIGNE(aujourdhui ?? '')}\n\nCourrier :\n« ${texte.slice(0, 8000)} »` }] }],
+            generationConfig: { maxOutputTokens: 1536, temperature: 0.1, responseMimeType: 'application/json' },
+          }),
+        },
+      )
+      if (reponse.status === 429 || reponse.status === 404 || reponse.status === 503) continue
+      if (!reponse.ok) {
+        return new Response(JSON.stringify({ erreur: 'analyse', message: `Gemini ${reponse.status}` }), {
+          status: 502, headers: { 'content-type': 'application/json' },
+        })
+      }
+      const donnees = (await reponse.json()) as { candidates?: { content?: { parts?: { text?: string }[] } }[] }
+      const brut = donnees.candidates?.[0]?.content?.parts?.map((p) => p.text ?? '').join('') ?? '{}'
+      try {
+        return new Response(JSON.stringify({ proposition: JSON.parse(brut) as unknown }), {
+          headers: { 'content-type': 'application/json' },
+        })
+      } catch {
+        return new Response(JSON.stringify({ erreur: 'analyse', message: 'Réponse illisible' }), {
+          status: 502, headers: { 'content-type': 'application/json' },
+        })
+      }
     }
   }
-  return new Response(JSON.stringify({ erreur: 'quota', message: 'Quota IA atteint, réessaie dans une minute.' }), {
+  return new Response(JSON.stringify({ erreur: 'quota', message: 'Les IA sont toutes saturées à l’instant — réessaie dans 1 minute, ça repartira.' }), {
     status: 429, headers: { 'content-type': 'application/json' },
   })
 }

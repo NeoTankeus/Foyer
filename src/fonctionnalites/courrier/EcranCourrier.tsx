@@ -1,7 +1,7 @@
 // 📬 La Boîte aux lettres : colle N'IMPORTE quel email ou texte (confirmation
 // de commande, convocation école, garantie…) — STG le lit et range tout au
 // bon endroit : colis suivi, agenda, Coffre, courses, mur. Zéro saisie.
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { muter } from '@/lib/sync'
@@ -9,9 +9,18 @@ import { utiliserSession } from '@/etat/session'
 import { ajouterArticle, creerEvenement, utiliserListeCourses } from '@/lib/requetes'
 import { devinerRayon } from '@/fonctionnalites/courses/rayons'
 import { versUtc } from '@/lib/dates'
+import { compresserImage } from '@/fonctionnalites/souvenirs/donnees'
+import { decoderBillet } from '@/fonctionnalites/voyages/billets'
 import { BarreRetour } from '@/design/composants/BarreRetour'
 import { Bouton } from '@/design/composants/Bouton'
 import { Carte } from '@/design/composants/Carte'
+
+// Une pièce jointe : l'aperçu compressé pour l'affichage/stockage, et le
+// fichier ORIGINAL pleine résolution pour décoder le QR du billet.
+interface PieceJointe {
+  apercu: string
+  fichier: File
+}
 
 interface Tri {
   resume?: string
@@ -30,9 +39,46 @@ export function EcranCourrier() {
   const courses = utiliserListeCourses()
   const [texte, setTexte] = useState('')
   const [tri, setTri] = useState<Tri | null>(null)
+  const [pieces, setPieces] = useState<PieceJointe[]>([])
   const [enCours, setEnCours] = useState(false)
   const [erreur, setErreur] = useState<string | null>(null)
   const [fini, setFini] = useState<string | null>(null)
+  const champPieces = useRef<HTMLInputElement>(null)
+
+  const ajouterPieces = async (fichiers: FileList | null) => {
+    if (!fichiers) return
+    const nouvelles = await Promise.all(
+      [...fichiers].map(async (fichier) => ({ apercu: await compresserImage(fichier), fichier })),
+    )
+    setPieces((p) => [...p, ...nouvelles])
+  }
+
+  // Chaque pièce jointe devient un billet du portefeuille Concerts & sorties :
+  // QR décodé sur l'original (régénérable à l'entrée), infos reprises du tri.
+  const rangerPieces = async (): Promise<number> => {
+    if (!foyer) return 0
+    const evenement = tri?.evenements?.[0]
+    for (const [rang, piece] of pieces.entries()) {
+      const decode = await decoderBillet(piece.fichier).catch(() => null)
+      const id = crypto.randomUUID()
+      await muter({
+        table: 'concerts', type: 'insert', cible_id: id,
+        charge: {
+          id, foyer_id: foyer.id,
+          titre: `${evenement?.titre ?? tri?.resume ?? 'Billet'}${pieces.length > 1 ? ` (${rang + 1}/${pieces.length})` : ''}`,
+          lieu: evenement?.lieu ?? null,
+          date_evenement: evenement?.date
+            ? new Date(`${evenement.date}T${evenement.heure ?? '20:00'}:00`).toISOString()
+            : null,
+          codes_acces: decode?.texte ?? null, format: decode?.format ?? null,
+          image_donnees: piece.apercu, notes: tri?.resume ?? null,
+        },
+      })
+    }
+    const n = pieces.length
+    setPieces([])
+    return n
+  }
 
   const analyser = async () => {
     setEnCours(true)
@@ -64,6 +110,7 @@ export function EcranCourrier() {
   const toutRanger = async () => {
     if (!tri || !foyer || !membre) return
     let n = 0
+    n += await rangerPieces()
     for (const c of tri.colis ?? []) {
       if (!c.numero) continue
       const id = crypto.randomUUID()
@@ -118,7 +165,7 @@ export function EcranCourrier() {
       n += 1
     }
     await Promise.all(
-      ['colis', 'evenements', 'courses', 'mur', 'documents'].map((cle) =>
+      ['colis', 'evenements', 'courses', 'mur', 'documents', 'concerts'].map((cle) =>
         clientRequetes.invalidateQueries({ queryKey: [cle] }),
       ),
     )
@@ -130,7 +177,7 @@ export function EcranCourrier() {
 
   const total = tri
     ? (tri.colis?.length ?? 0) + (tri.evenements?.length ?? 0) + (tri.documents?.length ?? 0) +
-      (tri.articles?.length ?? 0) + (tri.notes?.length ?? 0)
+      (tri.articles?.length ?? 0) + (tri.notes?.length ?? 0) + pieces.length
     : 0
 
   return (
@@ -157,9 +204,54 @@ export function EcranCourrier() {
           className="w-full rounded-md border border-trait bg-fond-eleve px-3 py-2 text-corps-2 text-encre"
         />
 
+        {/* 🎫 Les pièces jointes : billets, e-billets, captures d'écran — en
+            plusieurs exemplaires. Elles filent dans le portefeuille de billets. */}
+        <input
+          ref={champPieces} type="file" accept="image/*" multiple hidden aria-hidden="true"
+          onChange={(e) => { void ajouterPieces(e.target.files); e.target.value = '' }}
+        />
+        <Bouton pleineLargeur variante="discret" onClick={() => champPieces.current?.click()}>
+          🎫 Joindre les billets / pièces jointes {pieces.length > 0 ? `(${pieces.length})` : ''}
+        </Bouton>
+        {pieces.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {pieces.map((piece, i) => (
+              <div key={i} className="relative">
+                <img src={piece.apercu} alt={`Pièce jointe ${i + 1}`} className="h-20 w-20 rounded-md object-cover shadow-carte" />
+                <button
+                  onClick={() => setPieces((p) => p.filter((_, j) => j !== i))}
+                  aria-label={`Retirer la pièce jointe ${i + 1}`}
+                  className="absolute -right-1.5 -top-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-encre text-[11px] text-white shadow-carte"
+                >
+                  ✕
+                </button>
+              </div>
+            ))}
+            <p className="w-full text-legende text-encre-3">
+              Chaque pièce deviendra un billet dans 🎟 Concerts & sorties (QR prêt pour l'entrée).
+            </p>
+          </div>
+        )}
+
         <Bouton pleineLargeur variante="primaire" desactive={!texte.trim() || enCours} onClick={() => void analyser()}>
           {enCours ? 'STG lit le courrier…' : '📬 STG, trie ça !'}
         </Bouton>
+
+        {/* Des billets sans texte à analyser ? On peut les ranger directement. */}
+        {pieces.length > 0 && !tri && !enCours && (
+          <Bouton
+            pleineLargeur variante="valider"
+            onClick={() => {
+              void rangerPieces().then(async (n) => {
+                await clientRequetes.invalidateQueries({ queryKey: ['concerts'] })
+                setFini(`🎫 ${n} billet${n > 1 ? 's' : ''} rangé${n > 1 ? 's' : ''} dans Concerts & sorties ✓`)
+                window.setTimeout(() => setFini(null), 3000)
+              })
+            }}
+          >
+            🎫 Ranger {pieces.length > 1 ? `les ${pieces.length} billets` : 'le billet'} ✓
+          </Bouton>
+        )}
 
         {erreur && <p className="text-corps-2 text-urgent">{erreur}</p>}
         {fini && <p className="text-center text-corps font-[590] text-fait">{fini}</p>}
@@ -183,6 +275,9 @@ export function EcranCourrier() {
               {(tri.notes ?? []).map((note, i) => (
                 <p key={`n${i}`}>🧲 {note}</p>
               ))}
+              {pieces.length > 0 && (
+                <p>🎫 {pieces.length} billet{pieces.length > 1 ? 's' : ''} → Concerts & sorties</p>
+              )}
               {total === 0 && <p className="text-encre-3">Rien d'actionnable détecté dans ce texte.</p>}
             </div>
             {total > 0 && (
