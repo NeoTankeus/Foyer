@@ -26,6 +26,8 @@ export function EcranEcole() {
     return Array.isArray(brut) ? (brut as Fourniture[]) : []
   })
   const [nouvelle, setNouvelle] = useState('')
+  const [enEdition, setEnEdition] = useState<number | null>(null) // index de la fourniture en cours de renommage
+  const [brouillon, setBrouillon] = useState('')
   const [titre, setTitre] = useState('')
   const [date, setDate] = useState('')
   const [heure, setHeure] = useState('')
@@ -138,10 +140,37 @@ export function EcranEcole() {
                 }
                 etiquette={`Cocher ${f.libelle}`}
               />
-              <span className={`flex-1 text-corps-2 ${f.coche ? 'text-encre-3 line-through' : 'text-encre'}`}>{f.libelle}</span>
+              {enEdition === i ? (
+                <form
+                  className="flex flex-1 gap-2"
+                  onSubmit={(e) => {
+                    e.preventDefault()
+                    const propre = brouillon.trim()
+                    if (propre) void enregistrerFournitures(fournitures.map((x, j) => (j === i ? { ...x, libelle: propre } : x)))
+                    setEnEdition(null)
+                  }}
+                >
+                  <input
+                    value={brouillon}
+                    onChange={(e) => setBrouillon(e.target.value)}
+                    aria-label={`Renommer ${f.libelle}`}
+                    autoFocus
+                    className="min-h-sur-tactile w-full min-w-0 flex-1 rounded-full border border-trait bg-fond-eleve px-4 text-corps-2"
+                  />
+                  <Bouton type="submit" variante="discret">OK</Bouton>
+                </form>
+              ) : (
+                <button
+                  aria-label={`Modifier ${f.libelle}`}
+                  onClick={() => { setEnEdition(i); setBrouillon(f.libelle) }}
+                  className={`min-h-sur-tactile flex-1 text-left text-corps-2 ${f.coche ? 'text-encre-3 line-through' : 'text-encre'}`}
+                >
+                  {f.libelle}
+                </button>
+              )}
               <button
                 aria-label={`Retirer ${f.libelle}`}
-                onClick={() => void enregistrerFournitures(fournitures.filter((_, j) => j !== i))}
+                onClick={() => { setEnEdition(null); void enregistrerFournitures(fournitures.filter((_, j) => j !== i)) }}
                 className="min-h-sur-tactile text-encre-3"
               >
                 ✕

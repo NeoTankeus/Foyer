@@ -84,6 +84,21 @@ export function EcranOlympiades() {
               <p className="flex-1 text-corps-2 font-[590] text-encre">{m.prenom}</p>
               <p className="chiffres text-corps font-[700] text-encre">{scores.points[m.id] ?? 0} pts</p>
               <div className="flex gap-1">
+                {/* −1 pour corriger une saisie ratée — jamais en dessous de zéro. */}
+                <button
+                  onClick={() => {
+                    navigator.vibrate?.(4)
+                    void enregistrer({
+                      ...scores,
+                      points: { ...scores.points, [m.id]: Math.max(0, (scores.points[m.id] ?? 0) - 1) },
+                    })
+                  }}
+                  disabled={(scores.points[m.id] ?? 0) === 0}
+                  aria-label={`Retirer 1 point à ${m.prenom}`}
+                  className="flex h-9 w-9 items-center justify-center rounded-full bg-fond-sourd text-note font-[700] text-encre-3 disabled:opacity-40"
+                >
+                  −1
+                </button>
                 {[1, 2, 3].map((n) => (
                   <button
                     key={n}
@@ -117,7 +132,8 @@ export function EcranOlympiades() {
         </Carte>
 
         <p className="text-legende text-encre-3">
-          Après chaque épreuve : +3 au vainqueur, +2 au deuxième, +1 au troisième. Les scores sont partagés entre
+          Après chaque épreuve : +3 au vainqueur, +2 au deuxième, +1 au troisième (et −1 pour corriger une
+          erreur de saisie). Les scores sont partagés entre
           vos téléphones. Le titre suprême se remet au réveillon. 🏆
         </p>
       </div>

@@ -5,14 +5,16 @@ import { utiliserSession } from '@/etat/session'
 import {
   creerRecette,
   genererCoursesDepuisMenus,
+  modifierRecette,
   planifierRepas,
   retirerRepas,
+  supprimerRecette,
   utiliserRecettes,
   utiliserSemaineRepas,
 } from './donnees'
 import { utiliserListeCourses } from '@/lib/requetes'
 import { addDays, dateIsoJour, formatJourCourt, maintenantLocal } from '@/lib/dates'
-import type { LigneRepas } from '@/lib/basedonnees.types'
+import type { LigneRecette, LigneRepas } from '@/lib/basedonnees.types'
 import { Feuille } from '@/design/composants/Feuille'
 import { Bouton } from '@/design/composants/Bouton'
 import { ChampTexte } from '@/design/composants/ChampTexte'
@@ -29,7 +31,8 @@ export function EcranMenus() {
   const recettes = utiliserRecettes()
   const courses = utiliserListeCourses()
   const [creneauOuvert, setCreneauOuvert] = useState<{ date: string; creneau: LigneRepas['creneau'] } | null>(null)
-  const [nouvelleRecette, setNouvelleRecette] = useState(false)
+  const [recetteEnEdition, setRecetteEnEdition] = useState<LigneRecette | 'nouvelle' | null>(null)
+  const [confirmeSuppr, setConfirmeSuppr] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
 
   const jours = Array.from({ length: 7 }, (_, i) => addDays(maintenantLocal(), i))
@@ -133,19 +136,41 @@ export function EcranMenus() {
               setCreneauOuvert(null)
             }}
             existe={repasPour(creneauOuvert.date, creneauOuvert.creneau) !== undefined}
-            surNouvelleRecette={() => setNouvelleRecette(true)}
+            surNouvelleRecette={() => setRecetteEnEdition('nouvelle')}
+            surModifierRecette={(r) => { setRecetteEnEdition(r); setConfirmeSuppr(null) }}
           />
         )}
       </Feuille>
 
-      <Feuille ouverte={nouvelleRecette} onFermer={() => setNouvelleRecette(false)} titre="Nouvelle recette">
-        {foyer && (
+      <Feuille
+        ouverte={recetteEnEdition !== null}
+        onFermer={() => setRecetteEnEdition(null)}
+        titre={recetteEnEdition === 'nouvelle' ? 'Nouvelle recette' : `Modifier « ${recetteEnEdition?.titre ?? ''} »`}
+      >
+        {recetteEnEdition !== null && foyer && (
           <FormRecette
-            surCreation={async (titre, ingredients) => {
-              await creerRecette(foyer.id, titre, ingredients)
+            initiale={recetteEnEdition === 'nouvelle' ? null : recetteEnEdition}
+            surEnregistrement={async (titre, ingredients) => {
+              if (recetteEnEdition === 'nouvelle') await creerRecette(foyer.id, titre, ingredients)
+              else await modifierRecette(recetteEnEdition.id, titre, ingredients)
               await clientRequetes.invalidateQueries({ queryKey: ['recettes'] })
-              setNouvelleRecette(false)
+              setRecetteEnEdition(null)
             }}
+            surSuppression={
+              recetteEnEdition === 'nouvelle'
+                ? undefined
+                : async () => {
+                    if (confirmeSuppr !== recetteEnEdition.id) {
+                      setConfirmeSuppr(recetteEnEdition.id)
+                      return
+                    }
+                    await supprimerRecette(recetteEnEdition.id)
+                    setConfirmeSuppr(null)
+                    await clientRequetes.invalidateQueries({ queryKey: ['recettes'] })
+                    setRecetteEnEdition(null)
+                  }
+            }
+            confirme={recetteEnEdition !== 'nouvelle' && confirmeSuppr === recetteEnEdition.id}
           />
         )}
       </Feuille>
@@ -157,11 +182,13 @@ function ChoixRepas({
   surChoix,
   surRetrait,
   surNouvelleRecette,
+  surModifierRecette,
   existe,
 }: {
   surChoix: (choix: { recette_id: string | null; notes: string | null }) => Promise<void>
   surRetrait: () => Promise<void>
   surNouvelleRecette: () => void
+  surModifierRecette: (r: LigneRecette) => void
   existe: boolean
 }) {
   const recettes = utiliserRecettes()
@@ -191,14 +218,22 @@ function ChoixRepas({
           <p className="mb-1 text-note font-[590] uppercase tracking-wide text-encre-3">Recettes du foyer</p>
           <div className="flex flex-col gap-1">
             {(recettes.data ?? []).map((r) => (
-              <button
-                key={r.id}
-                onClick={() => void surChoix({ recette_id: r.id, notes: null })}
-                className="min-h-sur-tactile rounded-md bg-fond-sourd px-3 text-left text-corps text-encre"
-              >
-                {r.titre}
-                <span className="ml-2 text-note text-encre-3">{r.ingredients.length} ingrédients</span>
-              </button>
+              <div key={r.id} className="flex items-center gap-1 rounded-md bg-fond-sourd">
+                <button
+                  onClick={() => void surChoix({ recette_id: r.id, notes: null })}
+                  className="min-h-sur-tactile min-w-0 flex-1 px-3 text-left text-corps text-encre"
+                >
+                  {r.titre}
+                  <span className="ml-2 text-note text-encre-3">{r.ingredients.length} ingrédients</span>
+                </button>
+                <button
+                  aria-label={`Modifier la recette ${r.titre}`}
+                  onClick={() => surModifierRecette(r)}
+                  className="min-h-sur-tactile min-w-sur-tactile shrink-0 text-encre-3"
+                >
+                  ✎
+                </button>
+              </div>
             ))}
           </div>
         </div>
@@ -217,12 +252,20 @@ function ChoixRepas({
 }
 
 function FormRecette({
-  surCreation,
+  initiale,
+  surEnregistrement,
+  surSuppression,
+  confirme,
 }: {
-  surCreation: (titre: string, ingredients: string[]) => Promise<void>
+  initiale: LigneRecette | null
+  surEnregistrement: (titre: string, ingredients: string[]) => Promise<void>
+  surSuppression?: () => Promise<void>
+  confirme: boolean
 }) {
-  const [titre, setTitre] = useState('')
-  const [ingredients, setIngredients] = useState('')
+  const [titre, setTitre] = useState(initiale?.titre ?? '')
+  const [ingredients, setIngredients] = useState(
+    initiale ? initiale.ingredients.map((i) => i.libelle).join('\n') : '',
+  )
   return (
     <div className="flex flex-col gap-3">
       <ChampTexte etiquette="Titre" value={titre} onChange={(e) => setTitre(e.target.value)} placeholder="Lasagnes" />
@@ -241,11 +284,16 @@ function FormRecette({
       <Bouton
         pleineLargeur
         onClick={() => {
-          if (titre.trim()) void surCreation(titre.trim(), ingredients.split('\n'))
+          if (titre.trim()) void surEnregistrement(titre.trim(), ingredients.split('\n'))
         }}
       >
         Enregistrer
       </Bouton>
+      {surSuppression && (
+        <Bouton pleineLargeur variante={confirme ? 'urgent' : 'discret'} onClick={() => void surSuppression()}>
+          {confirme ? 'Confirmer la suppression ?' : 'Supprimer cette recette'}
+        </Bouton>
+      )}
     </div>
   )
 }

@@ -84,6 +84,18 @@ export async function creerRecette(foyerId: string, titre: string, lignesIngredi
   return id
 }
 
+export async function modifierRecette(id: string, titre: string, lignesIngredients: string[]) {
+  const ingredients = lignesIngredients
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .map((libelle) => ({ libelle, quantite: null, rayon: devinerRayon(libelle) }))
+  await muter({ table: 'recettes', type: 'update', cible_id: id, charge: { titre, ingredients } })
+}
+
+export async function supprimerRecette(id: string) {
+  await muter({ table: 'recettes', type: 'delete', cible_id: id, charge: {} })
+}
+
 /**
  * Le vrai gain quotidien : on ne fait pas la liste, on fait les menus.
  * Ajoute aux courses tous les ingrédients de la semaine qui n'y sont pas déjà.

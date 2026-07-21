@@ -27,6 +27,8 @@ export function EcranRoue() {
   const [perso, setPerso] = useState<string[]>(() => lireListe(CLE_PERSO))
   const [plats, setPlats] = useState<string[]>(() => lireListe(CLE_PLATS))
   const [nouvelle, setNouvelle] = useState('')
+  const [enEdition, setEnEdition] = useState<string | null>(null) // libellé de l'option en cours de renommage
+  const [brouillon, setBrouillon] = useState('')
   const [angle, setAngle] = useState(0)
   const [tourne, setTourne] = useState(false)
   const [gagnant, setGagnant] = useState<string | null>(null)
@@ -145,7 +147,7 @@ export function EcranRoue() {
           {([['restos', '🍴 Restos'], ['plats', '🍲 On mange quoi ?'], ['perso', '✏️ Perso']] as const).map(([cle, libelle]) => (
             <button
               key={cle}
-              onClick={() => { setMode(cle); setGagnant(null) }}
+              onClick={() => { setMode(cle); setGagnant(null); setEnEdition(null) }}
               aria-pressed={mode === cle}
               className={`min-h-sur-tactile flex-1 rounded-full px-2 text-note font-[590]
                 ${mode === cle ? 'bg-encre text-fond' : 'bg-fond-sourd text-encre-2'}`}
@@ -239,7 +241,30 @@ export function EcranRoue() {
             <ul className="mt-2 flex flex-wrap gap-2">
               {listeActive.map((p) => (
                 <li key={p} className="flex items-center gap-1 rounded-full bg-fond-sourd px-3 py-1 text-note text-encre-2">
-                  {p}
+                  {enEdition === p ? (
+                    // Renommage en place : Entrée valide, le libellé est réécrit dans la liste.
+                    <form
+                      onSubmit={(e) => {
+                        e.preventDefault()
+                        const propre = brouillon.trim()
+                        if (propre && (propre === p || !listeActive.includes(propre)))
+                          majListe(listeActive.map((x) => (x === p ? propre : x)))
+                        setEnEdition(null)
+                      }}
+                    >
+                      <input
+                        value={brouillon}
+                        onChange={(e) => setBrouillon(e.target.value)}
+                        onBlur={(e) => e.target.form?.requestSubmit()}
+                        aria-label={`Renommer ${p}`}
+                        autoFocus
+                        size={Math.max(brouillon.length, 4)}
+                        className="rounded-full bg-fond-eleve px-2 py-0.5 text-note text-encre"
+                      />
+                    </form>
+                  ) : (
+                    <button aria-label={`Modifier ${p}`} onClick={() => { setEnEdition(p); setBrouillon(p) }}>{p}</button>
+                  )}
                   <button aria-label={`Retirer ${p}`} onClick={() => majListe(listeActive.filter((x) => x !== p))} className="text-encre-3">✕</button>
                 </li>
               ))}

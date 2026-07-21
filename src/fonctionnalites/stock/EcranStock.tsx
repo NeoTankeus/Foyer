@@ -8,6 +8,7 @@ import { BarreRetour } from '@/design/composants/BarreRetour'
 import { Bouton } from '@/design/composants/Bouton'
 import { ChampTexte } from '@/design/composants/ChampTexte'
 import { EtatVide } from '@/design/composants/EtatVide'
+import { Feuille } from '@/design/composants/Feuille'
 
 export interface ProduitStock {
   libelle: string
@@ -33,6 +34,7 @@ export function EcranStock() {
   })
   const [libelle, setLibelle] = useState('')
   const [jours, setJours] = useState(7)
+  const [enEdition, setEnEdition] = useState<ProduitStock | null>(null)
   const [sauvegarde, setSauvegarde] = useState<'repos' | 'en-cours' | 'erreur'>('repos')
 
   const enregistrer = async (suivants: ProduitStock[]) => {
@@ -115,7 +117,11 @@ export function EcranStock() {
               const dans = Math.ceil((echeance.getTime() - Date.now()) / 86400000)
               return (
                 <li key={p.libelle} className="flex items-center gap-3 rounded-xl bg-fond-eleve p-3 shadow-carte">
-                  <div className="min-w-0 flex-1">
+                  <button
+                    aria-label={`Modifier ${p.libelle}`}
+                    onClick={() => setEnEdition(p)}
+                    className="min-w-0 flex-1 text-left"
+                  >
                     <p className="break-words text-corps-2 font-[590] text-encre">{p.libelle}</p>
                     <p className="text-legende text-encre-3">
                       tous les {p.jours} j ·{' '}
@@ -123,7 +129,7 @@ export function EcranStock() {
                         ? '🛒 ajout aux courses au prochain passage de STG'
                         : `prochain ajout auto ${echeance.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}`}
                     </p>
-                  </div>
+                  </button>
                   <Bouton
                     variante="discret"
                     onClick={() =>
@@ -150,6 +156,81 @@ export function EcranStock() {
           vous prévient. « Acheté ✓ » remet le compteur à zéro (cocher l'article dans les courses le fait aussi).
         </p>
       </div>
+
+      <Feuille
+        ouverte={enEdition !== null}
+        onFermer={() => setEnEdition(null)}
+        titre={`Modifier « ${enEdition?.libelle ?? ''} »`}
+      >
+        {enEdition !== null && (
+          <FormProduit
+            initiale={enEdition}
+            surEnregistrement={(valeurs) => {
+              const propre = valeurs.libelle.trim()
+              // Pas de doublon avec un AUTRE produit (le même libellé reste permis).
+              if (
+                !propre ||
+                produits.some(
+                  (p) => p.libelle !== enEdition.libelle && p.libelle.toLowerCase() === propre.toLowerCase(),
+                )
+              )
+                return
+              void enregistrer(
+                produits.map((p) =>
+                  p.libelle === enEdition.libelle ? { ...p, libelle: propre, jours: valeurs.jours } : p,
+                ),
+              )
+              setEnEdition(null)
+            }}
+          />
+        )}
+      </Feuille>
+    </div>
+  )
+}
+
+// Le formulaire d'édition d'un produit surveillé : libellé + rythme, pré-remplis.
+function FormProduit({
+  initiale,
+  surEnregistrement,
+}: {
+  initiale: ProduitStock
+  surEnregistrement: (v: { libelle: string; jours: number }) => void
+}) {
+  const [libelle, setLibelle] = useState(initiale.libelle)
+  const [jours, setJours] = useState(initiale.jours)
+  return (
+    <div className="flex flex-col gap-3">
+      <ChampTexte
+        etiquette="Le produit"
+        value={libelle}
+        onChange={(e) => setLibelle(e.target.value)}
+        placeholder="Lait, café, lessive, couches…"
+      />
+      <div>
+        <p className="mb-1 text-legende text-encre-3">On en rachète environ tous les…</p>
+        <div className="flex flex-wrap gap-2">
+          {RYTHMES.map((r) => (
+            <button
+              key={r.jours}
+              onClick={() => setJours(r.jours)}
+              aria-pressed={jours === r.jours}
+              className={`min-h-sur-tactile rounded-full px-3 text-note font-[590]
+                ${jours === r.jours ? 'bg-encre text-fond' : 'bg-fond-sourd text-encre-2'}`}
+            >
+              {r.libelle}
+            </button>
+          ))}
+        </div>
+      </div>
+      <Bouton
+        pleineLargeur
+        variante="valider"
+        desactive={!libelle.trim()}
+        onClick={() => surEnregistrement({ libelle, jours })}
+      >
+        Enregistrer
+      </Bouton>
     </div>
   )
 }

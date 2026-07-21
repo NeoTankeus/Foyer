@@ -14,6 +14,7 @@ import { BarreRetour } from '@/design/composants/BarreRetour'
 import { Bouton } from '@/design/composants/Bouton'
 import { Carte } from '@/design/composants/Carte'
 import { EtatVide } from '@/design/composants/EtatVide'
+import { Feuille } from '@/design/composants/Feuille'
 
 export function EcranInterviews() {
   const { membres, foyer } = utiliserSession()
@@ -26,6 +27,8 @@ export function EcranInterviews() {
   const [enCours, setEnCours] = useState(false)
   const [ecoute, setEcoute] = useState<number | null>(null)
   const [merci, setMerci] = useState(false)
+  const [enEdition, setEnEdition] = useState<LigneInterview | null>(null)
+  const [confirmeSuppr, setConfirmeSuppr] = useState<string | null>(null)
 
   const archives = useQuery({
     queryKey: ['interviews'],
@@ -185,10 +188,15 @@ export function EcranInterviews() {
                 {archivesDe
                   .filter((i) => i.annee === a)
                   .map((i) => (
-                    <div key={i.id} className="border-b border-trait py-1.5 last:border-0">
+                    <button
+                      key={i.id}
+                      aria-label={`Modifier la réponse à : ${i.question}`}
+                      onClick={() => { setEnEdition(i); setConfirmeSuppr(null) }}
+                      className="block w-full border-b border-trait py-1.5 text-left last:border-0"
+                    >
                       <p className="text-legende text-encre-3">{i.question}</p>
                       <p className="text-corps-2 italic text-encre">« {i.reponse} »</p>
-                    </div>
+                    </button>
                   ))}
               </Carte>
             ))}
@@ -201,6 +209,72 @@ export function EcranInterviews() {
           />
         )}
       </div>
+
+      <Feuille
+        ouverte={enEdition !== null}
+        onFermer={() => setEnEdition(null)}
+        titre={`${enEdition?.personne ?? ''}, en ${enEdition?.annee ?? ''}`}
+      >
+        {enEdition !== null && (
+          <FormReponse
+            initiale={enEdition}
+            surEnregistrement={async (reponse) => {
+              await muter({ table: 'interviews', type: 'update', cible_id: enEdition.id, charge: { reponse } })
+              await clientRequetes.invalidateQueries({ queryKey: ['interviews'] })
+              setEnEdition(null)
+            }}
+            surSuppression={async () => {
+              if (confirmeSuppr !== enEdition.id) {
+                setConfirmeSuppr(enEdition.id)
+                return
+              }
+              await muter({ table: 'interviews', type: 'delete', cible_id: enEdition.id, charge: {} })
+              setConfirmeSuppr(null)
+              await clientRequetes.invalidateQueries({ queryKey: ['interviews'] })
+              setEnEdition(null)
+            }}
+            confirme={confirmeSuppr === enEdition.id}
+          />
+        )}
+      </Feuille>
+    </div>
+  )
+}
+
+// Retoucher (ou retirer) une réponse archivée : la question reste, les mots se corrigent.
+function FormReponse({
+  initiale,
+  surEnregistrement,
+  surSuppression,
+  confirme,
+}: {
+  initiale: LigneInterview
+  surEnregistrement: (reponse: string) => Promise<void>
+  surSuppression: () => Promise<void>
+  confirme: boolean
+}) {
+  const [reponse, setReponse] = useState(initiale.reponse)
+  return (
+    <div className="flex flex-col gap-3">
+      <p className="text-corps-2 font-[590] text-encre">{initiale.question}</p>
+      <textarea
+        value={reponse}
+        onChange={(e) => setReponse(e.target.value)}
+        rows={4}
+        aria-label={`Réponse à : ${initiale.question}`}
+        className="w-full rounded-md border border-trait bg-fond-eleve px-3 py-2 text-corps-2"
+      />
+      <Bouton
+        pleineLargeur
+        variante="valider"
+        desactive={!reponse.trim()}
+        onClick={() => void surEnregistrement(reponse.trim())}
+      >
+        Enregistrer
+      </Bouton>
+      <Bouton pleineLargeur variante={confirme ? 'urgent' : 'discret'} onClick={() => void surSuppression()}>
+        {confirme ? 'Confirmer la suppression ?' : 'Supprimer cette réponse'}
+      </Bouton>
     </div>
   )
 }
