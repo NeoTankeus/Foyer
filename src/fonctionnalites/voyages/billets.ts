@@ -63,6 +63,19 @@ function decouper(source: HTMLCanvasElement, x: number, y: number, l: number, h:
   return canvas.toDataURL('image/jpeg', 0.92)
 }
 
+// Certains billets impriment le code à la VERTICALE : on tourne de 90°.
+function tourner(source: HTMLCanvasElement): HTMLCanvasElement {
+  const canvas = document.createElement('canvas')
+  canvas.width = source.height
+  canvas.height = source.width
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return source
+  ctx.translate(canvas.width / 2, canvas.height / 2)
+  ctx.rotate(Math.PI / 2)
+  ctx.drawImage(source, -source.width / 2, -source.height / 2)
+  return canvas
+}
+
 /**
  * Décodage multi-passes : image entière, contraste renforcé, centre zoomé,
  * quatre quadrants — jusqu'à ce qu'un code (QR, Aztec, code-barres…) réponde.
@@ -89,15 +102,33 @@ export async function decoderBillet(source: File | string): Promise<BilletDecode
     decouper(plein, L / 2, H / 2, L / 2, H / 2, 2),
     decouper(plein, L * 0.1, H * 0.3, L * 0.8, H * 0.4, 2, 'grayscale(1) contrast(2)'),
     // Les billets PDF placent souvent le code dans un COIN ou une bande :
-    // bandeau haut, bande droite, et les 4 coins zoomés très fort.
+    // bandeaux haut/milieu/bas, bandes gauche/droite, 4 coins zoomés très fort.
     decouper(plein, 0, 0, L, H * 0.35, 2),
+    decouper(plein, 0, H * 0.3, L, H * 0.4, 2),
+    decouper(plein, 0, H * 0.65, L, H * 0.35, 2),
     decouper(plein, L * 0.55, 0, L * 0.45, H, 2),
+    decouper(plein, 0, 0, L * 0.45, H, 2),
     decouper(plein, L * 0.6, 0, L * 0.4, H * 0.4, 3),
     decouper(plein, 0, 0, L * 0.4, H * 0.4, 3),
     decouper(plein, L * 0.6, H * 0.6, L * 0.4, H * 0.4, 3),
     decouper(plein, 0, H * 0.6, L * 0.4, H * 0.4, 3),
     decouper(plein, L * 0.3, 0, L * 0.4, H * 0.4, 3, 'grayscale(1) contrast(1.8)'),
   ]
+  // Codes en « négatif » (clair sur fond sombre) : on essaie l'image inversée.
+  passes.push(
+    decouper(plein, 0, 0, L, H, 1, 'invert(1)'),
+    decouper(plein, 0, 0, L, H, 1, 'invert(1) grayscale(1) contrast(1.8)'),
+  )
+  // Et les mêmes chances pour un code posé à la VERTICALE (billet tourné).
+  const pivote = tourner(plein)
+  const Lp = pivote.width
+  const Hp = pivote.height
+  passes.push(
+    pivote.toDataURL('image/jpeg', 0.92),
+    decouper(pivote, 0, 0, Lp, Hp, 1, 'grayscale(1) contrast(1.8)'),
+    decouper(pivote, 0, 0, Lp, Hp * 0.35, 2),
+    decouper(pivote, 0, Hp * 0.65, Lp, Hp * 0.35, 2),
+  )
 
   for (const passe of passes) {
     try {

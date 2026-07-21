@@ -12,6 +12,7 @@ import { ajouterSouvenir, compresserImage } from '@/fonctionnalites/souvenirs/do
 import { decoderBillet, genererCodeVisuel } from '@/fonctionnalites/voyages/billets'
 import { enImages } from '@/lib/pdf'
 import { BoutonEnvoi } from '@/design/composants/BoutonEnvoi'
+import { VisionneuseZoom } from '@/design/composants/VisionneuseZoom'
 import type { LigneConcert } from '@/lib/basedonnees.types'
 import { Bouton } from '@/design/composants/Bouton'
 import { Feuille } from '@/design/composants/Feuille'
@@ -126,10 +127,30 @@ export function EcranConcerts() {
   const ouvrir = async (c: LigneConcert) => {
     setOuvert(c)
     setQrRegenere(null)
+    setRescanMessage(null)
     // Régénération dans le format d'origine : QR, Aztec SNCF, code-barres…
     if (c.codes_acces && c.format) {
       setQrRegenere(await genererCodeVisuel(c.codes_acces, c.format))
     }
+  }
+
+  // 🔍 Rechercher le code sur un billet DÉJÀ importé (sans le réimporter) :
+  // utile après une amélioration du décodeur, ou si l'import avait échoué.
+  const [rescanMessage, setRescanMessage] = useState<string | null>(null)
+  const [zoomSrc, setZoomSrc] = useState<string | null>(null)
+  const rechercherCode = async () => {
+    if (!ouvert?.image_donnees) return
+    const decode = await decoderBillet(ouvert.image_donnees)
+    if (!decode) {
+      setRescanMessage('Code introuvable sur cette image — utilise le zoom 🔍 pour le présenter au scanner.')
+      return
+    }
+    await muter({ table: 'concerts', type: 'update', cible_id: ouvert.id, charge: { codes_acces: decode.texte, format: decode.format } })
+    await rafraichir()
+    const enrichi = { ...ouvert, codes_acces: decode.texte, format: decode.format }
+    setOuvert(enrichi)
+    setQrRegenere(await genererCodeVisuel(decode.texte, decode.format))
+    setRescanMessage(`✓ Code trouvé (${decode.format}) — régénéré net ci-dessus.`)
   }
 
   const maintenant = maintenantLocal()
@@ -288,16 +309,20 @@ export function EcranConcerts() {
                 <span className="absolute -right-3 -top-3 h-6 w-6 rounded-full bg-fond" aria-hidden="true" />
                 {qrRegenere ? (
                   <div className="flex flex-col items-center gap-1">
-                    <img src={qrRegenere} alt="Code du billet, régénéré" className="max-h-64 w-auto max-w-full" />
+                    <button onClick={() => setZoomSrc(qrRegenere)} className="w-full" aria-label="Zoomer sur le code">
+                      <img src={qrRegenere} alt="Code du billet, régénéré" className="mx-auto max-h-64 w-auto max-w-full" />
+                    </button>
                     <p className="chiffres text-legende text-encre-3">
-                      {ouvert.format} — régénéré net, monte la luminosité à l’entrée
+                      {ouvert.format} — régénéré net · touche le code pour zoomer 🔍
                     </p>
                   </div>
                 ) : ouvert.image_donnees ? (
                   <div className="flex flex-col items-center gap-1">
-                    <img src={ouvert.image_donnees} alt="Billet scanné" className="w-full rounded-md" />
+                    <button onClick={() => setZoomSrc(ouvert.image_donnees)} className="w-full" aria-label="Zoomer sur le billet">
+                      <img src={ouvert.image_donnees} alt="Billet scanné" className="w-full rounded-md" />
+                    </button>
                     <p className="text-legende text-encre-3">
-                      Code non détecté sur la photo — reprends-la bien à plat, sans reflet, le code plein cadre.
+                      Touche le billet pour ZOOMER 🔍 (pincement à deux doigts) — présente le code en grand au scanner.
                     </p>
                   </div>
                 ) : null}
@@ -306,6 +331,16 @@ export function EcranConcerts() {
             {/* Toutes les actions BIEN RANGÉES sous le billet, en colonne —
                 rien ne déborde à droite de l'écran. */}
             <div className="flex w-full flex-col gap-2">
+              {ouvert.image_donnees && (
+                <BoutonEnvoi
+                  variante="primaire" pleineLargeur
+                  enfantsPendant="🔍 Recherche du code sur le billet…"
+                  onEnvoi={rechercherCode}
+                >
+                  🔍 {ouvert.codes_acces ? 'Rechercher le code à nouveau' : 'Rechercher le code (QR / code-barres)'}
+                </BoutonEnvoi>
+              )}
+              {rescanMessage && <p className="text-center text-corps-2 text-encre-2">{rescanMessage}</p>}
               <BoutonEnvoi
                 variante="soleil"
                 pleineLargeur
@@ -351,6 +386,14 @@ export function EcranConcerts() {
           </div>
         )}
       </Feuille>
+
+      {/* 🔍 Plein écran + pincement : pour présenter le code au scanner. */}
+      <VisionneuseZoom
+        src={zoomSrc ?? ''}
+        alt="Billet en plein écran"
+        ouverte={zoomSrc !== null}
+        onFermer={() => setZoomSrc(null)}
+      />
 
       {/* Compléter les infos après le scan */}
       <Feuille ouverte={aCompleter !== null} onFermer={() => setACompleter(null)} titre="Infos du billet">
