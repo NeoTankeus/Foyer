@@ -21,7 +21,7 @@ export function EcranTaches() {
   const clientRequetes = useQueryClient()
   const taches = utiliserTachesOuvertes()
   const faites = utiliserTachesFaites()
-  const [creationOuverte, setCreationOuverte] = useState(false)
+  const [enEdition, setEnEdition] = useState<LigneTache | 'nouvelle' | null>(null)
   const [confirmeSuppr, setConfirmeSuppr] = useState<string | null>(null)
   const [vueHistorique, setVueHistorique] = useState(false)
 
@@ -58,7 +58,7 @@ export function EcranTaches() {
             🗂 Historique
           </button>
           {membre?.role === 'adult' && !vueHistorique && (
-            <Bouton variante="discret" onClick={() => setCreationOuverte(true)} etiquette="Nouvelle tâche">
+            <Bouton variante="discret" onClick={() => setEnEdition('nouvelle')} etiquette="Nouvelle tâche">
               +
             </Bouton>
           )}
@@ -119,6 +119,16 @@ export function EcranTaches() {
                     {assignee && <PastilleMembre membre={assignee} taille={22} />}
                     <button
                       onClick={() => {
+                        navigator.vibrate?.(4)
+                        setEnEdition(tache)
+                      }}
+                      aria-label={`Modifier « ${tache.titre} »`}
+                      className="flex min-h-sur-tactile items-center justify-center rounded-md px-2 text-note text-encre-3"
+                    >
+                      ✏️
+                    </button>
+                    <button
+                      onClick={() => {
                         if (confirmeSuppr === tache.id) {
                           setConfirmeSuppr(null)
                           void muter({ table: 'taches', type: 'delete', cible_id: tache.id, charge: {} }).then(() =>
@@ -145,12 +155,21 @@ export function EcranTaches() {
 
       {foyer && membre && (
         <FeuilleNouvelleTache
-          ouverte={creationOuverte}
-          onFermer={() => setCreationOuverte(false)}
+          key={enEdition !== null && enEdition !== 'nouvelle' ? enEdition.id : 'nouvelle'}
+          ouverte={enEdition !== null}
+          initiale={enEdition !== null && enEdition !== 'nouvelle' ? enEdition : null}
+          onFermer={() => setEnEdition(null)}
           onCreer={async (brouillon) => {
-            await creerTache(foyer.id, membre.id, brouillon)
+            if (enEdition !== null && enEdition !== 'nouvelle') {
+              // On ne touche pas aux points déjà attribués lors d'une modification.
+              const { points, ...champs } = brouillon
+              void points
+              await muter({ table: 'taches', type: 'update', cible_id: enEdition.id, charge: champs })
+            } else {
+              await creerTache(foyer.id, membre.id, brouillon)
+            }
             await clientRequetes.invalidateQueries({ queryKey: ['taches'] })
-            setCreationOuverte(false)
+            setEnEdition(null)
           }}
         />
       )}
@@ -246,6 +265,7 @@ function HistoriqueTaches({
 
 interface PropsCreation {
   ouverte: boolean
+  initiale: LigneTache | null
   onFermer: () => void
   onCreer: (brouillon: {
     titre: string
@@ -258,14 +278,14 @@ interface PropsCreation {
   }) => Promise<void>
 }
 
-function FeuilleNouvelleTache({ ouverte, onFermer, onCreer }: PropsCreation) {
+function FeuilleNouvelleTache({ ouverte, initiale, onFermer, onCreer }: PropsCreation) {
   const { membres } = utiliserSession()
-  const [titre, setTitre] = useState('')
-  const [assignee, setAssignee] = useState<string | null>(null)
-  const [echeance, setEcheance] = useState('')
-  const [regle, setRegle] = useState<string | null>(null)
-  const [effort, setEffort] = useState(10)
-  const [rotation, setRotation] = useState(false)
+  const [titre, setTitre] = useState(initiale?.titre ?? '')
+  const [assignee, setAssignee] = useState<string | null>(initiale?.assignee_id ?? null)
+  const [echeance, setEcheance] = useState(initiale?.echeance ?? '')
+  const [regle, setRegle] = useState<string | null>(initiale?.rrule ?? null)
+  const [effort, setEffort] = useState(initiale?.effort_minutes ?? 10)
+  const [rotation, setRotation] = useState(Boolean(initiale?.groupe_rotation))
 
   const valider = async () => {
     if (!titre.trim()) return
@@ -285,7 +305,7 @@ function FeuilleNouvelleTache({ ouverte, onFermer, onCreer }: PropsCreation) {
   }
 
   return (
-    <Feuille ouverte={ouverte} onFermer={onFermer} titre="Nouvelle tâche">
+    <Feuille ouverte={ouverte} onFermer={onFermer} titre={initiale ? 'Modifier la tâche' : 'Nouvelle tâche'}>
       <div className="flex flex-col gap-3">
         <ChampTexte
           etiquette="Titre"
@@ -349,6 +369,8 @@ function FeuilleNouvelleTache({ ouverte, onFermer, onCreer }: PropsCreation) {
             onChange={(e) => setEffort(Number(e.target.value))}
             className="min-h-sur-tactile w-full rounded-md border border-trait bg-fond-eleve px-3 text-corps text-encre"
           >
+            {/* Un effort hérité d'une tâche existante peut sortir des choix standard. */}
+            {![5, 10, 20, 45, 90].includes(effort) && <option value={effort}>{effort} min</option>}
             <option value={5}>5 min</option>
             <option value={10}>10 min</option>
             <option value={20}>20 min</option>
@@ -357,7 +379,7 @@ function FeuilleNouvelleTache({ ouverte, onFermer, onCreer }: PropsCreation) {
           </select>
         </label>
         <Bouton pleineLargeur onClick={() => void valider()}>
-          Ajouter
+          {initiale ? 'Enregistrer' : 'Ajouter'}
         </Bouton>
       </div>
     </Feuille>

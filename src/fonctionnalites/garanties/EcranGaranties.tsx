@@ -27,10 +27,16 @@ function plusMois(dateIso: string, mois: number): string {
   return d.toISOString().slice(0, 10)
 }
 
+function moinsMois(dateIso: string, mois: number): string {
+  const d = new Date(`${dateIso}T12:00:00`)
+  d.setMonth(d.getMonth() - mois)
+  return d.toISOString().slice(0, 10)
+}
+
 export function EcranGaranties() {
   const { foyer } = utiliserSession()
   const clientRequetes = useQueryClient()
-  const [creation, setCreation] = useState(false)
+  const [enEdition, setEnEdition] = useState<LigneDocument | 'nouvelle' | null>(null)
   const [scanEnCours, setScanEnCours] = useState(false)
   const [brouillon, setBrouillon] = useState({ titre: '', achat: '', mois: 24 })
   const fichierRef = useRef<HTMLInputElement>(null)
@@ -50,18 +56,41 @@ export function EcranGaranties() {
 
   const rafraichir = () => clientRequetes.invalidateQueries({ queryKey: ['garanties'] })
 
+  // Ouvre la Feuille vierge (création) ou seedée depuis une ligne (édition).
+  // La date d'achat n'est pas stockée : on la retrouve depuis l'expiration
+  // avec la durée légale (2 ans) — ajustable dans le formulaire.
+  const ouvrirCreation = () => {
+    setBrouillon({ titre: '', achat: '', mois: 24 })
+    setEnEdition('nouvelle')
+  }
+  const ouvrirEdition = (g: LigneDocument) => {
+    setBrouillon({ titre: g.titre, achat: g.expire_le ? moinsMois(g.expire_le, 24) : '', mois: 24 })
+    setEnEdition(g)
+  }
+
   const enregistrer = async () => {
-    if (!foyer || !brouillon.titre.trim() || !brouillon.achat) return
-    const id = crypto.randomUUID()
-    await muter({
-      table: 'documents', type: 'insert', cible_id: id,
-      charge: {
-        id, foyer_id: foyer.id, titre: brouillon.titre.trim(), type: 'garantie',
-        membre_id: null, expire_le: plusMois(brouillon.achat, brouillon.mois),
-        file_path: null, rappels: [30, 7], cree_le: new Date().toISOString(),
-      },
-    })
-    setCreation(false)
+    if (!foyer || !brouillon.titre.trim() || !brouillon.achat || enEdition === null) return
+    if (enEdition === 'nouvelle') {
+      const id = crypto.randomUUID()
+      await muter({
+        table: 'documents', type: 'insert', cible_id: id,
+        charge: {
+          id, foyer_id: foyer.id, titre: brouillon.titre.trim(), type: 'garantie',
+          membre_id: null, expire_le: plusMois(brouillon.achat, brouillon.mois),
+          file_path: null, rappels: [30, 7], cree_le: new Date().toISOString(),
+        },
+      })
+    } else {
+      await muter({
+        table: 'documents', type: 'update', cible_id: enEdition.id,
+        charge: {
+          titre: brouillon.titre.trim(),
+          expire_le: plusMois(brouillon.achat, brouillon.mois),
+          rappels: [30, 7],
+        },
+      })
+    }
+    setEnEdition(null)
     setBrouillon({ titre: '', achat: '', mois: 24 })
     await rafraichir()
   }
@@ -82,7 +111,7 @@ export function EcranGaranties() {
         achat: donnees.ticket?.date ?? new Date().toISOString().slice(0, 10),
         mois: 24,
       })
-      setCreation(true)
+      setEnEdition('nouvelle')
     } finally {
       setScanEnCours(false)
     }
@@ -104,7 +133,7 @@ export function EcranGaranties() {
           <Bouton pleineLargeur variante="primaire" desactive={scanEnCours} onClick={() => fichierRef.current?.click()}>
             {scanEnCours ? 'STG lit le ticket…' : '📸 Scanner le ticket d’achat'}
           </Bouton>
-          <Bouton pleineLargeur variante="discret" onClick={() => setCreation(true)}>✍️ À la main</Bouton>
+          <Bouton pleineLargeur variante="discret" onClick={ouvrirCreation}>✍️ À la main</Bouton>
         </div>
         <input
           ref={fichierRef} type="file" accept="image/*" capture="environment" hidden aria-hidden="true"
@@ -143,6 +172,13 @@ export function EcranGaranties() {
                   </p>
                 </div>
                 <button
+                  aria-label={`Modifier ${g.titre}`}
+                  onClick={() => ouvrirEdition(g)}
+                  className="min-h-sur-tactile min-w-sur-tactile text-encre-3"
+                >
+                  ✏️
+                </button>
+                <button
                   aria-label={`Supprimer ${g.titre}`}
                   onClick={() => {
                     if (confirm(`Ne plus suivre « ${g.titre} » ?`))
@@ -158,7 +194,11 @@ export function EcranGaranties() {
         </ul>
       </div>
 
-      <Feuille ouverte={creation} onFermer={() => setCreation(false)} titre="Objet sous garantie">
+      <Feuille
+        ouverte={enEdition !== null}
+        onFermer={() => setEnEdition(null)}
+        titre={enEdition !== null && enEdition !== 'nouvelle' ? 'Modifier la garantie' : 'Objet sous garantie'}
+      >
         <div className="flex flex-col gap-3">
           <ChampTexte
             etiquette="L'objet"
@@ -193,7 +233,7 @@ export function EcranGaranties() {
             </p>
           )}
           <Bouton pleineLargeur variante="valider" desactive={!brouillon.titre.trim() || !brouillon.achat} onClick={() => void enregistrer()}>
-            Suivre cette garantie
+            {enEdition !== null && enEdition !== 'nouvelle' ? 'Enregistrer' : 'Suivre cette garantie'}
           </Bouton>
         </div>
       </Feuille>

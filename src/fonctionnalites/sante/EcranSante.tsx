@@ -30,7 +30,7 @@ export function EcranSante() {
   const clientRequetes = useQueryClient()
   const prenoms = membres.map((m) => m.prenom)
   const [personne, setPersonne] = useState(prenoms[0] ?? '')
-  const [creation, setCreation] = useState(false)
+  const [enEdition, setEnEdition] = useState<LigneSante | 'nouvelle' | null>(null)
   const [brouillon, setBrouillon] = useState({
     type: 'vaccin' as LigneSante['type'], libelle: '', date: '', rappel: '', notes: '',
   })
@@ -50,21 +50,38 @@ export function EcranSante() {
 
   const rafraichir = () => clientRequetes.invalidateQueries({ queryKey: ['sante'] })
 
-  const enregistrer = async () => {
-    if (!foyer || !brouillon.libelle.trim()) return
-    const id = crypto.randomUUID()
-    await muter({
-      table: 'sante', type: 'insert', cible_id: id,
-      charge: {
-        id, foyer_id: foyer.id, personne,
-        type: brouillon.type, libelle: brouillon.libelle.trim(),
-        date_soin: brouillon.date || new Date().toISOString().slice(0, 10),
-        rappel_le: brouillon.rappel || null,
-        image_donnees: photo, notes: brouillon.notes.trim() || null,
-        cree_le: new Date().toISOString(),
-      },
+  // Ouvre la Feuille vierge (création) ou seedée depuis une ligne (édition).
+  const ouvrirCreation = () => {
+    setBrouillon({ type: 'vaccin', libelle: '', date: '', rappel: '', notes: '' })
+    setPhoto(null)
+    setEnEdition('nouvelle')
+  }
+  const ouvrirEdition = (s: LigneSante) => {
+    setBrouillon({
+      type: s.type, libelle: s.libelle, date: s.date_soin ?? '', rappel: s.rappel_le ?? '', notes: s.notes ?? '',
     })
-    setCreation(false)
+    setPhoto(s.image_donnees)
+    setEnEdition(s)
+  }
+
+  const enregistrer = async () => {
+    if (!foyer || !brouillon.libelle.trim() || enEdition === null) return
+    const communs = {
+      type: brouillon.type, libelle: brouillon.libelle.trim(),
+      date_soin: brouillon.date || new Date().toISOString().slice(0, 10),
+      rappel_le: brouillon.rappel || null,
+      image_donnees: photo, notes: brouillon.notes.trim() || null,
+    }
+    if (enEdition === 'nouvelle') {
+      const id = crypto.randomUUID()
+      await muter({
+        table: 'sante', type: 'insert', cible_id: id,
+        charge: { id, foyer_id: foyer.id, personne, ...communs, cree_le: new Date().toISOString() },
+      })
+    } else {
+      await muter({ table: 'sante', type: 'update', cible_id: enEdition.id, charge: communs })
+    }
+    setEnEdition(null)
     setBrouillon({ type: 'vaccin', libelle: '', date: '', rappel: '', notes: '' })
     setPhoto(null)
     await rafraichir()
@@ -81,7 +98,7 @@ export function EcranSante() {
           <BarreRetour />
           <h1 className="text-titre-2 text-encre">🩺 Carnet santé</h1>
         </div>
-        <Bouton variante="primaire" onClick={() => setCreation(true)}>+ Ajouter</Bouton>
+        <Bouton variante="primaire" onClick={ouvrirCreation}>+ Ajouter</Bouton>
       </header>
 
       <div className="flex flex-col gap-3 px-5 pt-3">
@@ -136,6 +153,13 @@ export function EcranSante() {
                 )}
               </div>
               <button
+                aria-label={`Modifier ${s.libelle}`}
+                onClick={() => ouvrirEdition(s)}
+                className="min-h-sur-tactile text-encre-3"
+              >
+                ✏️
+              </button>
+              <button
                 aria-label={`Supprimer ${s.libelle}`}
                 onClick={() => {
                   if (confirm(`Supprimer « ${s.libelle} » ?`))
@@ -154,7 +178,11 @@ export function EcranSante() {
         {agrandie && <img src={agrandie} alt="Document santé" className="w-full rounded-lg" />}
       </Feuille>
 
-      <Feuille ouverte={creation} onFermer={() => setCreation(false)} titre={`Santé — ${personne}`}>
+      <Feuille
+        ouverte={enEdition !== null}
+        onFermer={() => setEnEdition(null)}
+        titre={`Santé — ${enEdition !== null && enEdition !== 'nouvelle' ? enEdition.personne : personne}`}
+      >
         <div className="flex flex-col gap-3">
           <div className="flex flex-wrap gap-2">
             {TYPES.map((t) => (

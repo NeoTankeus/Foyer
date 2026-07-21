@@ -18,6 +18,8 @@ import { ScannerYuka } from './ScannerYuka'
 import type { LigneArticle } from '@/lib/basedonnees.types'
 import { Coche } from '@/design/composants/Coche'
 import { Bouton } from '@/design/composants/Bouton'
+import { Feuille } from '@/design/composants/Feuille'
+import { ChampTexte } from '@/design/composants/ChampTexte'
 import { EtatVide } from '@/design/composants/EtatVide'
 import { ModeMagasin } from './ModeMagasin'
 import { demarrerDictee, dicteePossible } from './dictee'
@@ -34,6 +36,9 @@ export function EcranCourses() {
   const [visuelsEnCours, setVisuelsEnCours] = useState(false)
   const [erreurVisuels, setErreurVisuels] = useState<string | null>(null)
   const [choixVisuelPour, setChoixVisuelPour] = useState<LigneArticle | null>(null)
+  const [articleEnEdition, setArticleEnEdition] = useState<LigneArticle | null>(null)
+  const [libelleEdite, setLibelleEdite] = useState('')
+  const [confirmeSupprArticle, setConfirmeSupprArticle] = useState(false)
   const [scannerOuvert, setScannerOuvert] = useState(false)
   const champRef = useRef<HTMLInputElement>(null)
 
@@ -223,7 +228,17 @@ export function EcranCourses() {
                     <span aria-hidden="true" className="text-encre-3">🖼</span>
                   )}
                 </button>
-                <span className="flex-1 py-3 text-corps text-encre">{article.libelle}</span>
+                <button
+                  onClick={() => {
+                    setLibelleEdite(article.libelle)
+                    setConfirmeSupprArticle(false)
+                    setArticleEnEdition(article)
+                  }}
+                  aria-label={`Modifier ${article.libelle}`}
+                  className="flex-1 py-3 text-left text-corps text-encre"
+                >
+                  {article.libelle}
+                </button>
               </li>
             ))}
           </ul>
@@ -256,6 +271,55 @@ export function EcranCourses() {
           </ul>
         </section>
       )}
+
+      {/* Modifier / supprimer un article : appui sur son libellé */}
+      <Feuille
+        ouverte={articleEnEdition !== null}
+        onFermer={() => setArticleEnEdition(null)}
+        titre="Modifier l’article"
+      >
+        {articleEnEdition && (
+          <div className="flex flex-col gap-3">
+            <ChampTexte
+              etiquette="Libellé"
+              value={libelleEdite}
+              onChange={(e) => setLibelleEdite(e.target.value)}
+              placeholder="Lait, piles…"
+            />
+            <Bouton
+              pleineLargeur
+              variante="valider"
+              onClick={() => {
+                const propre = libelleEdite.trim()
+                if (!propre) return
+                // Le rayon suit le nouveau libellé (« lait » → « piles » change de rayon).
+                void muter({
+                  table: 'articles', type: 'update', cible_id: articleEnEdition.id,
+                  charge: { libelle: propre, rayon: devinerRayon(propre) },
+                }).then(rafraichir)
+                setArticleEnEdition(null)
+              }}
+            >
+              Enregistrer
+            </Bouton>
+            <Bouton
+              pleineLargeur
+              variante={confirmeSupprArticle ? 'urgent' : 'discret'}
+              onClick={() => {
+                if (!confirmeSupprArticle) {
+                  setConfirmeSupprArticle(true)
+                  return
+                }
+                void muter({ table: 'articles', type: 'delete', cible_id: articleEnEdition.id, charge: {} }).then(rafraichir)
+                setConfirmeSupprArticle(false)
+                setArticleEnEdition(null)
+              }}
+            >
+              {confirmeSupprArticle ? 'Confirmer la suppression ?' : 'Supprimer cet article'}
+            </Bouton>
+          </div>
+        )}
+      </Feuille>
 
       <ScannerYuka ouverte={scannerOuvert} onFermer={() => setScannerOuvert(false)} onAjout={rafraichir} />
 

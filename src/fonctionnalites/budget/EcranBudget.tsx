@@ -44,7 +44,7 @@ export function EcranBudget() {
   const { foyer } = utiliserSession()
   const clientRequetes = useQueryClient()
   const [mois, setMois] = useState(moisIso(new Date()))
-  const [saisie, setSaisie] = useState(false)
+  const [enEdition, setEnEdition] = useState<LigneDepense | 'nouvelle' | null>(null)
   const [scanEnCours, setScanEnCours] = useState(false)
   const [brouillon, setBrouillon] = useState({ libelle: '', montant: '', categorie: 'courses', date: '' })
   const fichierRef = useRef<HTMLInputElement>(null)
@@ -78,22 +78,43 @@ export function EcranBudget() {
     ([cle, montant]) => montant > 50 && (totauxAvant[cle] ?? 0) > 0 && montant >= 2 * (totauxAvant[cle] ?? 0),
   )
 
-  const enregistrer = async (imageDonnees?: string) => {
-    if (!foyer || !brouillon.libelle.trim() || !Number(brouillon.montant.replace(',', '.'))) return
-    const id = crypto.randomUUID()
-    await muter({
-      table: 'depenses', type: 'insert', cible_id: id,
-      charge: {
-        id, foyer_id: foyer.id, voyage_id: null,
-        libelle: brouillon.libelle.trim(),
-        montant: Number(brouillon.montant.replace(',', '.')),
-        categorie: brouillon.categorie,
-        date_depense: brouillon.date || new Date().toISOString().slice(0, 10),
-        image_donnees: imageDonnees ?? null,
-        cree_le: new Date().toISOString(),
-      },
+  // Ouvre la Feuille vierge (création) ou seedée depuis une ligne (édition).
+  const ouvrirSaisie = () => {
+    setBrouillon({ libelle: '', montant: '', categorie: 'courses', date: '' })
+    setEnEdition('nouvelle')
+  }
+  const ouvrirEdition = (l: LigneDepense) => {
+    setBrouillon({
+      libelle: l.libelle,
+      montant: String(l.montant).replace('.', ','),
+      categorie: l.categorie ?? 'autre',
+      date: l.date_depense ?? '',
     })
-    setSaisie(false)
+    setEnEdition(l)
+  }
+
+  const enregistrer = async (imageDonnees?: string) => {
+    if (!foyer || enEdition === null || !brouillon.libelle.trim() || !Number(brouillon.montant.replace(',', '.'))) return
+    const communs = {
+      libelle: brouillon.libelle.trim(),
+      montant: Number(brouillon.montant.replace(',', '.')),
+      categorie: brouillon.categorie,
+      date_depense: brouillon.date || new Date().toISOString().slice(0, 10),
+    }
+    if (enEdition === 'nouvelle') {
+      const id = crypto.randomUUID()
+      await muter({
+        table: 'depenses', type: 'insert', cible_id: id,
+        charge: {
+          id, foyer_id: foyer.id, voyage_id: null, ...communs,
+          image_donnees: imageDonnees ?? null,
+          cree_le: new Date().toISOString(),
+        },
+      })
+    } else {
+      await muter({ table: 'depenses', type: 'update', cible_id: enEdition.id, charge: communs })
+    }
+    setEnEdition(null)
     setBrouillon({ libelle: '', montant: '', categorie: 'courses', date: '' })
     await clientRequetes.invalidateQueries({ queryKey: ['budget'] })
   }
@@ -121,7 +142,7 @@ export function EcranBudget() {
         categorie: t?.categorie && CATEGORIES.some((c) => c.cle === t.categorie) ? t.categorie : 'autre',
         date: t?.date ?? '',
       })
-      setSaisie(true)
+      setEnEdition('nouvelle')
     } finally {
       setScanEnCours(false)
     }
@@ -150,7 +171,7 @@ export function EcranBudget() {
           >
             {scanEnCours ? 'STG lit le ticket…' : '📸 Scanner un ticket'}
           </Bouton>
-          <Bouton pleineLargeur variante="discret" onClick={() => setSaisie(true)}>
+          <Bouton pleineLargeur variante="discret" onClick={ouvrirSaisie}>
             ✍️ À la main
           </Bouton>
           <input
@@ -212,6 +233,13 @@ export function EcranBudget() {
               </div>
               <p className="text-corps-2 font-[590] text-encre">{euros(Number(l.montant))}</p>
               <button
+                aria-label={`Modifier ${l.libelle}`}
+                onClick={() => ouvrirEdition(l)}
+                className="min-h-sur-tactile min-w-sur-tactile text-encre-3"
+              >
+                ✏️
+              </button>
+              <button
                 aria-label={`Supprimer ${l.libelle}`}
                 onClick={() => {
                   void muter({ table: 'depenses', type: 'delete', cible_id: l.id, charge: {} }).then(() =>
@@ -227,7 +255,11 @@ export function EcranBudget() {
         </ul>
       </div>
 
-      <Feuille ouverte={saisie} onFermer={() => setSaisie(false)} titre="Dépense">
+      <Feuille
+        ouverte={enEdition !== null}
+        onFermer={() => setEnEdition(null)}
+        titre={enEdition !== null && enEdition !== 'nouvelle' ? 'Modifier la dépense' : 'Dépense'}
+      >
         <div className="flex flex-col gap-3">
           <ChampTexte etiquette="Quoi" value={brouillon.libelle} onChange={(e) => setBrouillon({ ...brouillon, libelle: e.target.value })} placeholder="Carrefour, plein d'essence…" />
           <ChampTexte etiquette="Montant (€)" value={brouillon.montant} onChange={(e) => setBrouillon({ ...brouillon, montant: e.target.value })} placeholder="42,50" inputMode="decimal" />

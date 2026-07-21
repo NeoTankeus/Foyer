@@ -42,7 +42,7 @@ export function EcranCoffre() {
   const { membre, membres, foyer } = utiliserSession()
   const clientRequetes = useQueryClient()
   const documents = utiliserDocuments()
-  const [creation, setCreation] = useState(false)
+  const [enEdition, setEnEdition] = useState<LigneDocument | 'nouvelle' | null>(null)
 
   if (membre?.role !== 'adult') return null
 
@@ -51,7 +51,7 @@ export function EcranCoffre() {
       <BarreRetour vers="/nous" />
       <div className="flex items-center justify-between gap-3 pb-3">
         <h2 className="text-titre-3 text-encre">Le Coffre</h2>
-        <Bouton variante="discret" onClick={() => setCreation(true)} etiquette="Nouveau document">+</Bouton>
+        <Bouton variante="discret" onClick={() => setEnEdition('nouvelle')} etiquette="Nouveau document">+</Bouton>
       </div>
       <p className="mb-3 text-note text-encre-3">
         Passeports, carte grise, garanties… Rappel automatique à J-60 avant expiration.
@@ -82,6 +82,13 @@ export function EcranCoffre() {
               )}
               {proprietaire && <PastilleMembre membre={proprietaire} taille={22} />}
               <button
+                onClick={() => setEnEdition(d)}
+                aria-label={`Modifier ${d.titre}`}
+                className="min-h-[32px] min-w-[32px] text-note text-encre-3"
+              >
+                ✏️
+              </button>
+              <button
                 onClick={() =>
                   void muter({ table: 'documents', type: 'delete', cible_id: d.id, charge: {} }).then(() =>
                     clientRequetes.invalidateQueries({ queryKey: ['documents'] }),
@@ -97,17 +104,26 @@ export function EcranCoffre() {
         })}
       </ul>
 
-      <Feuille ouverte={creation} onFermer={() => setCreation(false)} titre="Nouveau document">
-        {foyer && (
+      <Feuille
+        ouverte={enEdition !== null}
+        onFermer={() => setEnEdition(null)}
+        titre={enEdition === 'nouvelle' ? 'Nouveau document' : 'Modifier le document'}
+      >
+        {enEdition !== null && foyer && (
           <FormDocument
-            surCreation={async (b) => {
-              const id = crypto.randomUUID()
-              await muter({
-                table: 'documents', type: 'insert', cible_id: id,
-                charge: { id, foyer_id: foyer.id, file_path: null, rappels: [60, 15], ...b },
-              })
+            initiale={enEdition === 'nouvelle' ? null : enEdition}
+            surEnregistrement={async (b) => {
+              if (enEdition === 'nouvelle') {
+                const id = crypto.randomUUID()
+                await muter({
+                  table: 'documents', type: 'insert', cible_id: id,
+                  charge: { id, foyer_id: foyer.id, file_path: null, rappels: [60, 15], ...b },
+                })
+              } else {
+                await muter({ table: 'documents', type: 'update', cible_id: enEdition.id, charge: b })
+              }
               await clientRequetes.invalidateQueries({ queryKey: ['documents'] })
-              setCreation(false)
+              setEnEdition(null)
             }}
           />
         )}
@@ -117,9 +133,11 @@ export function EcranCoffre() {
 }
 
 function FormDocument({
-  surCreation,
+  initiale,
+  surEnregistrement,
 }: {
-  surCreation: (b: {
+  initiale: LigneDocument | null
+  surEnregistrement: (b: {
     titre: string
     type: LigneDocument['type']
     membre_id: string | null
@@ -127,10 +145,10 @@ function FormDocument({
   }) => Promise<void>
 }) {
   const { membres } = utiliserSession()
-  const [titre, setTitre] = useState('')
-  const [type, setType] = useState<LigneDocument['type']>('identite')
-  const [proprietaire, setProprietaire] = useState<string | null>(null)
-  const [expire, setExpire] = useState('')
+  const [titre, setTitre] = useState(initiale?.titre ?? '')
+  const [type, setType] = useState<LigneDocument['type']>(initiale?.type ?? 'identite')
+  const [proprietaire, setProprietaire] = useState<string | null>(initiale?.membre_id ?? null)
+  const [expire, setExpire] = useState(initiale?.expire_le ?? '')
   return (
     <div className="flex flex-col gap-3">
       <ChampTexte etiquette="Titre" value={titre} onChange={(e) => setTitre(e.target.value)} placeholder="Passeport Gabriel" />
@@ -166,10 +184,10 @@ function FormDocument({
         pleineLargeur
         onClick={() => {
           if (titre.trim())
-            void surCreation({ titre: titre.trim(), type, membre_id: proprietaire, expire_le: expire || null })
+            void surEnregistrement({ titre: titre.trim(), type, membre_id: proprietaire, expire_le: expire || null })
         }}
       >
-        Ajouter au Coffre
+        {initiale ? 'Enregistrer' : 'Ajouter au Coffre'}
       </Bouton>
     </div>
   )

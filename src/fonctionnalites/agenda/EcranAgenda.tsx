@@ -6,6 +6,7 @@ import { utiliserSession } from '@/etat/session'
 import {
   creerEvenement,
   creerSerieEvenements,
+  modifierEvenement,
   serieDe,
   supprimerEvenement,
   supprimerSerieEvenements,
@@ -48,7 +49,7 @@ export function EcranAgenda() {
   })
   const [jourChoisi, setJourChoisi] = useState(() => maintenantLocal())
   const [filtreMembre, setFiltreMembre] = useState<string | null>(null)
-  const [creationOuverte, setCreationOuverte] = useState(false)
+  const [enEdition, setEnEdition] = useState<LigneEvenement | 'nouveau' | null>(null)
   const [evenementOuvert, setEvenementOuvert] = useState<LigneEvenement | null>(null)
 
   // La grille couvre du lundi avant le 1er au dimanche après le dernier jour.
@@ -118,7 +119,7 @@ export function EcranAgenda() {
               <button
                 onClick={() => {
                   navigator.vibrate?.(4)
-                  setCreationOuverte(true)
+                  setEnEdition('nouveau')
                 }}
                 aria-label="Nouvel événement"
                 className="flex min-h-sur-tactile min-w-sur-tactile shrink-0 items-center justify-center
@@ -220,7 +221,7 @@ export function EcranAgenda() {
         )}
       </div>
 
-      {/* Détail / suppression */}
+      {/* Détail / modification / suppression */}
       <Feuille ouverte={evenementOuvert !== null} onFermer={() => setEvenementOuvert(null)} titre={evenementOuvert?.titre ?? ''}>
         {evenementOuvert && (
           <div className="flex flex-col gap-3">
@@ -239,6 +240,18 @@ export function EcranAgenda() {
                  Importé de ton calendrier Apple — il reviendra à la prochaine synchronisation si tu le
                 supprimes ici sans le supprimer dans Calendrier.
               </p>
+            )}
+            {membre?.role === 'adult' && (
+              <Bouton
+                variante="discret"
+                pleineLargeur
+                onClick={() => {
+                  setEnEdition(evenementOuvert)
+                  setEvenementOuvert(null)
+                }}
+              >
+                Modifier
+              </Bouton>
             )}
             {membre?.role === 'adult' && (
               <Bouton
@@ -276,11 +289,15 @@ export function EcranAgenda() {
 
       {foyer && membre && (
         <FeuilleCreation
-          ouverte={creationOuverte}
+          key={enEdition !== null && enEdition !== 'nouveau' ? enEdition.id : 'nouveau'}
+          ouverte={enEdition !== null}
           jourParDefaut={jourChoisi}
-          onFermer={() => setCreationOuverte(false)}
+          initiale={enEdition !== null && enEdition !== 'nouveau' ? enEdition : null}
+          onFermer={() => setEnEdition(null)}
           onCreer={async (brouillon, serie) => {
-            if (serie) {
+            if (enEdition !== null && enEdition !== 'nouveau') {
+              await modifierEvenement(enEdition.id, brouillon)
+            } else if (serie) {
               const { debut_a, fin_a, ...base } = brouillon
               void debut_a
               void fin_a
@@ -289,7 +306,7 @@ export function EcranAgenda() {
               await creerEvenement(foyer.id, membre.id, brouillon)
             }
             await clientRequetes.invalidateQueries({ queryKey: ['evenements'] })
-            setCreationOuverte(false)
+            setEnEdition(null)
           }}
         />
       )}
@@ -300,6 +317,7 @@ export function EcranAgenda() {
 interface PropsCreation {
   ouverte: boolean
   jourParDefaut: Date
+  initiale: LigneEvenement | null
   onFermer: () => void
   onCreer: (
     brouillon: {
@@ -314,14 +332,18 @@ interface PropsCreation {
   ) => Promise<void>
 }
 
-function FeuilleCreation({ ouverte, jourParDefaut, onFermer, onCreer }: PropsCreation) {
+function FeuilleCreation({ ouverte, jourParDefaut, initiale, onFermer, onCreer }: PropsCreation) {
   const { membres } = utiliserSession()
-  const [titre, setTitre] = useState('')
-  const [date, setDate] = useState(dateIsoJour(jourParDefaut))
-  const [heure, setHeure] = useState('18:00')
-  const [duree, setDuree] = useState(60)
-  const [lieu, setLieu] = useState('')
-  const [participants, setParticipants] = useState<string[]>([])
+  const [titre, setTitre] = useState(initiale?.titre ?? '')
+  const [date, setDate] = useState(initiale ? dateIsoJour(versLocal(initiale.debut_a)) : dateIsoJour(jourParDefaut))
+  const [heure, setHeure] = useState(initiale ? formatHeure(initiale.debut_a) : '18:00')
+  const [duree, setDuree] = useState(
+    initiale
+      ? Math.max(1, Math.round((new Date(initiale.fin_a).getTime() - new Date(initiale.debut_a).getTime()) / 60_000))
+      : 60,
+  )
+  const [lieu, setLieu] = useState(initiale?.lieu ?? '')
+  const [participants, setParticipants] = useState<string[]>(initiale?.participants ?? [])
   const [recurrence, setRecurrence] = useState(0)
 
   const valider = async () => {
@@ -334,7 +356,7 @@ function FeuilleCreation({ ouverte, jourParDefaut, onFermer, onCreer }: PropsCre
       fin_a: versUtc(finLocal),
       lieu: lieu.trim() || null,
       participants,
-      journee_entiere: false,
+      journee_entiere: initiale?.journee_entiere ?? false,
     }
     const regle = RECURRENCES_EVENEMENT[recurrence]
     if (regle && (regle.jours || regle.mois)) {
@@ -365,7 +387,7 @@ function FeuilleCreation({ ouverte, jourParDefaut, onFermer, onCreer }: PropsCre
   }
 
   return (
-    <Feuille ouverte={ouverte} onFermer={onFermer} titre="Nouvel événement">
+    <Feuille ouverte={ouverte} onFermer={onFermer} titre={initiale ? 'Modifier l’événement' : 'Nouvel événement'}>
       <div className="flex flex-col gap-3">
         <ChampTexte etiquette="Titre" value={titre} onChange={(e) => setTitre(e.target.value)} placeholder="Piscine, dîner chez…" />
         <div className="flex gap-3">
@@ -379,6 +401,8 @@ function FeuilleCreation({ ouverte, jourParDefaut, onFermer, onCreer }: PropsCre
             onChange={(e) => setDuree(Number(e.target.value))}
             className="min-h-sur-tactile w-full rounded-md border border-trait bg-fond-eleve px-3 text-corps text-encre"
           >
+            {/* Une durée héritée d'un événement existant peut sortir des choix standard. */}
+            {![30, 60, 90, 120, 240].includes(duree) && <option value={duree}>{duree} min</option>}
             <option value={30}>30 min</option>
             <option value={60}>1 h</option>
             <option value={90}>1 h 30</option>
@@ -386,23 +410,26 @@ function FeuilleCreation({ ouverte, jourParDefaut, onFermer, onCreer }: PropsCre
             <option value={240}>Demi-journée</option>
           </select>
         </label>
-        <label className="block">
-          <span className="mb-1 block text-note font-[500] text-encre-2">Répétition</span>
-          <select
-            value={recurrence}
-            onChange={(e) => setRecurrence(Number(e.target.value))}
-            className="min-h-sur-tactile w-full rounded-md border border-trait bg-fond-eleve px-3 text-corps text-encre"
-          >
-            {RECURRENCES_EVENEMENT.map((r, i) => (
-              <option key={r.libelle} value={i}>{r.libelle}</option>
-            ))}
-          </select>
-          {recurrence > 0 && (
-            <span className="mt-1 block text-legende text-encre-3">
-              La série est posée sur 6 mois — supprimable d’un coup depuis n’importe quelle occurrence.
-            </span>
-          )}
-        </label>
+        {/* Pas de répétition en modification : chaque occurrence se modifie une par une. */}
+        {!initiale && (
+          <label className="block">
+            <span className="mb-1 block text-note font-[500] text-encre-2">Répétition</span>
+            <select
+              value={recurrence}
+              onChange={(e) => setRecurrence(Number(e.target.value))}
+              className="min-h-sur-tactile w-full rounded-md border border-trait bg-fond-eleve px-3 text-corps text-encre"
+            >
+              {RECURRENCES_EVENEMENT.map((r, i) => (
+                <option key={r.libelle} value={i}>{r.libelle}</option>
+              ))}
+            </select>
+            {recurrence > 0 && (
+              <span className="mt-1 block text-legende text-encre-3">
+                La série est posée sur 6 mois — supprimable d’un coup depuis n’importe quelle occurrence.
+              </span>
+            )}
+          </label>
+        )}
         <ChampTexte etiquette="Lieu (facultatif)" value={lieu} onChange={(e) => setLieu(e.target.value)} />
         <div>
           <span className="mb-1 block text-note font-[500] text-encre-2">Qui ? (personne = tout le foyer)</span>
@@ -425,7 +452,7 @@ function FeuilleCreation({ ouverte, jourParDefaut, onFermer, onCreer }: PropsCre
           </div>
         </div>
         <Bouton pleineLargeur variante="valider" onClick={() => void valider()}>
-          Ajouter
+          {initiale ? 'Enregistrer' : 'Ajouter'}
         </Bouton>
       </div>
     </Feuille>

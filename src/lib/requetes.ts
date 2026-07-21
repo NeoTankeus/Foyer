@@ -95,6 +95,11 @@ export async function supprimerEvenement(id: string) {
   await muter({ table: 'evenements', type: 'delete', cible_id: id, charge: {} })
 }
 
+/** Modifie un événement existant (mêmes champs que le formulaire de création). */
+export async function modifierEvenement(id: string, valeurs: NouvelEvenement) {
+  await muter({ table: 'evenements', type: 'update', cible_id: id, charge: { ...valeurs } })
+}
+
 /**
  * Un rendez-vous qui revient (toutes les semaines, tous les mois…) : on crée
  * la série d'occurrences sur 6 mois, reliées par un identifiant de série —
