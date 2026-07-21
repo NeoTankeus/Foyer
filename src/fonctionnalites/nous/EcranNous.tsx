@@ -78,6 +78,13 @@ export function EcranNous() {
     { chemin: '/nous/administration', libelle: 'Administration', detail: 'membres, rôles, journal d’audit', icone: '🛠️', couleur: 'var(--encre-2)', adulte: true },
   ]
 
+  // Classement ALPHABÉTIQUE pour retrouver un module en un clin d'œil.
+  // Les articles (Le, La, Les, L') ne comptent pas : « La Roue » se range à R.
+  const cleTri = (libelle: string) => libelle.replace(/^(les?|la|l['’])\s*/i, '').trim()
+  const MODULES_TRIES = [...MODULES].sort((a, b) =>
+    cleTri(a.libelle).localeCompare(cleTri(b.libelle), 'fr', { sensitivity: 'base' }),
+  )
+
   return (
     <div className="pb-4">
       <header className="verre verre-clair safe-haut sticky top-0 z-10 px-5 pb-2 pt-3">
@@ -106,7 +113,7 @@ export function EcranNous() {
         </Carte>
 
         <nav aria-label="Modules du foyer" className="overflow-hidden rounded-lg bg-fond-eleve shadow-carte">
-          {MODULES.filter((m) => !m.adulte || estAdulte).map((module) => (
+          {MODULES_TRIES.filter((m) => !m.adulte || estAdulte).map((module) => (
             <button
               key={module.chemin}
               onClick={() => {
