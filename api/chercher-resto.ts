@@ -168,10 +168,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const stations = await Promise.all(
         actives.map(async (s) => {
           try {
-            const obs = await fetch(
+            let obs = await fetch(
               `https://hubeau.eaufrance.fr/api/${version}/hydrometrie/observations_tp?code_entite=${s.code_station}&grandeur_hydro=H&size=300&sort=desc`,
               { headers: entetesHubeau, signal: AbortSignal.timeout(12000) },
             )
+            // Les mesures peuvent réussir sur une version et pas l'autre.
+            if (!obs.ok && version === 'v2') {
+              obs = await fetch(
+                `https://hubeau.eaufrance.fr/api/v1/hydrometrie/observations_tp?code_entite=${s.code_station}&grandeur_hydro=H&size=300&sort=desc`,
+                { headers: entetesHubeau, signal: AbortSignal.timeout(12000) },
+              )
+            }
             const mesures = obs.ok
               ? (((await obs.json()) as { data?: { resultat_obs: number; date_obs: string }[] }).data ?? [])
               : []

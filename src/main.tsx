@@ -19,7 +19,10 @@ registerSW({
     if (!enregistrement) return
     retenirEnregistrementSw(enregistrement)
     const verifier = () => void majAutomatique()
-    verifier()
+    // OUVERTURE INSTANTANÉE : la première vérification attend 2,5 s, le temps
+    // que l'app s'affiche et soit utilisable — la mise à jour s'installe
+    // ensuite en arrière-plan (anneau visible) sans ralentir le démarrage.
+    window.setTimeout(verifier, 2500)
     setInterval(verifier, 5 * 60 * 1000)
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'visible') verifier()

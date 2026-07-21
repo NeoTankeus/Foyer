@@ -66,6 +66,10 @@ export default defineConfig({
         // mettent en cache au premier usage — les mises à jour ne téléchargent
         // plus que le code qui a VRAIMENT changé → installation bien plus rapide.
         globPatterns: ['**/*.{js,css,html,svg,woff2}'],
+        // Les deux plus gros modules (codes-barres, export zip) servent rarement :
+        // ils sortent du précache (≈ 1 Mo de moins à télécharger à CHAQUE mise à
+        // jour) et se mettent en cache au premier usage.
+        globIgnores: ['**/bwip-js-*.js', '**/jszip*.js'],
         navigateFallback: '/index.html',
         // La nouvelle version s'active DÈS qu'elle est téléchargée et prend le
         // contrôle immédiatement — c'est ça qui rend la mise à jour en 1 appui.
@@ -90,6 +94,16 @@ export default defineConfig({
             options: {
               cacheName: 'images-app',
               expiration: { maxEntries: 60, maxAgeSeconds: 60 * 60 * 24 * 365 },
+            },
+          },
+          {
+            // Les gros modules hors précache (codes-barres, zip) : réseau au
+            // premier usage, puis cache un an.
+            urlPattern: ({ url, sameOrigin }) => sameOrigin && /(bwip-js|jszip)/.test(url.pathname),
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'modules-lourds',
+              expiration: { maxEntries: 6, maxAgeSeconds: 60 * 60 * 24 * 365 },
             },
           },
           {

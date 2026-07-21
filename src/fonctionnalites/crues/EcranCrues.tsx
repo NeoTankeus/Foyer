@@ -18,6 +18,19 @@ interface StationCrue {
   mesureA: string | null
 }
 
+// Un chemin qui trouve les stations mais AUCUNE mesure n'a pas « gagné » :
+// on laisse sa chance à l'autre chemin, et on garde sa liste en secours.
+class SansMesures extends Error {
+  constructor(public stations: StationCrue[]) {
+    super('stations sans mesures')
+  }
+}
+
+const exigerMesures = (stations: StationCrue[]): StationCrue[] => {
+  if (stations.length > 0 && stations.every((s) => s.hauteurM === null)) throw new SansMesures(stations)
+  return stations
+}
+
 export function EcranCrues() {
   const { foyer } = utiliserSession()
   const maison = (foyer?.reglages['maison'] ?? null) as { lat?: number; lon?: number; adresse?: string } | null
@@ -54,10 +67,17 @@ export function EcranCrues() {
     return Promise.all(
       actives.map(async (s): Promise<StationCrue> => {
         try {
-          const obs = await fetch(
+          let obs = await fetch(
             `https://hubeau.eaufrance.fr/api/v2/hydrometrie/observations_tp?code_entite=${s.code_station}&grandeur_hydro=H&size=300&sort=desc`,
             { signal: AbortSignal.timeout(12000) },
           )
+          // Les mesures peuvent réussir sur une version et pas l'autre.
+          if (!obs.ok) {
+            obs = await fetch(
+              `https://hubeau.eaufrance.fr/api/v1/hydrometrie/observations_tp?code_entite=${s.code_station}&grandeur_hydro=H&size=300&sort=desc`,
+              { signal: AbortSignal.timeout(12000) },
+            )
+          }
           const mesures = obs.ok
             ? (((await obs.json()) as { data?: { resultat_obs: number; date_obs: string }[] }).data ?? [])
             : []
@@ -90,10 +110,13 @@ export function EcranCrues() {
     staleTime: 30 * 60 * 1000,
     queryFn: async (): Promise<StationCrue[]> => {
       try {
-        return await Promise.any([viaRelais(), viaDirect()])
+        return await Promise.any([viaRelais().then(exigerMesures), viaDirect().then(exigerMesures)])
       } catch (e) {
-        // Les deux ont échoué : on assemble le diagnostic complet.
         const causes = e instanceof AggregateError ? e.errors : [e]
+        // Aucun chemin n'a de mesures, mais l'un a au moins la liste : on l'affiche.
+        const secours = causes.find((c): c is SansMesures => c instanceof SansMesures)
+        if (secours) return secours.stations
+        // Les deux ont vraiment échoué : diagnostic complet.
         throw new Error(causes.map((c) => (c instanceof Error ? c.message : String(c))).join(' · '))
       }
     },

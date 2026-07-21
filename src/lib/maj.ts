@@ -96,9 +96,27 @@ export async function verifierMiseAJour(): Promise<'nouvelle' | 'a_jour' | 'indi
 const attendre = (ms: number) => new Promise((res) => setTimeout(res, ms))
 
 /**
+ * Dernier recours GARANTI : caches du service worker vidés, service worker
+ * désinscrit, rechargement — le réseau sert forcément la nouvelle version.
+ * Les données du foyer (base locale, réglages) ne sont PAS touchées.
+ */
+async function reinitialiserEtRecharger(): Promise<void> {
+  try {
+    const noms = await caches.keys()
+    await Promise.all(noms.map((n) => caches.delete(n)))
+    const inscriptions = (await navigator.serviceWorker?.getRegistrations()) ?? []
+    await Promise.all(inscriptions.map((i) => i.unregister()))
+  } catch {
+    // même incomplet, le rechargement fera le reste
+  }
+  window.location.reload()
+}
+
+/**
  * Installe la nouvelle version en UN SEUL geste : téléchargement, activation
- * forcée (SKIP_WAITING), et rechargement dès que la nouvelle version prend le
- * contrôle (controllerchange) — plus jamais 3 ou 4 appuis.
+ * forcée (SKIP_WAITING), rechargement dès que la nouvelle version prend le
+ * contrôle — et si le service worker traîne plus de 10 s, remise à zéro
+ * radicale des caches + rechargement. UN appui suffit, TOUJOURS.
  */
 export async function mettreAJourMaintenant(): Promise<never> {
   progres = 0
@@ -117,10 +135,10 @@ export async function mettreAJourMaintenant(): Promise<never> {
 
   const debut = Date.now()
   let dernierUpdate = 0
-  while (Date.now() - debut < 45000) {
+  while (Date.now() - debut < 10000) {
     if (recharge) return new Promise<never>(() => undefined)
-    // On (re)demande le téléchargement au plus toutes les 4 s.
-    if (Date.now() - dernierUpdate > 4000) {
+    // On (re)demande le téléchargement au plus toutes les 3 s.
+    if (Date.now() - dernierUpdate > 3000) {
       dernierUpdate = Date.now()
       try {
         await enregistrement?.update()
@@ -134,10 +152,10 @@ export async function mettreAJourMaintenant(): Promise<never> {
     if (enregistrement?.waiting) signalerProgres(70)
     // Une version téléchargée qui patiente ? On la pousse à s'activer tout de suite.
     enregistrement?.waiting?.postMessage({ type: 'SKIP_WAITING' })
-    await attendre(500)
+    await attendre(400)
     // Activée sans avoir pris le contrôle (anciennes générations) : on recharge nous-mêmes.
     if (
-      Date.now() - debut > 6000 &&
+      Date.now() - debut > 4000 &&
       enregistrement?.active &&
       !enregistrement.installing &&
       !enregistrement.waiting
@@ -147,8 +165,14 @@ export async function mettreAJourMaintenant(): Promise<never> {
       return new Promise<never>(() => undefined)
     }
   }
-  // Dernier recours : rechargement sec — le réseau servira la nouvelle version.
-  recharger()
+  // 10 s sans y arriver en douceur : la manière forte (en ligne uniquement —
+  // hors ligne, vider les caches casserait le mode avion pour rien).
+  signalerProgres(95)
+  if (navigator.onLine !== false) {
+    await reinitialiserEtRecharger()
+  } else {
+    recharger()
+  }
   return new Promise<never>(() => undefined)
 }
 
@@ -157,8 +181,8 @@ const CLE_AUTO = 'stg-auto-maj'
 /**
  * Mise à jour AUTOMATIQUE à l'ouverture (et à chaque retour au premier plan) :
  * si le serveur a une version plus récente, on l'installe sans rien demander.
- * Garde-fou : une seule tentative par version toutes les 3 minutes, pour ne
- * jamais boucler si l'installation échoue.
+ * Garde-fou : une seule tentative par version toutes les 45 s, pour ne
+ * jamais boucler si l'installation échoue — mais réessayer vite sinon.
  */
 export async function majAutomatique(): Promise<void> {
   const distante = await versionServeur()
@@ -166,7 +190,7 @@ export async function majAutomatique(): Promise<void> {
   signalerMajDisponible()
   try {
     const memo = JSON.parse(localStorage.getItem(CLE_AUTO) ?? 'null') as { version: string; a: number } | null
-    if (memo?.version === distante && Date.now() - memo.a < 3 * 60 * 1000) return
+    if (memo?.version === distante && Date.now() - memo.a < 45 * 1000) return
   } catch {
     // mémoire illisible — on tente
   }
