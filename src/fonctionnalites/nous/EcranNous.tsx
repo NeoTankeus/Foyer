@@ -115,6 +115,7 @@ export function EcranNous() {
     { chemin: '/nous/stock', libelle: 'Le Stock fantôme', detail: 'STG rachète avant la panne', icone: '📦', couleur: 'var(--sauge)', secteur: 'cuisine' },
     { chemin: '/nous/corvees', libelle: 'Corvées équitables', detail: 'la balance des minutes répartit', icone: '🔄', couleur: 'var(--prune)', secteur: 'maison', adulte: true },
     { chemin: '/nous/ecole', libelle: 'L’École', detail: 'sorties, réunions, fournitures de Gabriel', icone: '🚸', couleur: 'var(--ambre)', secteur: 'maison' },
+    { chemin: '/nous/garde', libelle: 'La Garde de Gabriel', detail: 'qui dépose, qui récupère, où — à deux', icone: '🎒', couleur: 'var(--sauge)', adulte: true, secteur: 'maison' },
     { chemin: '/nous/chef', libelle: 'Le Chef', detail: 'le menu du soir avec ce qu’on a déjà', icone: '🧑‍🍳', couleur: 'var(--sauge)', secteur: 'cuisine' },
     { chemin: '/nous/weekend', libelle: 'Week-end surprise', detail: 'un budget, un rayon — STG compose tout', icone: '🧭', couleur: 'var(--ambre)', secteur: 'sorties' },
     { chemin: '/nous/quiz', libelle: 'Quiz du dîner', detail: '3 questions à table, dont une sur VOTRE vie', icone: '🏆', couleur: 'var(--or)', secteur: 'jeux' },

@@ -40,7 +40,7 @@ import { majBadgeIcone } from '@/lib/badge'
 
 type CleBloc =
   | 'urgent' | 'brief' | 'pilote' | 'meteo' | 'prix' | 'agenda' | 'taches'
-  | 'penser' | 'courses' | 'menus' | 'mur' | 'vacances' | 'fil' | 'ilyaunan' | 'gerard'
+  | 'penser' | 'courses' | 'menus' | 'mur' | 'vacances' | 'fil' | 'ilyaunan' | 'gerard' | 'garde'
 
 const BLOCS: { cle: CleBloc; libelle: string }[] = [
   { cle: 'urgent', libelle: '🔴 Relances urgentes' },
@@ -49,6 +49,7 @@ const BLOCS: { cle: CleBloc; libelle: string }[] = [
   { cle: 'meteo', libelle: '🌤 Météo' },
   { cle: 'vacances', libelle: '🎒 Vacances scolaires (zone B)' },
   { cle: 'prix', libelle: '💸 Baisses de prix (cadeaux)' },
+  { cle: 'garde', libelle: '🎒 La Garde de Gabriel' },
   { cle: 'agenda', libelle: '📅 La journée' },
   { cle: 'taches', libelle: '✅ À faire' },
   { cle: 'penser', libelle: '💡 À penser' },
@@ -63,7 +64,7 @@ const BLOCS: { cle: CleBloc; libelle: string }[] = [
 const DEFAUT: Record<CleBloc, boolean> = {
   urgent: true, brief: true, pilote: true, meteo: true, vacances: true,
   prix: true, agenda: true, taches: true,
-  penser: true, courses: true, menus: true, mur: true, fil: false, ilyaunan: true, gerard: true,
+  penser: true, courses: true, menus: true, mur: true, fil: false, ilyaunan: true, gerard: true, garde: true,
 }
 
 const ORDRE_DEFAUT: CleBloc[] = BLOCS.map((b) => b.cle)
@@ -89,7 +90,19 @@ function chargerOrdre(): CleBloc[] {
 }
 
 export function EcranAujourdhui() {
-  const { membre, membres } = utiliserSession()
+  const { membre, membres, foyer } = utiliserSession()
+
+  // 🎒 La garde de Gabriel aujourd'hui : qui dépose, qui récupère (adultes).
+  const gardeJour = useQuery({
+    queryKey: ['garde'],
+    enabled: !!foyer && membre?.role === 'adult',
+    staleTime: 15 * 1000,
+    queryFn: async () => {
+      const { data } = await supabase.from('foyers').select('reglages').eq('id', foyer?.id ?? '').single()
+      const brut = (data?.reglages as Record<string, unknown> | null)?.['garde']
+      return (brut ?? {}) as Record<string, { matin?: { qui: string | null; lieu: string; heure: string }; soir?: { qui: string | null; lieu: string; heure: string } }>
+    },
+  })
   const clientRequetes = useQueryClient()
   const naviguer = useNavigate()
   const evenements = utiliserEvenementsDuJour()
@@ -850,6 +863,44 @@ export function EcranAujourdhui() {
             )}
           </section>
         )}
+
+        {/* 🎒 La Garde de Gabriel — qui s'en occupe AUJOURD'HUI, en un coup d'œil */}
+        {blocs.garde && membre?.role === 'adult' && (() => {
+          const jour = gardeJour.data?.[aujourdHui]
+          const creneaux = [
+            { icone: '🌅', libelle: 'Dépôt', c: jour?.matin },
+            { icone: '🌆', libelle: 'Récupération', c: jour?.soir },
+          ]
+          const prenomDe = (id: string | null | undefined) => membres.find((m) => m.id === id)?.prenom
+          return (
+            <section className="rounded-xl bg-fond-eleve p-4 shadow-carte" style={{ order: position('garde') }}>
+              <button onClick={() => naviguer('/nous/garde')} className="flex w-full items-center justify-between">
+                <h2 className="text-note font-[700] uppercase tracking-wide text-encre-3">🎒 La Garde de Gabriel</h2>
+                <span className="text-encre-3">›</span>
+              </button>
+              {jour ? (
+                <div className="mt-2 flex flex-col gap-1">
+                  {creneaux.map((x) => (
+                    <p key={x.libelle} className="text-corps-2 text-encre">
+                      {x.icone} {x.libelle} —{' '}
+                      {x.c && prenomDe(x.c.qui) ? (
+                        <>
+                          <strong>{prenomDe(x.c.qui)}</strong>
+                          {x.c.lieu ? ` · ${x.c.lieu}` : ''}
+                          {x.c.heure ? ` · ${x.c.heure}` : ''}
+                        </>
+                      ) : (
+                        <span className="font-[590] text-ambre">à décider</span>
+                      )}
+                    </p>
+                  ))}
+                </div>
+              ) : (
+                <p className="mt-2 text-corps-2 text-encre-3">Rien de noté pour aujourd'hui — touche pour planifier.</p>
+              )}
+            </section>
+          )
+        })()}
 
         {/* 🐸 Gérard — l'humeur de la maison, en direct et sans réseau */}
         {blocs.gerard && (

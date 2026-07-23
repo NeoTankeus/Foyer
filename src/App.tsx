@@ -66,6 +66,7 @@ const EcranLivre = paresseux(() => import('@/fonctionnalites/journal/EcranLivre'
 const EcranAnnuaire = paresseux(() => import('@/fonctionnalites/annuaire/EcranAnnuaire'), 'EcranAnnuaire')
 const EcranCrues = paresseux(() => import('@/fonctionnalites/crues/EcranCrues'), 'EcranCrues')
 const EcranTrains = paresseux(() => import('@/fonctionnalites/trains/EcranTrains'), 'EcranTrains')
+const EcranGarde = paresseux(() => import('@/fonctionnalites/garde/EcranGarde'), 'EcranGarde')
 
 function IconeOnglet({ nom }: { nom: string }) {
   const traits = { fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round' as const }
@@ -270,6 +271,7 @@ function Interieur() {
             <Route path="/nous/annuaire" element={<EcranAnnuaire />} />
             <Route path="/nous/crues" element={<EcranCrues />} />
             <Route path="/nous/trains" element={<EcranTrains />} />
+            <Route path="/nous/garde" element={<EcranGarde />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </Suspense>
