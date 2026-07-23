@@ -99,8 +99,14 @@ export function EcranAujourdhui() {
     staleTime: 15 * 1000,
     queryFn: async () => {
       const { data } = await supabase.from('foyers').select('reglages').eq('id', foyer?.id ?? '').single()
-      const brut = (data?.reglages as Record<string, unknown> | null)?.['garde']
-      return (brut ?? {}) as Record<string, { matin?: { qui: string | null; lieu: string; heure: string }; soir?: { qui: string | null; lieu: string; heure: string } }>
+      const reglages = (data?.reglages as Record<string, unknown> | null) ?? {}
+      return {
+        plan: (reglages['garde'] ?? {}) as Record<
+          string,
+          { matin?: { qui: string | null; lieu: string; heure: string }; soir?: { qui: string | null; lieu: string; heure: string } }
+        >,
+        gardiens: Array.isArray(reglages['garde_gardiens']) ? (reglages['garde_gardiens'] as string[]) : [],
+      }
     },
   })
   const clientRequetes = useQueryClient()
@@ -866,12 +872,13 @@ export function EcranAujourdhui() {
 
         {/* 🎒 La Garde de Gabriel — qui s'en occupe AUJOURD'HUI, en un coup d'œil */}
         {blocs.garde && membre?.role === 'adult' && (() => {
-          const jour = gardeJour.data?.[aujourdHui]
+          const jour = gardeJour.data?.plan[aujourdHui]
           const creneaux = [
             { icone: '🌅', libelle: 'Dépôt', c: jour?.matin },
             { icone: '🌆', libelle: 'Récupération', c: jour?.soir },
           ]
-          const prenomDe = (id: string | null | undefined) => membres.find((m) => m.id === id)?.prenom
+          const prenomDe = (id: string | null | undefined) =>
+            id?.startsWith('perso:') ? id.slice(6) : membres.find((m) => m.id === id)?.prenom
           return (
             <section className="rounded-xl bg-fond-eleve p-4 shadow-carte" style={{ order: position('garde') }}>
               <button onClick={() => naviguer('/nous/garde')} className="flex w-full items-center justify-between">
