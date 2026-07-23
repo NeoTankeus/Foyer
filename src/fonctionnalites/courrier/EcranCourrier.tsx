@@ -402,7 +402,7 @@ export function EcranCourrier() {
                     )}
                     <div className="flex gap-2">
                       {h.texte && (
-                        <Bouton variante="discret" onClick={() => { setTexte(h.texte); window.scrollTo({ top: 0, behavior: 'smooth' }) }}>
+                        <Bouton variante="discret" onClick={() => { setTexte(h.texte); document.getElementById('defilement-app')?.scrollTo({ top: 0, behavior: 'smooth' }) }}>
                           ↩️ Réutiliser
                         </Bouton>
                       )}

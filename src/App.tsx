@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect } from 'react'
-import { BrowserRouter, NavLink, Navigate, Route, Routes } from 'react-router-dom'
+import { BrowserRouter, NavLink, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { utiliserSession } from '@/etat/session'
 import { EcranConnexion } from '@/fonctionnalites/auth/EcranConnexion'
 import { EcranAujourdhui } from '@/fonctionnalites/aujourdhui/EcranAujourdhui'
@@ -123,7 +123,7 @@ const ONGLETS = [
 function BarreOnglets() {
   return (
     <nav
-      className="verre verre-clair safe-bas calage-fixe fixed inset-x-0 bottom-0 z-30 border-t border-trait"
+      className="verre verre-clair safe-bas absolute inset-x-0 bottom-0 z-30 border-t border-trait"
       aria-label="Navigation principale"
     >
       <div className="flex px-1">
@@ -207,14 +207,30 @@ export function App() {
   return <Interieur />
 }
 
+// À chaque changement d'écran, on repart du haut de la page.
+function ScrollHaut() {
+  const { pathname } = useLocation()
+  useEffect(() => {
+    document.getElementById('defilement-app')?.scrollTo({ top: 0 })
+  }, [pathname])
+  return null
+}
+
 function Interieur() {
+  // LA COQUE : l'app occupe exactement l'écran (h-dvh, overflow-hidden) et le
+  // contenu défile dans un conteneur INTERNE. La barre d'onglets et les boutons
+  // flottants ne sont plus « fixed » sur la page — c'est ce positionnement que
+  // iOS repeignait parfois au milieu de l'écran pendant le défilement.
   return (
     <GardeFou>
     <BrowserRouter>
-      <div
-        className="min-h-dvh bg-fond"
-        style={{ paddingBottom: 'calc(96px + env(safe-area-inset-bottom))' }}
-      >
+      <ScrollHaut />
+      <div className="relative flex h-dvh flex-col overflow-hidden bg-fond">
+        <div
+          id="defilement-app"
+          className="min-h-0 flex-1 overflow-y-auto"
+          style={{ WebkitOverflowScrolling: 'touch', paddingBottom: 'calc(96px + env(safe-area-inset-bottom))' }}
+        >
         <Suspense fallback={<div className="min-h-dvh bg-fond" aria-busy="true" />}>
           <Routes>
             {/* L'app s'ouvre toujours sur Aujourd'hui. */}
@@ -275,6 +291,7 @@ function Interieur() {
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </Suspense>
+        </div>
         <BoutonSas />
         <BoutonPerroquet />
         <BarreOnglets />

@@ -1,6 +1,7 @@
 // Les nouveautés de la version en cours — affichées UNE fois dans le pop-up
 // « Quoi de neuf », signé ILY. Mises à jour à chaque déploiement.
 export const NOTES_VERSION: string[] = [
+  '📌 Bug d’affichage réglé POUR DE BON : l’app est refaite en « coque » — la barre du bas et les boutons flottants ne peuvent structurellement plus se retrouver au milieu de l’écran.',
   '🎒 NOUVEAU : La Garde de Gabriel (Menu → Maison & organisation) — le planning partagé jour par jour : qui le dépose, qui le récupère, où (école, judo, chez Mamie…), à quelle heure. Chacun coche, l’autre voit tout de suite, et le tableau de bord rappelle qui s’en occupe aujourd’hui.',
   '🗂 Le menu est réorganisé en 8 SECTEURS thématiques (Argent & achats, Cuisine, Famille, Jeux, Maison, Santé, Sorties, Transports) — un appui déplie le secteur, tout est classé alphabétiquement.',
   '⭐ Mets une étoile sur tes modules préférés : ils se regroupent dans le secteur FAVORIS, épinglé tout en haut du menu.',
