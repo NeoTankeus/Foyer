@@ -226,10 +226,12 @@ function Interieur() {
     <BrowserRouter>
       <ScrollHaut />
       <div className="relative flex h-dvh flex-col overflow-hidden bg-fond">
+        {/* NB : surtout PAS de -webkit-overflow-scrolling ici — il piégerait
+            les feuilles modales (position: fixed) sous la barre d'onglets. */}
         <div
           id="defilement-app"
           className="min-h-0 flex-1 overflow-y-auto"
-          style={{ WebkitOverflowScrolling: 'touch', paddingBottom: 'calc(96px + env(safe-area-inset-bottom))' }}
+          style={{ paddingBottom: 'calc(96px + env(safe-area-inset-bottom))' }}
         >
         <Suspense fallback={<div className="min-h-dvh bg-fond" aria-busy="true" />}>
           <Routes>

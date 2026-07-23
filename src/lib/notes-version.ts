@@ -1,6 +1,8 @@
 // Les nouveautés de la version en cours — affichées UNE fois dans le pop-up
 // « Quoi de neuf », signé ILY. Mises à jour à chaque déploiement.
 export const NOTES_VERSION: string[] = [
+  '⌨️ Les fenêtres de saisie remontent avec le clavier : le bouton « Enregistrer » reste toujours visible et atteignable, et le contenu défile à l’intérieur de la fenêtre.',
+  '🪟 Les fenêtres passent désormais AU-DESSUS de la barre du bas et des boutons flottants — plus rien ne se chevauche.',
   '🎒 La Garde de Gabriel fait peau neuve : vue SEMAINE et vue MOIS (vrai calendrier avec pastilles colorées), navigation ‹ › fluide, retour à aujourd’hui en un appui.',
   '👵 Ajoute tes propres personnes pour la garde (« + Quelqu’un d’autre ») : Mamie, la nounou… — partagées entre vos deux téléphones.',
   '📌 Bug d’affichage réglé POUR DE BON : l’app est refaite en « coque » — la barre du bas et les boutons flottants ne peuvent structurellement plus se retrouver au milieu de l’écran.',

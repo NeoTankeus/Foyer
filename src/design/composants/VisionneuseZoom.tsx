@@ -79,7 +79,7 @@ export function VisionneuseZoom({ src, alt, ouverte, onFermer }: Props) {
       role="dialog"
       aria-modal="true"
       aria-label={alt}
-      className="calage-fixe fixed inset-0 z-[60] flex flex-col bg-black"
+      className="calage-fixe fixed inset-0 z-[80] flex flex-col bg-black"
     >
       <div
         className="relative flex-1 overflow-hidden"
