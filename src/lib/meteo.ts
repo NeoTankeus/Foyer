@@ -197,6 +197,46 @@ export async function previsionsHoraires(): Promise<HeureMeteo[]> {
   return heures
 }
 
+const CLE_CACHE_ARCHIVE = 'stg-meteo-archive'
+
+/**
+ * La météo d'un jour PASSÉ (archives Open-Meteo, sans clé) — pour la capsule
+ * souvenir « il y a un an, il faisait 34° ». Cache définitif par date.
+ */
+export async function meteoDuJourPasse(date: string): Promise<{ tMax: number; code: number } | null> {
+  const ville = villeMeteo()
+  if (!ville || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return null
+  let cache: Record<string, { tMax: number; code: number }> = {}
+  try {
+    cache = JSON.parse(localStorage.getItem(CLE_CACHE_ARCHIVE) ?? '{}') as typeof cache
+    const connu = cache[date]
+    if (connu) return connu
+  } catch {
+    // cache illisible
+  }
+  try {
+    const r = await fetch(
+      `https://archive-api.open-meteo.com/v1/archive?latitude=${ville.latitude}&longitude=${ville.longitude}` +
+        `&start_date=${date}&end_date=${date}&daily=temperature_2m_max,weather_code&timezone=Europe%2FParis`,
+    )
+    if (!r.ok) return null
+    const d = (await r.json()) as { daily?: { temperature_2m_max?: (number | null)[]; weather_code?: (number | null)[] } }
+    const tMax = d.daily?.temperature_2m_max?.[0]
+    if (tMax === null || tMax === undefined) return null
+    const valeur = { tMax: Math.round(tMax), code: d.daily?.weather_code?.[0] ?? 0 }
+    // Le passé ne change plus : cache définitif, borné aux 40 dates récentes.
+    const entrees = [...Object.entries(cache), [date, valeur] as const].slice(-40)
+    try {
+      localStorage.setItem(CLE_CACHE_ARCHIVE, JSON.stringify(Object.fromEntries(entrees)))
+    } catch {
+      // pas grave
+    }
+    return valeur
+  } catch {
+    return null
+  }
+}
+
 const CLE_CACHE_MER = 'stg-meteo-mer'
 
 /**

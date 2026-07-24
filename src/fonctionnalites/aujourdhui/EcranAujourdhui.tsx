@@ -32,7 +32,7 @@ import { Feuille } from '@/design/composants/Feuille'
 import { Bouton } from '@/design/composants/Bouton'
 import { BoutonMiseAJour } from '@/design/composants/BoutonMiseAJour'
 import { importerAgendaSiBesoin } from '@/lib/synchro-agenda'
-import { choisirVille, iconeMeteo, previsions, previsionsHoraires, previsionsMarines, villeMeteo, type HeureMeteo, type JourMeteo, type MerHeure } from '@/lib/meteo'
+import { choisirVille, iconeMeteo, meteoDuJourPasse, previsions, previsionsHoraires, previsionsMarines, villeMeteo, type HeureMeteo, type JourMeteo, type MerHeure } from '@/lib/meteo'
 
 // L'échelle de vent façon Windfinder : couleur par force (en nœuds).
 const couleurVent = (noeuds: number) =>
@@ -155,6 +155,18 @@ export function EcranAujourdhui() {
 
   // 🎉 Le prochain jour férié (calendrier officiel) — pour le bloc vacances.
   const ferie = useQuery({ queryKey: ['ferie'], staleTime: 24 * 3600 * 1000, queryFn: prochainFerie })
+
+  // 🕰 La capsule météo souvenir : quel temps il faisait il y a un an.
+  const dateUnAnAvant = (() => {
+    const [a, m, j] = aujourdHui.split('-')
+    return `${Number(a) - 1}-${m}-${j}`
+  })()
+  const meteoUnAn = useQuery({
+    queryKey: ['meteo-archive', dateUnAnAvant],
+    staleTime: 24 * 3600 * 1000,
+    enabled: villeMeteo() !== null,
+    queryFn: () => meteoDuJourPasse(dateUnAnAvant),
+  })
 
   // 🕰 Les photos du même jour, l'année dernière.
   const souvenirsUnAn = useQuery({
@@ -891,6 +903,11 @@ export function EcranAujourdhui() {
             </div>
             {(souvenirsUnAn.data ?? [])[0]?.titre && (
               <p className="mt-1 text-legende text-encre-3">{(souvenirsUnAn.data ?? [])[0]?.titre}</p>
+            )}
+            {meteoUnAn.data && (
+              <p className="mt-1 text-legende text-encre-3">
+                {iconeMeteo(meteoUnAn.data.code)} Ce jour-là, il faisait {meteoUnAn.data.tMax}°.
+              </p>
             )}
           </section>
         )}
