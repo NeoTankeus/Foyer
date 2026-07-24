@@ -72,14 +72,23 @@ export async function previsions(): Promise<JourMeteo[]> {
   }
   const d = donnees.daily
   if (!d) return []
-  const jours = d.time.map((date, i) => ({
-    date,
-    tMin: Math.round(d.temperature_2m_min[i] ?? 0),
-    tMax: Math.round(d.temperature_2m_max[i] ?? 0),
-    pluieMm: d.precipitation_sum[i] ?? 0,
-    probaPluie: d.precipitation_probability_max[i] ?? 0,
-    code: d.weather_code[i] ?? 0,
-  }))
+  const jours = d.time.map((date, i) => {
+    const pluieMm = d.precipitation_sum[i] ?? 0
+    // Météo-France ne fournit parfois PAS la probabilité : plutôt qu'un
+    // « 0 % » incohérent avec des millimètres annoncés, on l'estime
+    // depuis la quantité attendue.
+    const probaBrute = d.precipitation_probability_max[i]
+    const probaPluie =
+      probaBrute ?? (pluieMm >= 5 ? 85 : pluieMm >= 1 ? 60 : pluieMm > 0 ? 30 : 0)
+    return {
+      date,
+      tMin: Math.round(d.temperature_2m_min[i] ?? 0),
+      tMax: Math.round(d.temperature_2m_max[i] ?? 0),
+      pluieMm,
+      probaPluie,
+      code: d.weather_code[i] ?? 0,
+    }
+  })
   try {
     localStorage.setItem(CLE_CACHE, JSON.stringify({ a: Date.now(), jours }))
   } catch {

@@ -1048,19 +1048,26 @@ export function EcranAujourdhui() {
                     : new Date(`${j.date}T12:00:00`).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}
                 </p>
                 <p className="text-legende text-encre-3">
-                  ☔ {j.probaPluie} % de pluie{j.pluieMm >= 1 ? ` (${Math.round(j.pluieMm)} mm attendus)` : ''}
+                  {j.pluieMm >= 1
+                    ? `🌧 ${Math.round(j.pluieMm)} mm de pluie attendus (${j.probaPluie} % de risque)`
+                    : j.probaPluie >= 20
+                      ? `☔ ${j.probaPluie} % de risque de pluie`
+                      : '☀️ pas de pluie prévue'}
                 </p>
                 <p className="text-legende text-encre-3">
+                  {/* Le verdict séchage regarde la PLUIE (mm, risque, orage) AVANT le soleil. */}
                   🧺 Séchage dehors :{' '}
-                  {sechage.data?.[j.date] === undefined
-                    ? '…'
-                    : j.probaPluie >= 50
-                      ? '👎 pluie probable'
-                      : (sechage.data[j.date] ?? 0) >= 14
-                        ? '👍 soleil au rendez-vous'
-                        : (sechage.data[j.date] ?? 0) >= 8
-                          ? '🤏 ça peut le faire'
-                          : '👎 pas assez de soleil'}
+                  {j.pluieMm >= 1 || j.probaPluie >= 50 || j.code >= 95 || (j.code >= 61 && j.code <= 67) || (j.code >= 80 && j.code <= 82)
+                    ? '🚫 pluie prévue — linge dedans'
+                    : j.pluieMm > 0 || j.probaPluie >= 25 || (j.code >= 51 && j.code <= 57)
+                      ? '⚠️ risque d’averse — surveille le ciel'
+                      : sechage.data?.[j.date] === undefined
+                        ? '…'
+                        : (sechage.data[j.date] ?? 0) >= 14
+                          ? '👍 soleil au rendez-vous'
+                          : (sechage.data[j.date] ?? 0) >= 8
+                            ? '🤏 ça peut le faire'
+                            : '👎 pas assez de soleil'}
                 </p>
               </div>
               <p className="chiffres text-corps font-[700] text-encre">

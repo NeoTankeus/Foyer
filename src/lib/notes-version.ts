@@ -1,6 +1,7 @@
 // Les nouveautés de la version en cours — affichées UNE fois dans le pop-up
 // « Quoi de neuf », signé ILY. Mises à jour à chaque déploiement.
 export const NOTES_VERSION: string[] = [
+  '🌦 Météo cohérente : fini le « 0 % de pluie » avec des millimètres annoncés (le risque est estimé quand Météo-France ne le fournit pas), et le verdict séchage regarde d’abord la pluie et l’orage — « 🚫 linge dedans » quand il va pleuvoir.',
   '🥗 NOUVEAU : Mon Assiette (Menu → Santé & habitudes) — décris ou photographie ton repas, STG le note SELON TON RÉGIME : score en ROUGE si ça ne colle pas, avec l’explication exacte (gras saturés, sucres…), des conseils et une alternative. Historique et moyenne sur 7 jours.',
   '⌨️ Les fenêtres de saisie remontent avec le clavier : le bouton « Enregistrer » reste toujours visible et atteignable, et le contenu défile à l’intérieur de la fenêtre.',
   '🪟 Les fenêtres passent désormais AU-DESSUS de la barre du bas et des boutons flottants — plus rien ne se chevauche.',
