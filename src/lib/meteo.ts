@@ -17,7 +17,8 @@ export interface JourMeteo {
 }
 
 const CLE_VILLE = 'gastif-meteo-ville'
-const CLE_CACHE = 'gastif-meteo-cache'
+// v2 : le passage au consensus deux-modèles invalide l'ancien cache.
+const CLE_CACHE = 'gastif-meteo-cache-v2'
 
 export function villeMeteo(): VilleMeteo | null {
   try {
@@ -44,7 +45,12 @@ export async function choisirVille(nom: string): Promise<VilleMeteo | null> {
   return ville
 }
 
-/** Prévisions 4 jours, cache 2 h. Modèle Météo-France via Open-Meteo. */
+/**
+ * Prévisions 4 jours, cache 2 h — CONSENSUS de deux modèles (Météo-France +
+ * le meilleur modèle local d'Open-Meteo). Un seul modèle annonce parfois des
+ * averses fantômes : la pluie n'est affichée que si les DEUX sont d'accord ;
+ * sinon, c'est un simple « risque ».
+ */
 export async function previsions(): Promise<JourMeteo[]> {
   const ville = villeMeteo()
   if (!ville) return []
@@ -55,38 +61,56 @@ export async function previsions(): Promise<JourMeteo[]> {
     // cache illisible
   }
   const reponse = await fetch(
-    `https://api.open-meteo.com/v1/meteofrance?latitude=${ville.latitude}&longitude=${ville.longitude}` +
+    `https://api.open-meteo.com/v1/forecast?latitude=${ville.latitude}&longitude=${ville.longitude}` +
       `&daily=temperature_2m_min,temperature_2m_max,precipitation_sum,precipitation_probability_max,weather_code` +
-      `&timezone=Europe%2FParis&forecast_days=4`,
+      `&timezone=Europe%2FParis&forecast_days=4&models=meteofrance_seamless,best_match`,
   )
   if (!reponse.ok) return []
-  const donnees = (await reponse.json()) as {
-    daily?: {
-      time: string[]
-      temperature_2m_min: number[]
-      temperature_2m_max: number[]
-      precipitation_sum: number[]
-      precipitation_probability_max: (number | null)[]
-      weather_code: number[]
-    }
-  }
+  const donnees = (await reponse.json()) as { daily?: Record<string, (number | null)[] | string[]> }
   const d = donnees.daily
-  if (!d) return []
-  const jours = d.time.map((date, i) => {
-    const pluieMm = d.precipitation_sum[i] ?? 0
-    // Météo-France ne fournit parfois PAS la probabilité : plutôt qu'un
-    // « 0 % » incohérent avec des millimètres annoncés, on l'estime
-    // depuis la quantité attendue.
-    const probaBrute = d.precipitation_probability_max[i]
-    const probaPluie =
-      probaBrute ?? (pluieMm >= 5 ? 85 : pluieMm >= 1 ? 60 : pluieMm > 0 ? 30 : 0)
+  if (!d || !Array.isArray(d['time'])) return []
+
+  // Avec plusieurs modèles, chaque série revient suffixée du nom du modèle.
+  const serie = (nom: string, modele: string): (number | null)[] =>
+    ((d[`${nom}_${modele}`] ?? d[nom] ?? []) as (number | null)[])
+  const mf = (nom: string, i: number) => serie(nom, 'meteofrance_seamless')[i] ?? null
+  const bm = (nom: string, i: number) => serie(nom, 'best_match')[i] ?? null
+
+  const jours = (d['time'] as string[]).map((date, i) => {
+    const mmMf = mf('precipitation_sum', i) ?? 0
+    const mmBm = bm('precipitation_sum', i) ?? mmMf
+    const mmMin = Math.min(mmMf, mmBm)
+    const mmMax = Math.max(mmMf, mmBm)
+    const probaFournie = Math.max(mf('precipitation_probability_max', i) ?? 0, bm('precipitation_probability_max', i) ?? 0)
+
+    let pluieMm: number
+    let probaPluie: number
+    if (mmMin >= 0.5) {
+      // Les deux modèles voient de la pluie : on l'annonce franchement.
+      pluieMm = (mmMf + mmBm) / 2
+      probaPluie = Math.max(probaFournie, pluieMm >= 5 ? 85 : 60)
+    } else if (mmMax >= 1) {
+      // Un seul modèle voit de la pluie : simple RISQUE, pas d'averse fantôme.
+      pluieMm = 0
+      probaPluie = Math.max(30, Math.min(probaFournie, 49))
+    } else {
+      pluieMm = 0
+      probaPluie = probaFournie
+    }
+
+    // Le pictogramme suit le consensus : temps sec → le code du modèle le
+    // plus sec (pas de nuage d'orage si on annonce « pas de pluie »).
+    const codeMf = mf('weather_code', i) ?? 0
+    const codeBm = bm('weather_code', i) ?? codeMf
+    const code = mmMin >= 0.5 ? Math.max(codeMf, codeBm) : mmMf <= mmBm ? codeMf : codeBm
+
     return {
       date,
-      tMin: Math.round(d.temperature_2m_min[i] ?? 0),
-      tMax: Math.round(d.temperature_2m_max[i] ?? 0),
+      tMin: Math.round(((mf('temperature_2m_min', i) ?? 0) + (bm('temperature_2m_min', i) ?? mf('temperature_2m_min', i) ?? 0)) / 2),
+      tMax: Math.round(((mf('temperature_2m_max', i) ?? 0) + (bm('temperature_2m_max', i) ?? mf('temperature_2m_max', i) ?? 0)) / 2),
       pluieMm,
       probaPluie,
-      code: d.weather_code[i] ?? 0,
+      code,
     }
   })
   try {

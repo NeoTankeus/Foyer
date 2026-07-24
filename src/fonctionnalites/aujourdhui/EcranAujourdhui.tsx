@@ -1085,7 +1085,10 @@ export function EcranAujourdhui() {
           >
             ✏️ Changer de ville
           </Bouton>
-          <p className="text-legende text-encre-3">Prévisions Météo-France (via Open-Meteo), actualisées toutes les 2 h.</p>
+          <p className="text-legende text-encre-3">
+            Consensus de 2 modèles (Météo-France + modèle local, via Open-Meteo), actualisé toutes les 2 h — la pluie
+            n'est annoncée que si les deux sont d'accord.
+          </p>
         </div>
       </Feuille>
 
