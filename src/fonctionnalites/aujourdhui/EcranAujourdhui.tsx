@@ -1,6 +1,6 @@
 // L'accueil : un tableau de bord. Le rouge n'apparaît que quand ça urge,
 // chaque bloc se coche, se tape, se personnalise. Le Fil est un bloc optionnel.
-import { useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
@@ -32,7 +32,13 @@ import { Feuille } from '@/design/composants/Feuille'
 import { Bouton } from '@/design/composants/Bouton'
 import { BoutonMiseAJour } from '@/design/composants/BoutonMiseAJour'
 import { importerAgendaSiBesoin } from '@/lib/synchro-agenda'
-import { choisirVille, iconeMeteo, previsions, villeMeteo, type JourMeteo } from '@/lib/meteo'
+import { choisirVille, iconeMeteo, previsions, previsionsHoraires, villeMeteo, type HeureMeteo, type JourMeteo } from '@/lib/meteo'
+
+// L'échelle de vent façon Windfinder : couleur par force (en nœuds).
+const couleurVent = (noeuds: number) =>
+  noeuds < 4 ? '#dfe8ee' : noeuds < 8 ? '#a9d9f2' : noeuds < 11 ? '#93d693' : noeuds < 14 ? '#cbe371'
+    : noeuds < 17 ? '#f5d455' : noeuds < 21 ? '#f7a73e' : noeuds < 25 ? '#f2722d' : noeuds < 30 ? '#e6402f' : '#b3268f'
+const enNoeuds = (kmh: number) => Math.round(kmh / 1.852)
 import { prochainesVacances, type Vacances } from '@/lib/scolaire'
 import { prochainFerie } from '@/lib/feries'
 import { Gerard } from './Gerard'
@@ -317,6 +323,14 @@ export function EcranAujourdhui() {
     },
   })
   const [saisieVille, setSaisieVille] = useState('')
+  // ⛵ Le tableau heure par heure (vent compris), façon Windfinder.
+  const [jourDeplie, setJourDeplie] = useState<string | null>(null)
+  const heures = useQuery<HeureMeteo[]>({
+    queryKey: ['meteo-heures', ville?.nom ?? ''],
+    queryFn: previsionsHoraires,
+    enabled: meteoDetail && ville !== null,
+    staleTime: 30 * 60 * 1000,
+  })
   const meteo = useQuery<JourMeteo[]>({
     queryKey: ['meteo', ville?.nom ?? ''],
     queryFn: previsions,
@@ -1039,7 +1053,12 @@ export function EcranAujourdhui() {
       <Feuille ouverte={meteoDetail} onFermer={() => setMeteoDetail(false)} titre={`🌤 Météo — ${ville?.nom ?? ''}`}>
         <div className="flex flex-col gap-2">
           {(meteo.data ?? []).map((j, idx) => (
-            <div key={j.date} className="flex items-center gap-3 rounded-xl bg-fond-sourd px-3 py-2.5">
+            <div key={j.date} className="rounded-xl bg-fond-sourd px-3 py-2.5">
+            <button
+              onClick={() => setJourDeplie((d) => (d === j.date ? null : j.date))}
+              aria-expanded={jourDeplie === j.date}
+              className="flex w-full items-center gap-3 text-left"
+            >
               <span className="text-[30px]" aria-hidden="true">{iconeMeteo(j.code)}</span>
               <div className="flex-1">
                 <p className="text-corps-2 font-[590] capitalize text-encre">
@@ -1073,6 +1092,53 @@ export function EcranAujourdhui() {
               <p className="chiffres text-corps font-[700] text-encre">
                 {j.tMax}° <span className="font-[400] text-encre-3">{j.tMin}°</span>
               </p>
+              <span aria-hidden="true" className="text-encre-3">{jourDeplie === j.date ? '▴' : '▾'}</span>
+            </button>
+
+            {/* ⛵ L'heure par heure façon Windfinder : vent en nœuds, rafales,
+                direction — les cases se colorent avec la force du vent. */}
+            {jourDeplie === j.date && (
+              <div className="mt-2">
+                {heures.isLoading && <p className="py-2 text-center text-legende text-encre-3">⛵ Relevé du vent…</p>}
+                {(heures.data ?? []).filter((h) => h.quand.startsWith(j.date) && [6, 8, 10, 12, 14, 16, 18, 20, 22].includes(Number(h.quand.slice(11, 13)))).length > 0 && (
+                  <div className="overflow-hidden rounded-lg">
+                    <div className="grid grid-cols-6 gap-px bg-trait text-center text-legende">
+                      {['h', '', '°C', 'vent (nds)', 'rafales', 'pluie'].map((t, i) => (
+                        <span key={i} className="bg-fond-eleve py-1 font-[590] text-encre-3">{t}</span>
+                      ))}
+                      {(heures.data ?? [])
+                        .filter((h) => h.quand.startsWith(j.date) && [6, 8, 10, 12, 14, 16, 18, 20, 22].includes(Number(h.quand.slice(11, 13))))
+                        .map((h) => (
+                          <Fragment key={h.quand}>
+                            <span className="chiffres bg-fond-eleve py-1.5 text-encre">{Number(h.quand.slice(11, 13))}h</span>
+                            <span className="bg-fond-eleve py-1.5">{iconeMeteo(h.code)}</span>
+                            <span className="chiffres bg-fond-eleve py-1.5 text-encre">{h.t}°</span>
+                            <span
+                              className="chiffres flex items-center justify-center gap-1 py-1.5 font-[700] text-[#1c2430]"
+                              style={{ background: couleurVent(enNoeuds(h.vent)) }}
+                            >
+                              {enNoeuds(h.vent)}
+                              <span aria-hidden="true" style={{ display: 'inline-block', transform: `rotate(${h.direction + 180}deg)` }}>↑</span>
+                            </span>
+                            <span
+                              className="chiffres py-1.5 font-[590] text-[#1c2430]"
+                              style={{ background: couleurVent(enNoeuds(h.rafales)) }}
+                            >
+                              {enNoeuds(h.rafales)}
+                            </span>
+                            <span className="chiffres bg-fond-eleve py-1.5 text-encre-2">
+                              {h.pluie >= 0.1 ? `${h.pluie.toFixed(1).replace('.', ',')}` : '—'}
+                            </span>
+                          </Fragment>
+                        ))}
+                    </div>
+                    <p className="bg-fond-eleve px-2 py-1 text-legende text-encre-3">
+                      Vent et rafales en nœuds, flèche = direction du vent · pluie en mm/h.
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
             </div>
           ))}
           <Bouton

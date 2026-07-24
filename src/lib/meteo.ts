@@ -16,6 +16,17 @@ export interface JourMeteo {
   code: number
 }
 
+// Une heure de prévision, façon Windfinder : vent, rafales, direction.
+export interface HeureMeteo {
+  quand: string // AAAA-MM-JJThh:00
+  t: number
+  pluie: number
+  code: number
+  vent: number // km/h
+  rafales: number // km/h
+  direction: number // degrés (d'où vient le vent)
+}
+
 const CLE_VILLE = 'gastif-meteo-ville'
 // v2 : le passage au consensus deux-modèles invalide l'ancien cache.
 const CLE_CACHE = 'gastif-meteo-cache-v2'
@@ -119,6 +130,54 @@ export async function previsions(): Promise<JourMeteo[]> {
     // pas grave
   }
   return jours
+}
+
+const CLE_CACHE_HEURES = 'stg-meteo-heures'
+
+/** Prévisions HEURE PAR HEURE sur 4 jours (vent compris), cache 2 h. */
+export async function previsionsHoraires(): Promise<HeureMeteo[]> {
+  const ville = villeMeteo()
+  if (!ville) return []
+  try {
+    const cache = JSON.parse(localStorage.getItem(CLE_CACHE_HEURES) ?? 'null') as { a: number; heures: HeureMeteo[] } | null
+    if (cache && Date.now() - cache.a < 2 * 3600 * 1000) return cache.heures
+  } catch {
+    // cache illisible
+  }
+  const reponse = await fetch(
+    `https://api.open-meteo.com/v1/forecast?latitude=${ville.latitude}&longitude=${ville.longitude}` +
+      `&hourly=temperature_2m,precipitation,weather_code,wind_speed_10m,wind_gusts_10m,wind_direction_10m` +
+      `&timezone=Europe%2FParis&forecast_days=4`,
+  )
+  if (!reponse.ok) return []
+  const donnees = (await reponse.json()) as {
+    hourly?: {
+      time: string[]
+      temperature_2m: (number | null)[]
+      precipitation: (number | null)[]
+      weather_code: (number | null)[]
+      wind_speed_10m: (number | null)[]
+      wind_gusts_10m: (number | null)[]
+      wind_direction_10m: (number | null)[]
+    }
+  }
+  const h = donnees.hourly
+  if (!h) return []
+  const heures = h.time.map((quand, i) => ({
+    quand,
+    t: Math.round(h.temperature_2m[i] ?? 0),
+    pluie: h.precipitation[i] ?? 0,
+    code: h.weather_code[i] ?? 0,
+    vent: Math.round(h.wind_speed_10m[i] ?? 0),
+    rafales: Math.round(h.wind_gusts_10m[i] ?? 0),
+    direction: h.wind_direction_10m[i] ?? 0,
+  }))
+  try {
+    localStorage.setItem(CLE_CACHE_HEURES, JSON.stringify({ a: Date.now(), heures }))
+  } catch {
+    // pas grave
+  }
+  return heures
 }
 
 export function iconeMeteo(code: number): string {

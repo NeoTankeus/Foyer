@@ -1,6 +1,7 @@
 // Les nouveautés de la version en cours — affichées UNE fois dans le pop-up
 // « Quoi de neuf », signé ILY. Mises à jour à chaque déploiement.
 export const NOTES_VERSION: string[] = [
+  '⛵ Météo façon Windfinder : touche un jour dans le détail météo → tableau heure par heure avec le VENT en nœuds, les rafales, la flèche de direction et les cases colorées selon la force — parfait pour les voiles.',
   '🌦 Météo plus fiable : prévisions en CONSENSUS de deux modèles (Météo-France + modèle local) — les averses fantômes qu’un seul modèle invente disparaissent ; en cas de désaccord, l’app affiche un simple « risque de pluie ».',
   '🧺 Le verdict séchage regarde d’abord la pluie et l’orage — « 🚫 linge dedans » quand il va vraiment pleuvoir.',
   '🥗 NOUVEAU : Mon Assiette (Menu → Santé & habitudes) — décris ou photographie ton repas, STG le note SELON TON RÉGIME : score en ROUGE si ça ne colle pas, avec l’explication exacte (gras saturés, sucres…), des conseils et une alternative. Historique et moyenne sur 7 jours.',
