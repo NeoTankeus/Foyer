@@ -32,13 +32,17 @@ import { Feuille } from '@/design/composants/Feuille'
 import { Bouton } from '@/design/composants/Bouton'
 import { BoutonMiseAJour } from '@/design/composants/BoutonMiseAJour'
 import { importerAgendaSiBesoin } from '@/lib/synchro-agenda'
-import { choisirVille, iconeMeteo, previsions, previsionsHoraires, villeMeteo, type HeureMeteo, type JourMeteo } from '@/lib/meteo'
+import { choisirVille, iconeMeteo, previsions, previsionsHoraires, previsionsMarines, villeMeteo, type HeureMeteo, type JourMeteo, type MerHeure } from '@/lib/meteo'
 
 // L'échelle de vent façon Windfinder : couleur par force (en nœuds).
 const couleurVent = (noeuds: number) =>
   noeuds < 4 ? '#dfe8ee' : noeuds < 8 ? '#a9d9f2' : noeuds < 11 ? '#93d693' : noeuds < 14 ? '#cbe371'
     : noeuds < 17 ? '#f5d455' : noeuds < 21 ? '#f7a73e' : noeuds < 25 ? '#f2722d' : noeuds < 30 ? '#e6402f' : '#b3268f'
 const enNoeuds = (kmh: number) => Math.round(kmh / 1.852)
+// L'échelle des vagues (m) et le libellé UV.
+const couleurVagues = (m: number) =>
+  m < 0.3 ? '#dfe8ee' : m < 0.6 ? '#a9d9f2' : m < 1 ? '#93d693' : m < 1.5 ? '#f5d455' : m < 2.5 ? '#f7a73e' : '#e6402f'
+const libelleUv = (uv: number) => (uv >= 11 ? 'extrême' : uv >= 8 ? 'très fort' : uv >= 6 ? 'fort' : uv >= 3 ? 'modéré' : 'faible')
 import { prochainesVacances, type Vacances } from '@/lib/scolaire'
 import { prochainFerie } from '@/lib/feries'
 import { Gerard } from './Gerard'
@@ -328,6 +332,13 @@ export function EcranAujourdhui() {
   const heures = useQuery<HeureMeteo[]>({
     queryKey: ['meteo-heures', ville?.nom ?? ''],
     queryFn: previsionsHoraires,
+    enabled: meteoDetail && ville !== null,
+    staleTime: 30 * 60 * 1000,
+  })
+  // 🌊 La mer (vagues, houle, eau) — vide loin des côtes.
+  const mer = useQuery<MerHeure[]>({
+    queryKey: ['meteo-mer', ville?.nom ?? ''],
+    queryFn: previsionsMarines,
     enabled: meteoDetail && ville !== null,
     staleTime: 30 * 60 * 1000,
   })
@@ -1073,6 +1084,12 @@ export function EcranAujourdhui() {
                       ? `☔ ${j.probaPluie} % de risque de pluie`
                       : '☀️ pas de pluie prévue'}
                 </p>
+                {(j.lever || j.uvMax > 0) && (
+                  <p className="text-legende text-encre-3">
+                    {j.lever && <>🌅 {j.lever} → {j.coucher}</>}
+                    {j.uvMax > 0 && <> · UV {j.uvMax} ({libelleUv(j.uvMax)}{j.uvMax >= 6 ? ' — crème pour Gabriel !' : ''})</>}
+                  </p>
+                )}
                 <p className="text-legende text-encre-3">
                   {/* Le verdict séchage regarde la PLUIE (mm, risque, orage) AVANT le soleil. */}
                   🧺 Séchage dehors :{' '}
@@ -1137,6 +1154,46 @@ export function EcranAujourdhui() {
                     </p>
                   </div>
                 )}
+
+                {/* 🌊 La MER du jour (si on est près des côtes) : vagues, houle, eau. */}
+                {(() => {
+                  const merJour = (mer.data ?? []).filter(
+                    (m) =>
+                      m.quand.startsWith(j.date) &&
+                      [6, 9, 12, 15, 18, 21].includes(Number(m.quand.slice(11, 13))) &&
+                      m.vagues !== null,
+                  )
+                  if (merJour.length === 0) return null
+                  return (
+                    <div className="mt-2 overflow-hidden rounded-lg">
+                      <div className="grid grid-cols-4 gap-px bg-trait text-center text-legende">
+                        {['🌊 h', 'vagues (m)', 'houle (s)', 'eau (°C)'].map((t, i) => (
+                          <span key={i} className="bg-fond-eleve py-1 font-[590] text-encre-3">{t}</span>
+                        ))}
+                        {merJour.map((m) => (
+                          <Fragment key={m.quand}>
+                            <span className="chiffres bg-fond-eleve py-1.5 text-encre">{Number(m.quand.slice(11, 13))}h</span>
+                            <span
+                              className="chiffres py-1.5 font-[700] text-[#1c2430]"
+                              style={{ background: couleurVagues(m.vagues ?? 0) }}
+                            >
+                              {(m.vagues ?? 0).toFixed(1).replace('.', ',')}
+                            </span>
+                            <span className="chiffres bg-fond-eleve py-1.5 text-encre-2">
+                              {m.periode !== null ? Math.round(m.periode) : '—'}
+                            </span>
+                            <span className="chiffres bg-fond-eleve py-1.5 text-encre">
+                              {m.eau !== null ? Math.round(m.eau) : '—'}
+                            </span>
+                          </Fragment>
+                        ))}
+                      </div>
+                      <p className="bg-fond-eleve px-2 py-1 text-legende text-encre-3">
+                        Hauteur des vagues colorée (calme → forte) · houle = période entre deux vagues.
+                      </p>
+                    </div>
+                  )
+                })()}
               </div>
             )}
             </div>

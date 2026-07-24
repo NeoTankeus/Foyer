@@ -14,6 +14,17 @@ export interface JourMeteo {
   pluieMm: number
   probaPluie: number
   code: number
+  uvMax: number
+  lever: string // hh:mm
+  coucher: string // hh:mm
+}
+
+// Une heure de mer (côtes uniquement — nul dans les terres).
+export interface MerHeure {
+  quand: string
+  vagues: number | null // m
+  periode: number | null // s
+  eau: number | null // °C
 }
 
 // Une heure de prévision, façon Windfinder : vent, rafales, direction.
@@ -28,8 +39,8 @@ export interface HeureMeteo {
 }
 
 const CLE_VILLE = 'gastif-meteo-ville'
-// v2 : le passage au consensus deux-modèles invalide l'ancien cache.
-const CLE_CACHE = 'gastif-meteo-cache-v2'
+// v3 : consensus deux-modèles + UV + lever/coucher du soleil.
+const CLE_CACHE = 'gastif-meteo-cache-v3'
 
 export function villeMeteo(): VilleMeteo | null {
   try {
@@ -73,7 +84,7 @@ export async function previsions(): Promise<JourMeteo[]> {
   }
   const reponse = await fetch(
     `https://api.open-meteo.com/v1/forecast?latitude=${ville.latitude}&longitude=${ville.longitude}` +
-      `&daily=temperature_2m_min,temperature_2m_max,precipitation_sum,precipitation_probability_max,weather_code` +
+      `&daily=temperature_2m_min,temperature_2m_max,precipitation_sum,precipitation_probability_max,weather_code,uv_index_max,sunrise,sunset` +
       `&timezone=Europe%2FParis&forecast_days=4&models=meteofrance_seamless,best_match`,
   )
   if (!reponse.ok) return []
@@ -86,6 +97,9 @@ export async function previsions(): Promise<JourMeteo[]> {
     ((d[`${nom}_${modele}`] ?? d[nom] ?? []) as (number | null)[])
   const mf = (nom: string, i: number) => serie(nom, 'meteofrance_seamless')[i] ?? null
   const bm = (nom: string, i: number) => serie(nom, 'best_match')[i] ?? null
+  // Les heures (lever/coucher) arrivent en chaînes, suffixées elles aussi.
+  const chaine = (nom: string, i: number): string =>
+    String((d[`${nom}_meteofrance_seamless`] ?? d[`${nom}_best_match`] ?? d[nom] ?? [])[i] ?? '')
 
   const jours = (d['time'] as string[]).map((date, i) => {
     const mmMf = mf('precipitation_sum', i) ?? 0
@@ -122,6 +136,9 @@ export async function previsions(): Promise<JourMeteo[]> {
       pluieMm,
       probaPluie,
       code,
+      uvMax: Math.round(Math.max(mf('uv_index_max', i) ?? 0, bm('uv_index_max', i) ?? 0)),
+      lever: chaine('sunrise', i).slice(11, 16),
+      coucher: chaine('sunset', i).slice(11, 16),
     }
   })
   try {
@@ -178,6 +195,56 @@ export async function previsionsHoraires(): Promise<HeureMeteo[]> {
     // pas grave
   }
   return heures
+}
+
+const CLE_CACHE_MER = 'stg-meteo-mer'
+
+/**
+ * L'état de la MER heure par heure (vagues, période de houle, température de
+ * l'eau) — API marine d'Open-Meteo, pertinente près des côtes (vide dans les
+ * terres). Cache 2 h.
+ */
+export async function previsionsMarines(): Promise<MerHeure[]> {
+  const ville = villeMeteo()
+  if (!ville) return []
+  try {
+    const cache = JSON.parse(localStorage.getItem(CLE_CACHE_MER) ?? 'null') as { a: number; mer: MerHeure[] } | null
+    if (cache && Date.now() - cache.a < 2 * 3600 * 1000) return cache.mer
+  } catch {
+    // cache illisible
+  }
+  try {
+    const reponse = await fetch(
+      `https://marine-api.open-meteo.com/v1/marine?latitude=${ville.latitude}&longitude=${ville.longitude}` +
+        `&hourly=wave_height,wave_period,sea_surface_temperature&timezone=Europe%2FParis&forecast_days=4`,
+    )
+    if (!reponse.ok) return []
+    const donnees = (await reponse.json()) as {
+      hourly?: {
+        time: string[]
+        wave_height: (number | null)[]
+        wave_period: (number | null)[]
+        sea_surface_temperature: (number | null)[]
+      }
+    }
+    const h = donnees.hourly
+    if (!h) return []
+    const mer = h.time.map((quand, i) => ({
+      quand,
+      vagues: h.wave_height[i] ?? null,
+      periode: h.wave_period[i] ?? null,
+      eau: h.sea_surface_temperature[i] ?? null,
+    }))
+    try {
+      localStorage.setItem(CLE_CACHE_MER, JSON.stringify({ a: Date.now(), mer }))
+    } catch {
+      // pas grave
+    }
+    return mer
+  } catch {
+    // loin de la mer ou service indisponible : pas de section Mer, c'est tout
+    return []
+  }
 }
 
 export function iconeMeteo(code: number): string {
