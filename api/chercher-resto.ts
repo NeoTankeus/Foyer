@@ -116,7 +116,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return
     }
 
-    const { mode, nom, ville, site, requete, lat, lon, rayon, quoi } = (req.body ?? {}) as {
+    const { mode, nom, ville, site, requete, lat, lon, rayon, quoi, deLat, deLon, aLat, aLon, debut, fin } = (req.body ?? {}) as {
       mode?: string
       nom?: string
       ville?: string
@@ -126,6 +126,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       lon?: number
       rayon?: number
       quoi?: string
+      deLat?: number
+      deLon?: number
+      aLat?: number
+      aLon?: number
+      debut?: string
+      fin?: string
     }
 
     // 🌊 Relais Hub'Eau/Vigicrues : stations hydrométriques autour d'un point
@@ -290,6 +296,279 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           String(x instanceof Error ? x.message : x).slice(0, 40),
         )
         res.status(200).json({ elements: [], erreur: `serveurs cartes : ${motifs.join(' / ')}` })
+      }
+      return
+    }
+
+    // 🏠 Relais DVF (demandes de valeurs foncières) : les ventes immobilières
+    // réelles autour d'un point, via le miroir libre de C. Quest.
+    if (mode === 'dvf') {
+      const la = Number(lat)
+      const lo = Number(lon)
+      if (!Number.isFinite(la) || !Number.isFinite(lo)) {
+        res.status(200).json({ ventes: [], erreur: 'position invalide' })
+        return
+      }
+      const ra = Math.min(Math.max(Number(rayon) || 400, 50), 1000)
+      try {
+        const r = await fetch(`https://api.cquest.org/dvf?lat=${la}&lon=${lo}&dist=${ra}`, {
+          headers: { 'user-agent': UA, accept: 'application/json' },
+          signal: AbortSignal.timeout(12000),
+        })
+        if (!r.ok) {
+          res.status(200).json({ ventes: [], erreur: `dvf ${r.status}` })
+          return
+        }
+        const donnees = (await r.json()) as {
+          resultats?: {
+            date_mutation?: string
+            valeur_fonciere?: number
+            // « surface_relle_bati » : la faute d'orthographe vient du jeu de données officiel.
+            surface_relle_bati?: number
+            type_local?: string | null
+            numero_voie?: string | number | null
+            voie?: string | null
+            commune?: string | null
+          }[]
+        }
+        const ventes = (donnees.resultats ?? [])
+          .filter((v) => Number(v.valeur_fonciere) > 1000)
+          .map((v) => {
+            const prix = Math.round(Number(v.valeur_fonciere))
+            const surface = Number(v.surface_relle_bati) || null
+            return {
+              date: v.date_mutation ?? '',
+              prix,
+              surface,
+              prixM2: surface && surface > 10 ? Math.round(prix / surface) : null,
+              type: v.type_local ?? null,
+              adresse: [v.numero_voie, v.voie, v.commune].filter((x) => x != null && String(x).trim() !== '').join(' '),
+            }
+          })
+          .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0))
+          .slice(0, 80)
+        res.status(200).json({ ventes })
+      } catch (e) {
+        res.status(200).json({ ventes: [], erreur: `dvf ${String(e instanceof Error ? e.message : e).slice(0, 60)}` })
+      }
+      return
+    }
+
+    // 🏖️ Qualité des eaux de baignade : commune via geo.api.gouv.fr, puis
+    // tentative de lecture du site officiel (HTML très old-school — on parse
+    // DÉFENSIVEMENT et on renvoie toujours le lien officiel en secours).
+    if (mode === 'baignades') {
+      const lien = 'https://baignades.sante.gouv.fr'
+      const la = Number(lat)
+      const lo = Number(lon)
+      if (!Number.isFinite(la) || !Number.isFinite(lo)) {
+        res.status(200).json({ sites: [], commune: null, lien, erreur: 'position invalide' })
+        return
+      }
+      let commune: string | null = null
+      let dept: string | null = null
+      try {
+        const rGeo = await fetch(`https://geo.api.gouv.fr/communes?lat=${la}&lon=${lo}&fields=nom,codeDepartement`, {
+          headers: { accept: 'application/json', 'user-agent': UA },
+          signal: AbortSignal.timeout(12000),
+        })
+        if (rGeo.ok) {
+          const liste = (await rGeo.json()) as { nom?: string; codeDepartement?: string }[]
+          commune = liste[0]?.nom ?? null
+          dept = liste[0]?.codeDepartement ?? null
+        }
+      } catch {
+        // la commune restera inconnue, ce n'est pas bloquant
+      }
+      const sites: { nom: string; commune: string; qualite: string | null }[] = []
+      if (dept) {
+        try {
+          // Le code « dptddass » est le département sur 3 caractères (83 → 083).
+          const dptddass = `0${dept}`.slice(-3)
+          const annee = new Date().getFullYear()
+          const r = await fetch(
+            `https://baignades.sante.gouv.fr/baignades/consultSite.do?dptddass=${dptddass}&annee=${annee}`,
+            { headers: { 'user-agent': UA, accept: 'text/html', 'accept-language': 'fr-FR' }, signal: AbortSignal.timeout(12000) },
+          )
+          if (r.ok) {
+            const html = (await r.text()).slice(0, 500000)
+            // On cherche des lignes de tableau « nom / commune / qualité » —
+            // si la page a changé de forme, on repart simplement les mains vides.
+            const motifLigne = /<tr[^>]*>([\s\S]*?)<\/tr>/gi
+            let m: RegExpExecArray | null
+            while ((m = motifLigne.exec(html)) && sites.length < 40) {
+              const cellules = [...(m[1] ?? '').matchAll(/<t[dh][^>]*>([\s\S]*?)<\/t[dh]>/gi)]
+                .map((c) => (c[1] ?? '').replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim())
+                .filter(Boolean)
+              const premier = cellules[0] ?? ''
+              if (cellules.length >= 2 && premier && !/^(site|commune|qualit|point de|d[ée]partement)/i.test(premier)) {
+                sites.push({
+                  nom: premier,
+                  commune: cellules[1] ?? '',
+                  qualite: cellules.find((c) => /excellent|bon(ne)?|suffisant|insuffisant|non class/i.test(c)) ?? null,
+                })
+              }
+            }
+          }
+        } catch {
+          // le site officiel boude — on renvoie quand même commune + lien
+        }
+      }
+      res.status(200).json({ sites, commune, lien })
+      return
+    }
+
+    // 🚗 Temps de parcours AVEC bouchons (TomTom Routing).
+    if (mode === 'trafic') {
+      const cle = process.env.TOMTOM_KEY
+      if (!cle) {
+        res.status(200).json({ erreur: 'cle_absente' })
+        return
+      }
+      const dLa = Number(deLat)
+      const dLo = Number(deLon)
+      const aLa = Number(aLat)
+      const aLo = Number(aLon)
+      if (![dLa, dLo, aLa, aLo].every(Number.isFinite)) {
+        res.status(200).json({ erreur: 'position invalide' })
+        return
+      }
+      try {
+        const r = await fetch(
+          `https://api.tomtom.com/routing/1/calculateRoute/${dLa},${dLo}:${aLa},${aLo}/json?traffic=true&key=${cle}`,
+          { headers: { accept: 'application/json', 'user-agent': UA }, signal: AbortSignal.timeout(12000) },
+        )
+        if (!r.ok) {
+          res.status(200).json({ erreur: `tomtom ${r.status}` })
+          return
+        }
+        const donnees = (await r.json()) as {
+          routes?: { summary?: { travelTimeInSeconds?: number; noTrafficTravelTimeInSeconds?: number } }[]
+        }
+        const resume = donnees.routes?.[0]?.summary
+        const avec = Number(resume?.travelTimeInSeconds)
+        const sans = Number(resume?.noTrafficTravelTimeInSeconds)
+        if (!Number.isFinite(avec) || !Number.isFinite(sans)) {
+          res.status(200).json({ erreur: 'tomtom reponse illisible' })
+          return
+        }
+        res.status(200).json({
+          minutes: Math.round(avec / 60),
+          minutesSansTrafic: Math.round(sans / 60),
+          bouchonsMin: Math.round((avec - sans) / 60),
+        })
+      } catch (e) {
+        res.status(200).json({ erreur: `tomtom ${String(e instanceof Error ? e.message : e).slice(0, 60)}` })
+      }
+      return
+    }
+
+    // 🎭 Sorties : événements OpenAgenda dans une boîte de ±0,25° autour du point.
+    if (mode === 'sorties') {
+      const cle = process.env.OPENAGENDA_KEY
+      if (!cle) {
+        res.status(200).json({ erreur: 'cle_absente' })
+        return
+      }
+      const la = Number(lat)
+      const lo = Number(lon)
+      if (!Number.isFinite(la) || !Number.isFinite(lo)) {
+        res.status(200).json({ evenements: [], erreur: 'position invalide' })
+        return
+      }
+      try {
+        const boite = 0.25
+        const params = [
+          `key=${cle}`,
+          'size=20',
+          'relative[]=current',
+          'relative[]=upcoming',
+          `geo[northEast][lat]=${la + boite}`,
+          `geo[northEast][lng]=${lo + boite}`,
+          `geo[southWest][lat]=${la - boite}`,
+          `geo[southWest][lng]=${lo - boite}`,
+        ]
+        if (debut) params.push(`timings[gte]=${encodeURIComponent(String(debut))}`)
+        if (fin) params.push(`timings[lte]=${encodeURIComponent(String(fin))}`)
+        const r = await fetch(`https://api.openagenda.com/v2/events?${params.join('&')}`, {
+          headers: { accept: 'application/json', 'user-agent': UA },
+          signal: AbortSignal.timeout(12000),
+        })
+        if (!r.ok) {
+          res.status(200).json({ evenements: [], erreur: `openagenda ${r.status}` })
+          return
+        }
+        const donnees = (await r.json()) as {
+          events?: {
+            title?: { fr?: string } | string
+            location?: { name?: string; city?: string }
+            nextTiming?: { begin?: string }
+            canonicalUrl?: string
+          }[]
+        }
+        const evenements = (donnees.events ?? [])
+          .map((e) => ({
+            titre: typeof e.title === 'string' ? e.title : (e.title?.fr ?? Object.values(e.title ?? {})[0] ?? ''),
+            lieu: [e.location?.name, e.location?.city].filter(Boolean).join(', '),
+            quand: e.nextTiming?.begin ?? null,
+            url: e.canonicalUrl ?? null,
+          }))
+          .filter((e) => e.titre)
+          .sort((a, b) => String(a.quand ?? '9999').localeCompare(String(b.quand ?? '9999')))
+          .slice(0, 15)
+        res.status(200).json({ evenements })
+      } catch (e) {
+        res.status(200).json({ evenements: [], erreur: `openagenda ${String(e instanceof Error ? e.message : e).slice(0, 60)}` })
+      }
+      return
+    }
+
+    // 📷 Webcams Windy (v3) dans un rayon de 25 km — pour voir la météo en vrai.
+    if (mode === 'webcams') {
+      const cle = process.env.WINDY_WEBCAMS_KEY
+      if (!cle) {
+        res.status(200).json({ erreur: 'cle_absente' })
+        return
+      }
+      const la = Number(lat)
+      const lo = Number(lon)
+      if (!Number.isFinite(la) || !Number.isFinite(lo)) {
+        res.status(200).json({ webcams: [], erreur: 'position invalide' })
+        return
+      }
+      try {
+        const r = await fetch(
+          `https://api.windy.com/webcams/api/v3/webcams?nearby=${la},${lo},25&include=images,location,player&limit=12`,
+          { headers: { 'X-WINDY-API-KEY': cle, accept: 'application/json', 'user-agent': UA }, signal: AbortSignal.timeout(12000) },
+        )
+        if (!r.ok) {
+          res.status(200).json({ webcams: [], erreur: `windy ${r.status}` })
+          return
+        }
+        const donnees = (await r.json()) as {
+          webcams?: {
+            title?: string
+            webcamId?: number
+            location?: { city?: string }
+            images?: { current?: { preview?: string; thumbnail?: string } }
+            player?: { day?: string; lifetime?: string }
+            urls?: { detail?: string }
+          }[]
+        }
+        const webcams = (donnees.webcams ?? [])
+          .map((w) => ({
+            titre: w.title ?? '',
+            ville: w.location?.city ?? '',
+            image: w.images?.current?.preview ?? w.images?.current?.thumbnail ?? null,
+            lien:
+              (typeof w.player?.day === 'string' ? w.player.day : null) ??
+              (typeof w.urls?.detail === 'string' ? w.urls.detail : null) ??
+              (w.webcamId ? `https://www.windy.com/webcams/${w.webcamId}` : null),
+          }))
+          .filter((w) => w.titre || w.image)
+        res.status(200).json({ webcams })
+      } catch (e) {
+        res.status(200).json({ webcams: [], erreur: `windy ${String(e instanceof Error ? e.message : e).slice(0, 60)}` })
       }
       return
     }
