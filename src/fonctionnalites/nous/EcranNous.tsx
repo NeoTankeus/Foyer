@@ -122,6 +122,7 @@ export function EcranNous() {
     { chemin: '/nous/ciel', libelle: 'Ce soir on lève les yeux', detail: 'lune, ISS en direct, étoiles filantes', icone: '🌌', couleur: 'var(--prune)', secteur: 'sorties' },
     { chemin: '/nous/carburant', libelle: 'Plein malin', detail: 'la station la moins chère autour de toi', icone: '⛽', couleur: 'var(--ardoise)', secteur: 'transports' },
     { chemin: '/nous/pharmacies', libelle: 'Pharmacies', detail: 'les plus proches + le réflexe 32 37', icone: '💊', couleur: 'var(--sauge)', secteur: 'sante' },
+    { chemin: '/nous/assiette', libelle: 'Mon Assiette', detail: 'chaque repas noté selon TON régime', icone: '🥗', couleur: 'var(--sauge)', secteur: 'sante' },
     { chemin: '/nous/radar-prix', libelle: 'Radar prix', detail: 'tes produits scannés, aux prix des magasins', icone: '📉', couleur: 'var(--or)', secteur: 'argent' },
     { chemin: '/nous/garanties', libelle: 'Garanties', detail: 'STG prévient avant que ça expire', icone: '🔌', couleur: 'var(--encre-2)', secteur: 'argent', adulte: true },
     { chemin: '/nous/soiree', libelle: 'Soirée parfaite', detail: 'film + plat + resto, décidé en 10 s', icone: '🎬', couleur: 'var(--prune)', secteur: 'sorties' },

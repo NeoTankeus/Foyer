@@ -1,6 +1,7 @@
 // Les nouveautés de la version en cours — affichées UNE fois dans le pop-up
 // « Quoi de neuf », signé ILY. Mises à jour à chaque déploiement.
 export const NOTES_VERSION: string[] = [
+  '🥗 NOUVEAU : Mon Assiette (Menu → Santé & habitudes) — décris ou photographie ton repas, STG le note SELON TON RÉGIME : score en ROUGE si ça ne colle pas, avec l’explication exacte (gras saturés, sucres…), des conseils et une alternative. Historique et moyenne sur 7 jours.',
   '⌨️ Les fenêtres de saisie remontent avec le clavier : le bouton « Enregistrer » reste toujours visible et atteignable, et le contenu défile à l’intérieur de la fenêtre.',
   '🪟 Les fenêtres passent désormais AU-DESSUS de la barre du bas et des boutons flottants — plus rien ne se chevauche.',
   '🎒 La Garde de Gabriel fait peau neuve : vue SEMAINE et vue MOIS (vrai calendrier avec pastilles colorées), navigation ‹ › fluide, retour à aujourd’hui en un appui.',
