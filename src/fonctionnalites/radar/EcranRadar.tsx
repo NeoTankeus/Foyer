@@ -17,6 +17,7 @@ interface Depart {
   evenement: LigneEvenement
   minutes: number
   partirA: Date
+  cible: { lat: number; lon: number }
 }
 
 const CACHE_GEO = 'stiga-radar-geocache'
@@ -54,6 +55,58 @@ async function dureeTrajet(de: { lat: number; lon: number }, vers: { lat: number
   } catch {
     return null
   }
+}
+
+// 🚦 Le trafic RÉEL du moment sur un trajet (relais TomTom) : la ligne
+// s'ajoute sous chaque départ ; sans clé, une seule petite ligne discrète.
+function TraficTrajet({
+  de,
+  vers,
+  montrerAide,
+}: {
+  de: { lat: number; lon: number }
+  vers: { lat: number; lon: number }
+  montrerAide: boolean
+}) {
+  const trafic = useQuery({
+    queryKey: ['trafic', vers.lat, vers.lon],
+    staleTime: 2 * 60 * 1000,
+    queryFn: async () => {
+      const { data: session } = await supabase.auth.getSession()
+      const r = await fetch('/api/chercher-resto', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${session.session?.access_token ?? ''}`,
+        },
+        body: JSON.stringify({ mode: 'trafic', deLat: de.lat, deLon: de.lon, aLat: vers.lat, aLon: vers.lon }),
+      })
+      if (!r.ok) throw new Error(`relais ${r.status}`)
+      return (await r.json()) as { minutes?: number; minutesSansTrafic?: number; bouchonsMin?: number; erreur?: string }
+    },
+  })
+
+  if (trafic.data?.erreur === 'cle_absente') {
+    return montrerAide ? (
+      <p className="mt-1 text-legende text-encre-3">
+        Trafic réel : ajoute une clé gratuite TomTom (developer.tomtom.com) dans Vercel → TOMTOM_KEY
+      </p>
+    ) : null
+  }
+  const minutes = trafic.data?.minutes
+  if (trafic.isError || trafic.data?.erreur || minutes === undefined) return null
+  const bouchons = trafic.data?.bouchonsMin ?? 0
+  return (
+    <p className="mt-1 text-legende text-encre-2">
+      🚦 Trafic en ce moment : {minutes} min
+      {bouchons >= 1 && (
+        <span className={bouchons >= 10 ? 'font-[590] text-urgent' : bouchons >= 5 ? 'font-[590] text-ambre' : ''}>
+          {' '}
+          (+{bouchons} min de bouchons)
+        </span>
+      )}
+    </p>
+  )
 }
 
 export function EcranRadar() {
@@ -106,6 +159,7 @@ export function EcranRadar() {
           evenement: e,
           minutes,
           partirA: new Date(new Date(e.debut_a).getTime() - (minutes + 10) * 60000),
+          cible,
         })
       }
       return { calcules, sansLieu: horaires.filter((x) => !x.lieu).length }
@@ -196,7 +250,7 @@ export function EcranRadar() {
                 }
               />
             )}
-            {(departs.data?.calcules ?? []).map(({ evenement, minutes, partirA }) => {
+            {(departs.data?.calcules ?? []).map(({ evenement, minutes, partirA, cible }, indice) => {
               const dansMin = Math.round((partirA.getTime() - Date.now()) / 60000)
               const urgent = dansMin >= 0 && dansMin <= 20 && jourDe(evenement.debut_a) === "aujourd'hui"
               return (
@@ -223,6 +277,7 @@ export function EcranRadar() {
                       🧭
                     </a>
                   </div>
+                  <TraficTrajet de={maison} vers={cible} montrerAide={indice === 0} />
                 </Carte>
               )
             })}

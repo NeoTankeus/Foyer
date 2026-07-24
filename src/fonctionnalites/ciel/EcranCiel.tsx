@@ -110,6 +110,18 @@ function CarteTerreIss({
 
 const CLE_ISS = 'stg-iss-derniere'
 
+// 🖼 La photo d'astronomie du jour (NASA APOD, sans clé) — un seul
+// téléchargement par jour, gardé en cache local.
+const CLE_APOD = 'stg-apod'
+
+interface Apod {
+  title: string
+  url: string
+  hdurl?: string
+  media_type: string
+  thumbnail_url?: string
+}
+
 export function EcranCiel() {
   const lune = phaseLune()
   const ville = villeMeteo()
@@ -225,6 +237,39 @@ export function EcranCiel() {
       }
     },
   })
+
+  // La photo NASA du jour : jamais re-téléchargée si elle est déjà en cache
+  // du jour ; en cas d'échec réseau, la carte reste simplement absente.
+  const jour = new Date().toISOString().slice(0, 10)
+  const apod = useQuery({
+    queryKey: ['apod', jour],
+    staleTime: Infinity,
+    retry: false,
+    queryFn: async (): Promise<Apod | null> => {
+      try {
+        const memo = JSON.parse(localStorage.getItem(CLE_APOD) ?? 'null') as { jour: string; donnees: Apod } | null
+        if (memo?.jour === jour) return memo.donnees
+      } catch {
+        // cache illisible : on re-télécharge
+      }
+      try {
+        const r = await fetch('https://api.nasa.gov/planetary/apod?api_key=DEMO_KEY&thumbs=true')
+        if (!r.ok) return null
+        const donnees = (await r.json()) as Apod
+        localStorage.setItem(CLE_APOD, JSON.stringify({ jour, donnees }))
+        return donnees
+      } catch {
+        return null
+      }
+    },
+  })
+  const imageApod = apod.data
+    ? apod.data.media_type === 'image'
+      ? apod.data.url
+      : apod.data.media_type === 'video'
+        ? apod.data.thumbnail_url ?? null
+        : null
+    : null
 
   const meteoSoir = useQuery({ queryKey: ['ciel-meteo'], queryFn: () => previsions().catch(() => []) })
   const cielDegage = (meteoSoir.data?.[0]?.probaPluie ?? 100) < 30
@@ -343,6 +388,25 @@ export function EcranCiel() {
             </a>
           </div>
         </Feuille>
+
+        {/* 🖼 La merveille du jour choisie par la NASA — silence si le réseau boude. */}
+        {apod.data && imageApod && (
+          <Carte>
+            <p className="mb-1 text-note font-[590] uppercase tracking-wide text-encre-3">🖼 Photo d'astronomie du jour</p>
+            {apod.data.media_type === 'video' ? (
+              <a href={apod.data.url} target="_blank" rel="noopener" aria-label="Voir la vidéo du jour">
+                <img src={imageApod} alt={apod.data.title} loading="lazy" decoding="async" className="w-full rounded-xl" />
+              </a>
+            ) : (
+              <img src={imageApod} alt={apod.data.title} loading="lazy" decoding="async" className="w-full rounded-xl" />
+            )}
+            <p className="mt-2 text-corps-2 font-[590] text-encre">
+              {apod.data.title}
+              {apod.data.media_type === 'video' ? ' (vidéo — touche l’image)' : ''}
+            </p>
+            <p className="text-legende text-encre-3">NASA — Astronomy Picture of the Day</p>
+          </Carte>
+        )}
 
         <Carte>
           <p className="mb-1 text-note font-[590] uppercase tracking-wide text-encre-3">🌠 Étoiles filantes</p>

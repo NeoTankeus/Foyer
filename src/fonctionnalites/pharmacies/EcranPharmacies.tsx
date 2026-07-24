@@ -1,17 +1,29 @@
 // 💊 Pharmacies : les plus proches avec téléphone, horaires et itinéraire —
 // et le réflexe officiel « de garde » (3237). Trois façons de se situer :
 // la maison (instantané), le GPS précis, ou une ville mémorisée.
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { supabase } from '@/lib/supabase'
 import { utiliserSession } from '@/etat/session'
 import { chercherLieux, type LieuAutour } from '@/lib/lieux'
+import { compresserImage } from '@/fonctionnalites/souvenirs/donnees'
 import { BarreRetour } from '@/design/composants/BarreRetour'
 import { Bouton } from '@/design/composants/Bouton'
+import { BoutonEnvoi } from '@/design/composants/BoutonEnvoi'
 import { Carte } from '@/design/composants/Carte'
 import { EtatVide } from '@/design/composants/EtatVide'
 
 const CLE_VILLE = 'stg-pharmacies-ville'
 
 interface PointVille { nom: string; lat: number; lon: number }
+
+interface FicheMedicament {
+  nom: string
+  substance: string
+  usage: string
+  posologie: string
+  precautions: string[]
+  generique: string | null
+}
 
 async function geocoderVille(nom: string): Promise<PointVille | null> {
   try {
@@ -38,6 +50,37 @@ export function EcranPharmacies() {
   const [etat, setEtat] = useState<'attente' | 'cherche' | 'pret' | 'erreur'>('attente')
   const [pharmacies, setPharmacies] = useState<LieuAutour[]>([])
   const [erreur, setErreur] = useState('')
+  // 💊 La fiche médicament : photo d'une boîte → fiche claire par le relais.
+  const champPhoto = useRef<HTMLInputElement>(null)
+  const [analyseEnCours, setAnalyseEnCours] = useState(false)
+  const [fiche, setFiche] = useState<FicheMedicament | null>(null)
+  const [erreurFiche, setErreurFiche] = useState<string | null>(null)
+
+  const analyserBoite = async (fichier: File) => {
+    setAnalyseEnCours(true)
+    setErreurFiche(null)
+    setFiche(null)
+    try {
+      const image = await compresserImage(fichier)
+      const { data: session } = await supabase.auth.getSession()
+      const r = await fetch('/api/analyser-medicament', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${session.session?.access_token ?? ''}`,
+        },
+        body: JSON.stringify({ image }),
+      })
+      if (!r.ok) throw new Error(`serveur ${r.status}`)
+      const d = (await r.json()) as { proposition?: FicheMedicament; message?: string }
+      if (d.proposition) setFiche(d.proposition)
+      else setErreurFiche(d.message ?? 'La boîte n’a pas pu être lue.')
+    } catch (e) {
+      setErreurFiche(String(e instanceof Error ? e.message : e))
+    } finally {
+      setAnalyseEnCours(false)
+    }
+  }
 
   const chercherDepuis = (lat: number, lon: number) => {
     setEtat('cherche')
@@ -224,6 +267,57 @@ export function EcranPharmacies() {
             </li>
           ))}
         </ul>
+
+        {/* 💊 Photographier une boîte pour obtenir une fiche claire. */}
+        <section className="mt-2 flex flex-col gap-2">
+          <h2 className="text-corps font-[590] text-encre">💊 Fiche médicament</h2>
+          <input
+            ref={champPhoto}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            className="hidden"
+            aria-hidden="true"
+            tabIndex={-1}
+            onChange={(e) => {
+              const fichier = e.target.files?.[0]
+              e.target.value = ''
+              if (fichier) void analyserBoite(fichier)
+            }}
+          />
+          <BoutonEnvoi
+            pleineLargeur
+            enCours={analyseEnCours}
+            onClick={() => champPhoto.current?.click()}
+            enfantsPendant="🔎 Lecture de la boîte…"
+          >
+            📷 Photographier une boîte de médicament
+          </BoutonEnvoi>
+          {erreurFiche && (
+            <p className="text-corps-2 text-urgent">{erreurFiche} Tu peux réessayer avec une photo nette du recto.</p>
+          )}
+          {fiche && (
+            <Carte>
+              <p className="text-titre-3 text-encre">{fiche.nom}</p>
+              <p className="text-legende text-encre-3">Substance : {fiche.substance}</p>
+              <p className="mt-1 text-corps-2 text-encre">{fiche.usage}</p>
+              <p className="mt-1 text-corps-2 text-encre">
+                <strong>Posologie :</strong> {fiche.posologie}
+              </p>
+              {fiche.precautions.length > 0 && (
+                <ul className="mt-1 flex flex-col gap-0.5">
+                  {fiche.precautions.map((p) => (
+                    <li key={p} className="text-corps-2 text-encre-2">⚠️ {p}</li>
+                  ))}
+                </ul>
+              )}
+              {fiche.generique && <p className="mt-1 text-corps-2 text-encre-2">Générique : {fiche.generique}</p>}
+            </Carte>
+          )}
+          <p className="text-legende text-encre-3">
+            ⚕️ Ne remplace ni la notice ni un avis médical — en cas de doute : 32 37 (pharmacie de garde) ou ton médecin.
+          </p>
+        </section>
       </div>
     </div>
   )

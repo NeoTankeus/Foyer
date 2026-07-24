@@ -1,6 +1,13 @@
 // Les nouveautés de la version en cours — affichées UNE fois dans le pop-up
 // « Quoi de neuf », signé ILY. Mises à jour à chaque déploiement.
 export const NOTES_VERSION: string[] = [
+  '🏖 NOUVEAU : Les Plages — qualité officielle des eaux de baignade autour de vous + webcams pour voir la mer en direct.',
+  '🏠 NOUVEAU : Autour de chez nous — les vraies ventes immobilières du quartier (données notariales DVF), médianes au m².',
+  '🚦 Le Radar de départ affiche le trafic réel et les minutes de bouchons (clé TomTom gratuite).',
+  '🎪 Week-end surprise propose les VRAIS événements autour de vous (OpenAgenda).',
+  '💊 Pharmacies : photographie une boîte de médicament → fiche claire (usage, posologie, précautions, générique).',
+  '🖼 Ce soir on lève les yeux : la photo d’astronomie du jour de la NASA.',
+  '🕰 Il y a un an : l’app te dit aussi quel temps il faisait ce jour-là.',
   '⛵ Météo façon Windfinder complète : touche un jour → vent en nœuds + rafales + direction, et désormais la MER (hauteur des vagues colorée, période de houle, température de l’eau), l’UV du jour (avec rappel crème !) et les heures de lever/coucher du soleil.',
   '🌦 Météo plus fiable : prévisions en CONSENSUS de deux modèles (Météo-France + modèle local) — les averses fantômes qu’un seul modèle invente disparaissent ; en cas de désaccord, l’app affiche un simple « risque de pluie ».',
   '🧺 Le verdict séchage regarde d’abord la pluie et l’orage — « 🚫 linge dedans » quand il va vraiment pleuvoir.',

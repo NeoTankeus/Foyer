@@ -21,6 +21,13 @@ interface ReponseBaignades {
   erreur?: string
 }
 
+interface Webcam {
+  titre: string
+  ville: string | null
+  image: string | null
+  lien: string | null
+}
+
 // La pastille de qualité : on matche le TEXTE du classement officiel,
 // insensible à la casse — « insuffisant » d'abord, il contient « suffisant ».
 const teinteQualite = (qualite: string): { couleur: string; dose: number } => {
@@ -86,6 +93,26 @@ export function EcranPlages() {
     },
   })
 
+  // 📷 Les webcams autour (Windy) : voir la mer EN VRAI avant de partir.
+  const webcams = useQuery({
+    queryKey: ['plages-webcams'],
+    staleTime: 10 * 60 * 1000,
+    queryFn: async (): Promise<{ webcams?: Webcam[]; erreur?: string }> => {
+      const { lat, lon } = await obtenirPosition()
+      const { data: session } = await supabase.auth.getSession()
+      const r = await fetch('/api/chercher-resto', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${session.session?.access_token ?? ''}`,
+        },
+        body: JSON.stringify({ mode: 'webcams', lat, lon }),
+      })
+      if (!r.ok) throw new Error(`relais ${r.status}`)
+      return (await r.json()) as { webcams?: Webcam[]; erreur?: string }
+    },
+  })
+
   const sites = plages.data?.sites ?? []
 
   return (
@@ -148,6 +175,37 @@ export function EcranPlages() {
           >
             🌊 Le détail sur le site officiel des eaux de baignade
           </a>
+        )}
+
+        {/* 📷 Les webcams : la mer en direct avant de charger la voiture. */}
+        {(webcams.data?.webcams ?? []).length > 0 && (
+          <>
+            <h2 className="mt-2 text-corps font-[590] text-encre">📷 La mer en direct (webcams)</h2>
+            <div className="grid grid-cols-2 gap-2">
+              {(webcams.data?.webcams ?? []).filter((w) => w.image).slice(0, 8).map((w, i) => (
+                <a
+                  key={`${w.titre}-${i}`}
+                  href={w.lien ?? undefined}
+                  target="_blank"
+                  rel="noopener"
+                  className="overflow-hidden rounded-xl bg-fond-eleve shadow-carte"
+                >
+                  <img src={w.image ?? ''} alt={w.titre} loading="lazy" className="h-24 w-full object-cover" />
+                  <p className="truncate px-2 py-1.5 text-legende text-encre-2">{w.titre}{w.ville ? ` · ${w.ville}` : ''}</p>
+                </a>
+              ))}
+            </div>
+            <p className="text-legende text-encre-3">Images Windy Webcams — touche une vignette pour la vue en direct.</p>
+          </>
+        )}
+        {webcams.data?.erreur === 'cle_absente' && (
+          <Carte>
+            <p className="text-corps-2 text-encre-2">
+              📷 Pour voir la mer en direct ici (webcams des plages et du port) : crée une clé gratuite sur
+              api.windy.com/webcams, puis ajoute-la dans Vercel → Settings → Environment Variables sous le nom{' '}
+              <span className="chiffres font-[590]">WINDY_WEBCAMS_KEY</span>.
+            </p>
+          </Carte>
         )}
       </div>
     </div>
