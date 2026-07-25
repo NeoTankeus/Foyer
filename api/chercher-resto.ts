@@ -443,7 +443,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           return
         }
         const donnees = (await r.json()) as {
-          routes?: { summary?: { travelTimeInSeconds?: number; noTrafficTravelTimeInSeconds?: number } }[]
+          routes?: { summary?: { travelTimeInSeconds?: number; noTrafficTravelTimeInSeconds?: number; lengthInMeters?: number } }[]
         }
         const resume = donnees.routes?.[0]?.summary
         const avec = Number(resume?.travelTimeInSeconds)
@@ -456,6 +456,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           minutes: Math.round(avec / 60),
           minutesSansTrafic: Math.round(sans / 60),
           bouchonsMin: Math.round((avec - sans) / 60),
+          km: Number.isFinite(Number(resume?.lengthInMeters)) ? Math.round(Number(resume?.lengthInMeters) / 1000) : null,
         })
       } catch (e) {
         res.status(200).json({ erreur: `tomtom ${String(e instanceof Error ? e.message : e).slice(0, 60)}` })

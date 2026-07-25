@@ -1,6 +1,7 @@
 // Les nouveautés de la version en cours — affichées UNE fois dans le pop-up
 // « Quoi de neuf », signé ILY. Mises à jour à chaque déploiement.
 export const NOTES_VERSION: string[] = [
+  '🛣 Chaque voyage affiche l’ÉTAT DE LA ROUTE depuis la maison : durée réelle, kilomètres, et les minutes de bouchons en direct (vert = fluide, orange, rouge). Bouton 🔄 pour réactualiser avant de charger la voiture.',
   '🏖 NOUVEAU : Les Plages — qualité officielle des eaux de baignade autour de vous + webcams pour voir la mer en direct.',
   '🏠 NOUVEAU : Autour de chez nous — les vraies ventes immobilières du quartier (données notariales DVF), médianes au m².',
   '🚦 Le Radar de départ affiche le trafic réel et les minutes de bouchons (clé TomTom gratuite).',

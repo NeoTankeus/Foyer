@@ -28,7 +28,7 @@ import { ChampTexte } from '@/design/composants/ChampTexte'
 export function EcranVoyage() {
   const { id } = useParams<{ id: string }>()
   const naviguer = useNavigate()
-  const { membre, membres } = utiliserSession()
+  const { membre, membres, foyer } = utiliserSession()
   const clientRequetes = useQueryClient()
   const voyages = utiliserVoyages()
   const valise = utiliserValise(id ?? '')
@@ -54,7 +54,45 @@ export function EcranVoyage() {
   const [ticketEnCours, setTicketEnCours] = useState(false)
   const [valiseIA, setValiseIA] = useState(false)
   const [checklistIA, setChecklistIA] = useState(false)
-  const { foyer } = utiliserSession()
+
+  // 🛣 L'état de la route maison → destination du voyage, trafic RÉEL compris.
+  // Coordonnées du voyage si connues, sinon géocodage de la destination.
+  const maison = (foyer?.reglages['maison'] ?? null) as { lat?: number; lon?: number } | null
+  const voyagePourRoute = voyages.data?.find((v) => v.id === id)
+  const route = useQuery({
+    queryKey: ['trafic-voyage', id],
+    enabled:
+      maison?.lat !== undefined &&
+      !!voyagePourRoute &&
+      (voyagePourRoute.lat !== null || !!voyagePourRoute.destination) &&
+      voyagePourRoute.statut !== 'termine',
+    staleTime: 5 * 60 * 1000,
+    queryFn: async (): Promise<{ minutes?: number; minutesSansTrafic?: number; bouchonsMin?: number; km?: number | null; erreur?: string }> => {
+      let aLat = voyagePourRoute?.lat ?? null
+      let aLon = voyagePourRoute?.lng ?? null
+      if ((aLat === null || aLon === null) && voyagePourRoute?.destination) {
+        const g = await fetch(
+          `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(voyagePourRoute.destination)}&count=1&language=fr`,
+        )
+        const d = (await g.json()) as { results?: { latitude: number; longitude: number }[] }
+        aLat = d.results?.[0]?.latitude ?? null
+        aLon = d.results?.[0]?.longitude ?? null
+      }
+      if (aLat === null || aLon === null) throw new Error('destination introuvable sur la carte')
+      const { data: session } = await supabase.auth.getSession()
+      const r = await fetch('/api/chercher-resto', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${session.session?.access_token ?? ''}`,
+        },
+        body: JSON.stringify({ mode: 'trafic', deLat: maison?.lat, deLon: maison?.lon, aLat, aLon }),
+      })
+      if (!r.ok) throw new Error(`relais ${r.status}`)
+      return (await r.json()) as { minutes?: number; bouchonsMin?: number; km?: number | null; erreur?: string }
+    },
+  })
+  const dureeLisible = (min: number) => (min >= 60 ? `${Math.floor(min / 60)} h ${String(min % 60).padStart(2, '0')}` : `${min} min`)
 
   const depenses = useQuery({
     queryKey: ['depenses', id],
@@ -375,6 +413,48 @@ export function EcranVoyage() {
             </div>
           ))}
         </div>
+      )}
+
+      {/* 🛣 L'état de la route vers la destination — trafic réel, actualisé
+          à chaque ouverture (et d'un appui sur Actualiser). */}
+      {route.isFetching && !route.data && (
+        <p className="mt-3 text-legende text-encre-3">🛣 Relevé de la route…</p>
+      )}
+      {route.data && !route.data.erreur && route.data.minutes !== undefined && (
+        <div className="mt-3 rounded-xl bg-fond-eleve p-4 shadow-carte">
+          <div className="flex items-center justify-between gap-2">
+            <h3 className="text-note font-[700] uppercase tracking-wide text-encre-3">
+              🛣 La route {voyage.destination ? `vers ${voyage.destination}` : ''}
+            </h3>
+            <button onClick={() => void route.refetch()} aria-label="Actualiser l'état de la route" className="text-encre-3">
+              🔄
+            </button>
+          </div>
+          <p className="chiffres mt-1 text-titre-3 text-encre">
+            {dureeLisible(route.data.minutes)}
+            {route.data.km ? <span className="text-corps-2 font-[400] text-encre-3"> · {route.data.km} km</span> : null}
+          </p>
+          <p
+            className={`text-corps-2 font-[590] ${
+              (route.data.bouchonsMin ?? 0) >= 15 ? 'text-urgent' : (route.data.bouchonsMin ?? 0) >= 5 ? 'text-ambre' : 'text-fait'
+            }`}
+          >
+            {(route.data.bouchonsMin ?? 0) >= 5
+              ? `🚧 +${route.data.bouchonsMin} min de bouchons en ce moment`
+              : '✅ Route fluide en ce moment'}
+          </p>
+          <p className="mt-1 text-legende text-encre-3">Trafic en direct — revérifie juste avant de charger la voiture.</p>
+        </div>
+      )}
+      {route.data?.erreur === 'cle_absente' && (
+        <p className="mt-3 text-legende text-encre-3">
+          🛣 Pour l'état des routes en direct : clé gratuite TomTom → variable <span className="chiffres">TOMTOM_KEY</span> dans Vercel.
+        </p>
+      )}
+      {maison?.lat === undefined && voyage.statut !== 'termine' && (
+        <p className="mt-3 text-legende text-encre-3">
+          🛣 Renseigne l'adresse de la maison (Radar de départ) pour voir l'état de la route vers ce voyage.
+        </p>
       )}
 
       {/* Valises */}
