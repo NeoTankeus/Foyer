@@ -243,18 +243,20 @@ export function EcranItineraire() {
     queryKey: ['itineraire-poi', cleTrace],
     enabled: cleTrace !== '',
     staleTime: 60 * 60 * 1000, // une aire d'autoroute ne déménage pas
-    queryFn: async (): Promise<LieuRoute[]> => {
+    queryFn: async (): Promise<{ liste: LieuRoute[]; journal: string }> => {
       const donnees = await appelerRelais({ mode: 'poi_route', trace: echantillonner(trace) })
+      const journal = typeof donnees['journal'] === 'string' ? donnees['journal'] : ''
       if (donnees['erreur']) throw new Error(String(donnees['erreur']))
-      return (Array.isArray(donnees['lieux']) ? (donnees['lieux'] as unknown[]) : [])
+      const liste = (Array.isArray(donnees['lieux']) ? (donnees['lieux'] as unknown[]) : [])
         .map(lieuSur)
         .filter((l): l is LieuRoute => l !== null)
+      return { liste, journal }
     },
   })
 
-  const lieux = useMemo(() => arrets.data ?? [], [arrets.data])
+  const lieux = useMemo(() => arrets.data?.liste ?? [], [arrets.data])
   // La raison exacte quand aucun arrêt ne remonte — précieux pour corriger.
-  const diagnosticArrets = arrets.error instanceof Error ? arrets.error.message : ''
+  const diagnosticArrets = arrets.error instanceof Error ? arrets.error.message : (arrets.data?.journal ?? '')
   const lieuxVisibles = useMemo(() => lieux.filter((l) => typesActifs.has(l.type)), [lieux, typesActifs])
 
   // ——— 3. La carte : créée UNE fois, nourrie ensuite par deux effets ———
@@ -464,11 +466,8 @@ export function EcranItineraire() {
           </div>
         )}
 
-        {/* La carte reste montée en permanence : Leaflet déteste naître et mourir. */}
-        <div className={points.length >= 2 ? 'overflow-hidden rounded-xl shadow-carte' : 'hidden'}>
-          <div ref={conteneur} style={{ height: '60vh' }} aria-label="Carte de l’itinéraire" />
-        </div>
-
+        {/* Les filtres et l'état de la recherche sont AU-DESSUS de la carte :
+            on les voit sans avoir à faire défiler la page. */}
         {choisi && (
           <>
             <div className="flex gap-2 overflow-x-auto pb-1">
@@ -489,38 +488,38 @@ export function EcranItineraire() {
               })}
             </div>
 
-            {arrets.isLoading && (
-              <p className="text-center text-legende text-encre-3">🔎 Recherche des arrêts sur la route…</p>
-            )}
-            {arrets.isError && (
-              <div className="flex flex-col items-center gap-2">
-                <p className="text-center text-legende text-encre-3">
-                  Les arrêts n’ont pas pu être cherchés — l’itinéraire, lui, reste bon.
-                  {diagnosticArrets ? (
-                    <>
-                      <br />
-                      <span>Diagnostic pour STG : {diagnosticArrets.slice(0, 90)}</span>
-                    </>
-                  ) : null}
-                </p>
-                <Bouton variante="discret" onClick={() => void arrets.refetch()}>🔄 Réessayer</Bouton>
-              </div>
-            )}
-            {!arrets.isLoading && !arrets.isError && lieux.length === 0 && (
-              <div className="flex flex-col items-center gap-2">
-                <p className="text-center text-legende text-encre-3">
-                  Aucun arrêt repéré pour l’instant — la carte des routes (OpenStreetMap) répond parfois lentement.
-                  {diagnosticArrets ? (
-                    <>
-                      <br />
-                      <span>Diagnostic pour STG : {diagnosticArrets.slice(0, 90)}</span>
-                    </>
-                  ) : null}
-                </p>
+            {/* Une ligne d'état TOUJOURS présente : on sait en permanence où en
+                est la recherche des arrêts, et pourquoi quand rien ne vient. */}
+            <div className="flex flex-col items-center gap-2">
+              <p className="text-center text-legende text-encre-3">
+                {arrets.isPending
+                  ? '🔎 Recherche des arrêts sur la route…'
+                  : arrets.isError
+                    ? 'Les arrêts n’ont pas pu être cherchés — l’itinéraire, lui, reste bon.'
+                    : lieux.length === 0
+                      ? 'Aucun arrêt repéré sur ce trajet.'
+                      : `📍 ${lieux.length} arrêt${lieux.length > 1 ? 's' : ''} sur la route — touche un pictogramme sur la carte.`}
+                {!arrets.isPending && lieux.length === 0 && diagnosticArrets ? (
+                  <>
+                    <br />
+                    <span>Diagnostic pour STG : {diagnosticArrets.slice(0, 140)}</span>
+                  </>
+                ) : null}
+              </p>
+              {!arrets.isPending && lieux.length === 0 && (
                 <Bouton variante="discret" onClick={() => void arrets.refetch()}>🔄 Chercher à nouveau</Bouton>
-              </div>
-            )}
+              )}
+            </div>
+          </>
+        )}
 
+        {/* La carte reste montée en permanence : Leaflet déteste naître et mourir. */}
+        <div className={points.length >= 2 ? 'overflow-hidden rounded-xl shadow-carte' : 'hidden'}>
+          <div ref={conteneur} style={{ height: '58vh' }} aria-label="Carte de l’itinéraire" />
+        </div>
+
+        {choisi && (
+          <>
             <ul className="flex flex-col gap-2">
               {lieuxVisibles.map((l, i) => (
                 <li key={`${l.lat}-${l.lon}-${i}`}>

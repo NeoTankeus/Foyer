@@ -748,8 +748,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return
     }
 
-    // ⛽ Points d'intérêt le long d'une route (Overpass) : aires, stations,
-    // gonflage, curiosités et points d'eau, autour de la polyligne d'un trajet.
+    // ⛽ Points d'intérêt le long d'une route : aires, stations, gonflage,
+    // curiosités et points d'eau, semés le long de la polyligne du trajet.
+    //
+    // DEUX sources, dans cet ordre :
+    //  1. TomTom « Search Along Route » — fait EXACTEMENT pour ça, rapide et
+    //     fiable, avec la même clé que le calcul d'itinéraire ;
+    //  2. OpenStreetMap (Overpass) en complément, pour ce que TomTom ignore
+    //     (gonflage pneus, eau potable). Overpass est public et rationné :
+    //     on l'interroge peu, et jamais au point de bloquer la réponse.
     if (mode === 'poi_route') {
       const brutTrace = (Array.isArray(trace) ? trace : [])
         .map((p) => (Array.isArray(p) ? p : []) as unknown[])
@@ -757,14 +764,77 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         .filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lon))
       // Le client en envoie au plus 25 ; s'il en met davantage on ré-échantillonne.
       const echantillon = alleger(brutTrace, 25)
-      if (echantillon.length === 0) {
+      if (echantillon.length < 2) {
         res.status(200).json({ lieux: [], erreur: 'trace invalide' })
         return
       }
-      // Les requêtes Overpass les plus SÛRES sont les plus petites : un point,
-      // un rayon. On en lance une douzaine en parallèle le long du trajet
-      // plutôt qu'une grosse requête qui expire à coup sûr.
-      const jalons = alleger(echantillon, 12)
+
+      const lieux: { nom: string; type: GenrePoi; lat: number; lon: number }[] = []
+      /** Ajoute un lieu s'il est valide et pas déjà là (même genre, < 150 m). */
+      const ajouter = (nom: string, type: GenrePoi, la: number, lo: number) => {
+        if (!Number.isFinite(la) || !Number.isFinite(lo)) return
+        if (lieux.length >= 200) return
+        if (lieux.some((l) => l.type === type && metresEntre(l.lat, l.lon, la, lo) < 150)) return
+        lieux.push({ nom: nom.trim() || NOM_PAR_DEFAUT[type], type, lat: la, lon: lo })
+      }
+      // Le journal raconte ce que chaque source a répondu : c'est lui qui
+      // s'affiche dans l'app quand rien ne remonte.
+      const journal: string[] = []
+
+      // ——— 1. TomTom, le long du trajet ———
+      const cleTomTom = process.env.TOMTOM_KEY
+      if (!cleTomTom) {
+        journal.push('tomtom: clé absente')
+      } else {
+        const routePoints = echantillon.map((p) => ({ lat: p.lat, lon: p.lon }))
+        const familles: { type: GenrePoi; requete: string }[] = [
+          { type: 'essence', requete: 'station service' },
+          { type: 'aire', requete: 'aire de repos' },
+          { type: 'curiosite', requete: 'point de vue' },
+          { type: 'gonflage', requete: 'gonflage pneus' },
+          { type: 'eau', requete: 'eau potable' },
+        ]
+        const parFamille = await Promise.all(
+          familles.map(async (f) => {
+            try {
+              const url =
+                `https://api.tomtom.com/search/2/searchAlongRoute/${encodeURIComponent(f.requete)}.json` +
+                `?key=${cleTomTom}&maxDetourTime=600&limit=20&spreadingMode=auto`
+              const r = await fetch(url, {
+                method: 'POST',
+                headers: { 'content-type': 'application/json', accept: 'application/json', 'user-agent': UA },
+                body: JSON.stringify({ route: { points: routePoints } }),
+                signal: AbortSignal.timeout(15000),
+              })
+              if (!r.ok) {
+                journal.push(`${f.type} ${r.status}`)
+                return []
+              }
+              const d = (await r.json().catch(() => null)) as {
+                results?: { poi?: { name?: unknown }; position?: { lat?: unknown; lon?: unknown } }[]
+              } | null
+              const bruts = Array.isArray(d?.results) ? d.results : []
+              journal.push(`${f.type}:${bruts.length}`)
+              return bruts.map((x) => ({
+                type: f.type,
+                nom: typeof x?.poi?.name === 'string' ? x.poi.name : '',
+                lat: Number(x?.position?.lat),
+                lon: Number(x?.position?.lon),
+              }))
+            } catch (e) {
+              journal.push(`${f.type} ${String(e instanceof Error ? e.message : e).slice(0, 24)}`)
+              return []
+            }
+          }),
+        )
+        for (const groupe of parFamille) for (const l of groupe) ajouter(l.nom, l.type, l.lat, l.lon)
+      }
+
+      // ——— 2. OpenStreetMap en complément (best effort, jamais bloquant) ———
+      // Peu de requêtes, largement espacées : les miroirs publics refusent
+      // (429) dès qu'on les bombarde. Et un budget global de 18 s : passé ce
+      // délai on répond avec ce qu'on a déjà.
+      const jalons = alleger(echantillon, 5)
       const miroirs = [
         'https://overpass.kumi.systems/api/interpreter',
         'https://overpass-api.de/api/interpreter',
@@ -772,85 +842,65 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       ]
       const interroger = async (p: { lat: number; lon: number }, miroir: string) => {
         const c = `${p.lat},${p.lon}`
-        // ⚠️ Les aires de repos, stations-service et parcs sont très souvent
-        // cartographiés comme des SURFACES (way), pas comme des points : ne
-        // demander que `node` revenait à n'en trouver presque aucun.
+        // ⚠️ Aires, stations et parcs sont très souvent cartographiés comme des
+        // SURFACES (way), pas comme des points : `out center` donne leur centre.
         const requeteOsm =
-          `[out:json][timeout:15];(` +
-          `node(around:6000,${c})[highway~"^(rest_area|services)$"];` +
-          `way(around:6000,${c})[highway~"^(rest_area|services)$"];` +
-          `node(around:6000,${c})[amenity="fuel"];` +
-          `way(around:6000,${c})[amenity="fuel"];` +
-          `node(around:6000,${c})[amenity="compressed_air"];` +
-          `node(around:6000,${c})[amenity="drinking_water"];` +
-          `node(around:6000,${c})[tourism~"^(attraction|viewpoint|picnic_site|zoo|theme_park)$"];` +
-          `way(around:6000,${c})[tourism~"^(attraction|viewpoint|picnic_site|zoo|theme_park)$"];` +
-          `);out center 60;`
+          `[out:json][timeout:14];(` +
+          `nwr(around:12000,${c})[highway~"^(rest_area|services)$"];` +
+          `nwr(around:12000,${c})[amenity~"^(fuel|compressed_air|drinking_water)$"];` +
+          `nwr(around:12000,${c})[tourism~"^(attraction|viewpoint|picnic_site|zoo|theme_park)$"];` +
+          `);out center 80;`
         const r = await fetch(miroir, {
           method: 'POST',
           body: `data=${encodeURIComponent(requeteOsm)}`,
           headers: { 'content-type': 'application/x-www-form-urlencoded', 'user-agent': UA },
-          signal: AbortSignal.timeout(18000),
+          signal: AbortSignal.timeout(15000),
         })
-        if (!r.ok) throw new Error(`overpass ${r.status}`)
+        if (!r.ok) throw new Error(`osm ${r.status}`)
         const brut = (await r.json()) as { elements?: unknown }
         return Array.isArray(brut?.elements) ? brut.elements : []
       }
-      try {
-        let derniereRaison = ''
-        let reussites = 0
-        // Chaque jalon court après tous les miroirs ; un jalon en échec ne
-        // prive pas le trajet des autres.
-        const parJalon = await Promise.all(
-          jalons.map((p) =>
-            Promise.any(miroirs.map((miroir) => interroger(p, miroir)))
-              .then((r) => {
-                reussites += 1
-                return r
-              })
-              .catch((e: unknown) => {
-                const cause = e instanceof AggregateError ? e.errors[0] : e
-                derniereRaison = String(cause instanceof Error ? cause.message : cause).slice(0, 40)
-                return [] as unknown[]
-              }),
-          ),
-        )
-        const elements = parJalon.flat() as {
+      const chrono = new Promise<'temps'>((resoudre) => setTimeout(() => resoudre('temps'), 18000))
+      const moisson = Promise.all(
+        // Un miroir DIFFÉRENT par jalon : on répartit la charge au lieu de
+        // taper trois fois sur le même serveur.
+        jalons.map((p, i) =>
+          interroger(p, miroirs[i % miroirs.length] ?? miroirs[0]!).catch((e: unknown) => {
+            journal.push(`osm ${String(e instanceof Error ? e.message : e).slice(0, 18)}`)
+            return [] as unknown[]
+          }),
+        ),
+      )
+      const resultatOsm = await Promise.race([moisson, chrono])
+      if (resultatOsm === 'temps') {
+        journal.push('osm trop lent')
+      } else {
+        const elements = resultatOsm.flat() as {
           lat?: unknown
           lon?: unknown
           center?: { lat?: unknown; lon?: unknown }
           tags?: Record<string, unknown> | null
         }[]
-        if (elements.length === 0) {
-          res.status(200).json({
-            lieux: [],
-            erreur: `aucun lieu — ${reussites}/${jalons.length} points interrogés${derniereRaison ? ` · ${derniereRaison}` : ''}`,
-          })
-          return
-        }
-        const lieux: { nom: string; type: GenrePoi; lat: number; lon: number }[] = []
+        journal.push(`osm:${elements.length}`)
         for (const element of elements) {
           const tags = (element?.tags ?? {}) as Record<string, unknown>
           const type = genrePoi(tags)
           if (!type) continue
-          const pLa = Number(element?.lat ?? element?.center?.lat)
-          const pLo = Number(element?.lon ?? element?.center?.lon)
-          if (!Number.isFinite(pLa) || !Number.isFinite(pLo)) continue
-          // Doublons : même genre de lieu et moins de 150 m d'écart.
-          if (lieux.some((l) => l.type === type && metresEntre(l.lat, l.lon, pLa, pLo) < 150)) continue
           const etiquette = tags['name'] ?? tags['brand'] ?? tags['operator']
-          lieux.push({
-            nom: typeof etiquette === 'string' && etiquette.trim() ? etiquette.trim() : NOM_PAR_DEFAUT[type],
+          ajouter(
+            typeof etiquette === 'string' ? etiquette : '',
             type,
-            lat: pLa,
-            lon: pLo,
-          })
-          if (lieux.length >= 150) break
+            Number(element?.lat ?? element?.center?.lat),
+            Number(element?.lon ?? element?.center?.lon),
+          )
         }
-        res.status(200).json({ lieux })
-      } catch {
-        res.status(200).json({ lieux: [], erreur: 'overpass indisponible' })
       }
+
+      res.status(200).json({
+        lieux,
+        journal: journal.join(' · ').slice(0, 200),
+        ...(lieux.length === 0 ? { erreur: `aucun lieu — ${journal.join(' · ').slice(0, 140) || 'sources muettes'}` } : {}),
+      })
       return
     }
 
