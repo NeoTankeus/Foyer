@@ -334,8 +334,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // La tournée ne doit JAMAIS finir en 500 : un incident isolé ne peut pas
   // annuler les autres sections, et Vercel doit lire un compte-rendu JSON.
   try {
+  // La tournée envoie des notifications à toute la famille : elle DOIT être
+  // protégée. Sans secret configuré, la porte serait grande ouverte — on
+  // refuse alors de tourner plutôt que d'accepter n'importe qui.
   const secret = process.env.CRON_SECRET
-  if (secret && req.headers.authorization !== `Bearer ${secret}`) {
+  if (!secret) {
+    res.status(503).json({
+      erreur: 'cle_absente',
+      message: 'CRON_SECRET manquant dans Vercel — la tournée quotidienne reste fermée par sécurité.',
+    })
+    return
+  }
+  if (req.headers.authorization !== `Bearer ${secret}`) {
     res.status(401).json({ erreur: 'non_autorise' })
     return
   }
