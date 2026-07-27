@@ -761,56 +761,65 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         res.status(200).json({ lieux: [], erreur: 'trace invalide' })
         return
       }
-      // Une SEULE requête couvrant 700 km expire à tous les coups : on
-      // découpe le trajet en tronçons courts, interrogés EN PARALLÈLE.
-      const TAILLE_TRONCON = 4
-      const troncons: { lat: number; lon: number }[][] = []
-      for (let i = 0; i < echantillon.length; i += TAILLE_TRONCON) {
-        // Un point de recouvrement pour ne rien perdre entre deux tronçons.
-        const morceau = echantillon.slice(i, i + TAILLE_TRONCON + 1)
-        if (morceau.length > 0) troncons.push(morceau)
-      }
+      // Les requêtes Overpass les plus SÛRES sont les plus petites : un point,
+      // un rayon. On en lance une douzaine en parallèle le long du trajet
+      // plutôt qu'une grosse requête qui expire à coup sûr.
+      const jalons = alleger(echantillon, 12)
       const miroirs = [
         'https://overpass.kumi.systems/api/interpreter',
-        'https://overpass.private.coffee/api/interpreter',
         'https://overpass-api.de/api/interpreter',
+        'https://overpass.private.coffee/api/interpreter',
       ]
-      const interroger = async (points: { lat: number; lon: number }[], miroir: string) => {
-        const coords = points.map((p) => `${p.lat},${p.lon}`).join(',')
+      const interroger = async (p: { lat: number; lon: number }, miroir: string) => {
+        const c = `${p.lat},${p.lon}`
         const requeteOsm =
-          `[out:json][timeout:25];(` +
-          `node(around:2500,${coords})[highway~"^(rest_area|services)$"];` +
-          `node(around:2500,${coords})[amenity="fuel"];` +
-          `node(around:2500,${coords})[amenity="compressed_air"];` +
-          `node(around:3000,${coords})[tourism~"^(attraction|viewpoint|picnic_site|zoo|theme_park)$"];` +
-          `node(around:2500,${coords})[amenity="drinking_water"];` +
-          `);out center 60;`
+          `[out:json][timeout:15];(` +
+          `node(around:6000,${c})[highway~"^(rest_area|services)$"];` +
+          `node(around:6000,${c})[amenity="fuel"];` +
+          `node(around:6000,${c})[amenity="compressed_air"];` +
+          `node(around:6000,${c})[amenity="drinking_water"];` +
+          `node(around:6000,${c})[tourism~"^(attraction|viewpoint|picnic_site|zoo|theme_park)$"];` +
+          `);out center 40;`
         const r = await fetch(miroir, {
           method: 'POST',
           body: `data=${encodeURIComponent(requeteOsm)}`,
           headers: { 'content-type': 'application/x-www-form-urlencoded', 'user-agent': UA },
-          signal: AbortSignal.timeout(25000),
+          signal: AbortSignal.timeout(18000),
         })
         if (!r.ok) throw new Error(`overpass ${r.status}`)
         const brut = (await r.json()) as { elements?: unknown }
         return Array.isArray(brut?.elements) ? brut.elements : []
       }
       try {
-        // Chaque tronçon court après tous les miroirs ; un tronçon en échec
-        // ne prive pas le voyage des autres.
-        const parTroncon = await Promise.all(
-          troncons.map((points) =>
-            Promise.any(miroirs.map((miroir) => interroger(points, miroir))).catch(() => [] as unknown[]),
+        let derniereRaison = ''
+        let reussites = 0
+        // Chaque jalon court après tous les miroirs ; un jalon en échec ne
+        // prive pas le trajet des autres.
+        const parJalon = await Promise.all(
+          jalons.map((p) =>
+            Promise.any(miroirs.map((miroir) => interroger(p, miroir)))
+              .then((r) => {
+                reussites += 1
+                return r
+              })
+              .catch((e: unknown) => {
+                const cause = e instanceof AggregateError ? e.errors[0] : e
+                derniereRaison = String(cause instanceof Error ? cause.message : cause).slice(0, 40)
+                return [] as unknown[]
+              }),
           ),
         )
-        const elements = parTroncon.flat() as {
+        const elements = parJalon.flat() as {
           lat?: unknown
           lon?: unknown
           center?: { lat?: unknown; lon?: unknown }
           tags?: Record<string, unknown> | null
         }[]
         if (elements.length === 0) {
-          res.status(200).json({ lieux: [], erreur: 'overpass indisponible' })
+          res.status(200).json({
+            lieux: [],
+            erreur: `aucun lieu — ${reussites}/${jalons.length} points interrogés${derniereRaison ? ` · ${derniereRaison}` : ''}`,
+          })
           return
         }
         const lieux: { nom: string; type: GenrePoi; lat: number; lon: number }[] = []

@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect } from 'react'
-import { BrowserRouter, NavLink, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
+import { BrowserRouter, NavLink, Navigate, Route, Routes, useLocation, useNavigate, useNavigationType } from 'react-router-dom'
 import { utiliserSession } from '@/etat/session'
 import { EcranConnexion } from '@/fonctionnalites/auth/EcranConnexion'
 import { EcranAujourdhui } from '@/fonctionnalites/aujourdhui/EcranAujourdhui'
@@ -211,12 +211,46 @@ export function App() {
   return <Interieur />
 }
 
-// À chaque changement d'écran, on repart du haut de la page.
-function ScrollHaut() {
-  const { pathname } = useLocation()
+/**
+ * La mémoire du défilement : on note où on en était dans chaque écran, et
+ * quand on REVIENT en arrière, on retrouve exactement sa place (fini le
+ * menu qu'il faut redérouler). Un écran ouvert en avant part du haut.
+ */
+const positions = new Map<string, number>()
+
+function MemoireDefilement() {
+  const { pathname, search } = useLocation()
+  const typeNavigation = useNavigationType()
+  const cle = `${pathname}${search}`
+
   useEffect(() => {
-    document.getElementById('defilement-app')?.scrollTo({ top: 0 })
-  }, [pathname])
+    const zone = document.getElementById('defilement-app')
+    if (!zone) return
+    // On note la position en continu (léger : une écriture en mémoire).
+    const noter = () => positions.set(cle, zone.scrollTop)
+    zone.addEventListener('scroll', noter, { passive: true })
+
+    // Retour en arrière → on restaure ; nouvel écran → on part du haut.
+    // Le contenu arrive parfois après le premier rendu : on réessaie un peu.
+    if (typeNavigation === 'POP') {
+      const voulu = positions.get(cle) ?? 0
+      let essais = 0
+      const restaurer = () => {
+        zone.scrollTop = voulu
+        essais += 1
+        if (essais < 6 && Math.abs(zone.scrollTop - voulu) > 4) window.setTimeout(restaurer, 60)
+      }
+      restaurer()
+    } else {
+      zone.scrollTop = 0
+    }
+
+    return () => {
+      noter()
+      zone.removeEventListener('scroll', noter)
+    }
+  }, [cle, typeNavigation])
+
   return null
 }
 
@@ -243,7 +277,7 @@ function Interieur() {
   return (
     <GardeFou>
     <BrowserRouter>
-      <ScrollHaut />
+      <MemoireDefilement />
       <div className="relative flex h-dvh flex-col overflow-hidden bg-fond">
         {/* NB : surtout PAS de -webkit-overflow-scrolling ici — il piégerait
             les feuilles modales (position: fixed) sous la barre d'onglets. */}

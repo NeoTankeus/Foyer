@@ -253,6 +253,8 @@ export function EcranItineraire() {
   })
 
   const lieux = useMemo(() => arrets.data ?? [], [arrets.data])
+  // La raison exacte quand aucun arrêt ne remonte — précieux pour corriger.
+  const diagnosticArrets = arrets.error instanceof Error ? arrets.error.message : ''
   const lieuxVisibles = useMemo(() => lieux.filter((l) => typesActifs.has(l.type)), [lieux, typesActifs])
 
   // ——— 3. La carte : créée UNE fois, nourrie ensuite par deux effets ———
@@ -494,6 +496,12 @@ export function EcranItineraire() {
               <div className="flex flex-col items-center gap-2">
                 <p className="text-center text-legende text-encre-3">
                   Les arrêts n’ont pas pu être cherchés — l’itinéraire, lui, reste bon.
+                  {diagnosticArrets ? (
+                    <>
+                      <br />
+                      <span>Diagnostic pour STG : {diagnosticArrets.slice(0, 90)}</span>
+                    </>
+                  ) : null}
                 </p>
                 <Bouton variante="discret" onClick={() => void arrets.refetch()}>🔄 Réessayer</Bouton>
               </div>
@@ -501,8 +509,13 @@ export function EcranItineraire() {
             {!arrets.isLoading && !arrets.isError && lieux.length === 0 && (
               <div className="flex flex-col items-center gap-2">
                 <p className="text-center text-legende text-encre-3">
-                  Aucun arrêt repéré pour l’instant — la carte des routes (OpenStreetMap) répond parfois lentement
-                  sur les longs trajets.
+                  Aucun arrêt repéré pour l’instant — la carte des routes (OpenStreetMap) répond parfois lentement.
+                  {diagnosticArrets ? (
+                    <>
+                      <br />
+                      <span>Diagnostic pour STG : {diagnosticArrets.slice(0, 90)}</span>
+                    </>
+                  ) : null}
                 </p>
                 <Bouton variante="discret" onClick={() => void arrets.refetch()}>🔄 Chercher à nouveau</Bouton>
               </div>

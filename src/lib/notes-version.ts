@@ -1,6 +1,8 @@
 // Les nouveautés de la version en cours — affichées UNE fois dans le pop-up
 // « Quoi de neuf », signé ILY. Mises à jour à chaque déploiement.
 export const NOTES_VERSION: string[] = [
+  '↩️ Le menu (et tous les écrans) retrouvent leur place : quand tu reviens en arrière, tu repars exactement d’où tu t’étais arrêté — fini le déroulement à chaque fois.',
+  '📍 Arrêts sur la carte : la recherche passe par une douzaine de petites requêtes le long du trajet (bien plus fiables), et si rien ne remonte, l’app affiche enfin la raison.',
   '📍 Les arrêts s’affichent enfin SUR la carte : aires de repos, stations, gonflage, points de vue et eau potable — la recherche était lancée en une seule fois sur tout le trajet et expirait ; elle est maintenant découpée en tronçons interrogés en parallèle.',
   '🧭 Étapes réparées : un arrêt géocodé en pleine campagne faisait échouer tout le calcul — chaque étape est maintenant « accrochée » à la route la plus proche.',
   '🛣 Péage enfin calculé : les kilomètres d’autoroute payante sont mesurés sur le tracé réel (TomTom les donne en repères, pas en distances).',
