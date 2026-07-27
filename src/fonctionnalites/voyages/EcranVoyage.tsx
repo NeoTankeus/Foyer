@@ -25,6 +25,26 @@ import { BoutonEnvoi } from '@/design/composants/BoutonEnvoi'
 import { Feuille } from '@/design/composants/Feuille'
 import { ChampTexte } from '@/design/composants/ChampTexte'
 
+// Une étape du trajet : un arrêt entre la maison et la destination.
+export interface EtapeVoyage {
+  nom: string
+  lat: number
+  lon: number
+}
+
+// Ce que renvoie le relais pour un itinéraire (le premier est le plus rapide).
+interface ReponseItineraire {
+  itineraires?: {
+    minutes: number
+    minutesSansTrafic: number
+    bouchonsMin: number
+    km: number | null
+    kmPeage: number
+    geometrie: [number, number][]
+  }[]
+  erreur?: string
+}
+
 export function EcranVoyage() {
   const { id } = useParams<{ id: string }>()
   const naviguer = useNavigate()
@@ -59,26 +79,56 @@ export function EcranVoyage() {
   // Coordonnées du voyage si connues, sinon géocodage de la destination.
   const maison = (foyer?.reglages['maison'] ?? null) as { lat?: number; lon?: number } | null
   const voyagePourRoute = voyages.data?.find((v) => v.id === id)
+
+  // Les ÉTAPES du trajet (arrêts intermédiaires), rangées par voyage dans les
+  // réglages du foyer — pas de migration de base nécessaire.
+  const toutesEtapes = (foyer?.reglages['voyage_etapes'] ?? {}) as Record<string, EtapeVoyage[]>
+  const etapes = (Array.isArray(toutesEtapes[id ?? '']) ? toutesEtapes[id ?? ''] : []) as EtapeVoyage[]
+  const [etapesOuvertes, setEtapesOuvertes] = useState(false)
+
+  // Le véhicule : consommation, prix du carburant, tarif de péage au km.
+  const voiture = {
+    ...{ conso: 6.5, prixCarburant: 1.85, tarifPeageKm: 0.1 },
+    ...((foyer?.reglages['voiture'] ?? {}) as Partial<{ conso: number; prixCarburant: number; tarifPeageKm: number }>),
+  }
+
+  const ecrireReglagesVoyage = async (patch: (base: Record<string, unknown>) => Record<string, unknown>) => {
+    if (!foyer) return
+    // Relecture fraîche : on n'écrase jamais le reste des réglages du foyer.
+    const { data: frais } = await supabase.from('foyers').select('reglages').eq('id', foyer.id).single()
+    const base = (frais?.reglages ?? foyer.reglages) as Record<string, unknown>
+    await supabase.from('foyers').update({ reglages: patch(base) }).eq('id', foyer.id)
+    // Les réglages du foyer vivent dans la session : on recharge pour repartir
+    // sur des données parfaitement à jour (étapes, véhicule, itinéraire).
+    window.location.reload()
+  }
+
   const route = useQuery({
-    queryKey: ['trafic-voyage', id],
+    queryKey: ['trafic-voyage', id, etapes.length],
     enabled:
       maison?.lat !== undefined &&
       !!voyagePourRoute &&
       (voyagePourRoute.lat !== null || !!voyagePourRoute.destination) &&
       voyagePourRoute.statut !== 'termine',
     staleTime: 5 * 60 * 1000,
-    queryFn: async (): Promise<{ minutes?: number; minutesSansTrafic?: number; bouchonsMin?: number; km?: number | null; erreur?: string }> => {
+    queryFn: async (): Promise<ReponseItineraire> => {
       let aLat = voyagePourRoute?.lat ?? null
       let aLon = voyagePourRoute?.lng ?? null
       if ((aLat === null || aLon === null) && voyagePourRoute?.destination) {
         const g = await fetch(
           `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(voyagePourRoute.destination)}&count=1&language=fr`,
         )
-        const d = (await g.json()) as { results?: { latitude: number; longitude: number }[] }
-        aLat = d.results?.[0]?.latitude ?? null
-        aLon = d.results?.[0]?.longitude ?? null
+        const d = (await g.json().catch(() => null)) as { results?: { latitude: number; longitude: number }[] } | null
+        aLat = d?.results?.[0]?.latitude ?? null
+        aLon = d?.results?.[0]?.longitude ?? null
       }
       if (aLat === null || aLon === null) throw new Error('destination introuvable sur la carte')
+      // Départ, puis chaque étape dans l'ordre, puis l'arrivée.
+      const points = [
+        { lat: maison?.lat as number, lon: maison?.lon as number },
+        ...etapes.map((e) => ({ lat: e.lat, lon: e.lon })),
+        { lat: aLat, lon: aLon },
+      ]
       const { data: session } = await supabase.auth.getSession()
       const r = await fetch('/api/chercher-resto', {
         method: 'POST',
@@ -86,13 +136,31 @@ export function EcranVoyage() {
           'content-type': 'application/json',
           authorization: `Bearer ${session.session?.access_token ?? ''}`,
         },
-        body: JSON.stringify({ mode: 'trafic', deLat: maison?.lat, deLon: maison?.lon, aLat, aLon }),
+        body: JSON.stringify({ mode: 'itineraire', points }),
       })
       if (!r.ok) throw new Error(`relais ${r.status}`)
-      return (await r.json()) as { minutes?: number; bouchonsMin?: number; km?: number | null; erreur?: string }
+      return (await r.json()) as ReponseItineraire
     },
   })
+  // Le meilleur itinéraire du moment (le relais les trie du plus rapide au plus lent).
+  const meilleur = route.data?.itineraires?.[0] ?? null
   const dureeLisible = (min: number) => (min >= 60 ? `${Math.floor(min / 60)} h ${String(min % 60).padStart(2, '0')}` : `${min} min`)
+  const euros = (v: number) => `${v.toFixed(2).replace('.', ',')} €`
+  // Le coût estimé : carburant (conso × prix) + péage (km à péage × tarif).
+  const coutCarburant = meilleur?.km ? (meilleur.km * voiture.conso * voiture.prixCarburant) / 100 : null
+  const coutPeage = meilleur?.kmPeage ? meilleur.kmPeage * voiture.tarifPeageKm : 0
+  // L'adresse de la carte : départ, étapes, arrivée.
+  const lienItineraire = (() => {
+    if (!meilleur || maison?.lat === undefined || maison.lon === undefined) return null
+    const arrivee = meilleur.geometrie?.[meilleur.geometrie.length - 1]
+    if (!arrivee) return null
+    const points = [
+      `${maison.lat},${maison.lon}`,
+      ...etapes.map((e) => `${e.lat},${e.lon}`),
+      `${arrivee[0]},${arrivee[1]}`,
+    ].join(';')
+    return `/nous/voyages/${id}/itineraire?points=${encodeURIComponent(points)}`
+  })()
 
   const depenses = useQuery({
     queryKey: ['depenses', id],
@@ -455,22 +523,48 @@ export function EcranVoyage() {
               Pour le trafic en direct : clé gratuite sur developer.tomtom.com, à coller dans Vercel sous le nom{' '}
               <span className="chiffres font-[590]">TOMTOM_KEY</span> (puis Redeploy).
             </p>
-          ) : route.data?.minutes !== undefined ? (
+          ) : meilleur ? (
             <>
               <p className="chiffres mt-1 text-titre-3 text-encre">
-                {dureeLisible(route.data.minutes)}
-                {route.data.km ? <span className="text-corps-2 font-[400] text-encre-3"> · {route.data.km} km</span> : null}
+                {dureeLisible(meilleur.minutes)}
+                {meilleur.km ? <span className="text-corps-2 font-[400] text-encre-3"> · {meilleur.km} km</span> : null}
               </p>
               <p
                 className={`text-corps-2 font-[590] ${
-                  (route.data.bouchonsMin ?? 0) >= 15 ? 'text-urgent' : (route.data.bouchonsMin ?? 0) >= 5 ? 'text-ambre' : 'text-fait'
+                  meilleur.bouchonsMin >= 15 ? 'text-urgent' : meilleur.bouchonsMin >= 5 ? 'text-ambre' : 'text-fait'
                 }`}
               >
-                {(route.data.bouchonsMin ?? 0) >= 5
-                  ? `🚧 +${route.data.bouchonsMin} min de bouchons en ce moment`
-                  : '✅ Route fluide en ce moment'}
+                {meilleur.bouchonsMin >= 5
+                  ? `🚧 +${meilleur.bouchonsMin} min de bouchons — c'est déjà le trajet le plus rapide`
+                  : '✅ Route fluide en ce moment — le trajet le plus rapide'}
               </p>
-              <p className="mt-1 text-legende text-encre-3">Trafic en direct — revérifie juste avant de charger la voiture.</p>
+
+              {/* 💶 Ce que le trajet va coûter (aller simple). */}
+              {coutCarburant !== null && (
+                <p className="mt-2 text-corps-2 text-encre">
+                  💶 <strong>{euros(coutCarburant + coutPeage)}</strong> l'aller
+                  <span className="text-encre-3">
+                    {' '}— ⛽ {euros(coutCarburant)}
+                    {coutPeage > 0 ? ` · 🛣 péage ${euros(coutPeage)} (${meilleur.kmPeage} km)` : ' · sans péage'}
+                  </span>
+                </p>
+              )}
+
+              {/* 🗺 Voir la route dessinée + les aires, stations, curiosités. */}
+              {lienItineraire && (
+                <div className="mt-2">
+                  <Bouton pleineLargeur variante="primaire" onClick={() => naviguer(lienItineraire)}>
+                    🗺 Voir la carte et les arrêts en route
+                  </Bouton>
+                </div>
+              )}
+
+              <p className="mt-1 text-legende text-encre-3">
+                Trafic en direct — revérifie juste avant de charger la voiture.
+                {route.data?.itineraires && route.data.itineraires.length > 1
+                  ? ` ${route.data.itineraires.length} itinéraires comparés.`
+                  : ''}
+              </p>
             </>
           ) : (
             <div className="mt-1 flex flex-col gap-2">
@@ -487,8 +581,51 @@ export function EcranVoyage() {
               <Bouton variante="discret" onClick={() => void route.refetch()}>🔄 Réessayer</Bouton>
             </div>
           )}
+
+          {/* 🧭 Les ÉTAPES : les arrêts prévus entre la maison et l'arrivée. */}
+          {maison?.lat !== undefined && (
+            <div className="mt-3 border-t border-trait pt-3">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-corps-2 font-[590] text-encre">
+                  🧭 Étapes {etapes.length > 0 ? `(${etapes.length})` : ''}
+                </p>
+                <Bouton variante="discret" onClick={() => setEtapesOuvertes(true)}>
+                  {etapes.length > 0 ? 'Gérer' : '+ Ajouter un arrêt'}
+                </Bouton>
+              </div>
+              {etapes.length > 0 && (
+                <ol className="mt-1 flex flex-col gap-0.5">
+                  {etapes.map((e, i) => (
+                    <li key={`${e.nom}-${i}`} className="text-legende text-encre-2">
+                      {i + 1}. {e.nom}
+                    </li>
+                  ))}
+                </ol>
+              )}
+            </div>
+          )}
         </div>
       )}
+
+      {/* La gestion des étapes et du véhicule (pour estimer les coûts). */}
+      <Feuille ouverte={etapesOuvertes} onFermer={() => setEtapesOuvertes(false)} titre="🧭 Étapes et coûts du trajet">
+        <FormEtapes
+          etapes={etapes}
+          voiture={voiture}
+          surEtapes={async (suivantes) => {
+            await ecrireReglagesVoyage((base) => ({
+              ...base,
+              voyage_etapes: {
+                ...((base['voyage_etapes'] ?? {}) as Record<string, EtapeVoyage[]>),
+                [id ?? '']: suivantes,
+              },
+            }))
+          }}
+          surVoiture={async (v) => {
+            await ecrireReglagesVoyage((base) => ({ ...base, voiture: v }))
+          }}
+        />
+      </Feuille>
 
       {/* Valises */}
       <section className="mt-4">
@@ -949,6 +1086,144 @@ function FormDepense({
       >
         Ajouter au budget
       </Bouton>
+    </div>
+  )
+}
+
+/**
+ * Les étapes du trajet (arrêts intermédiaires) et les réglages du véhicule
+ * qui servent à estimer le coût : consommation, prix du carburant, tarif de
+ * péage au kilomètre.
+ */
+function FormEtapes({
+  etapes,
+  voiture,
+  surEtapes,
+  surVoiture,
+}: {
+  etapes: EtapeVoyage[]
+  voiture: { conso: number; prixCarburant: number; tarifPeageKm: number }
+  surEtapes: (e: EtapeVoyage[]) => Promise<void>
+  surVoiture: (v: { conso: number; prixCarburant: number; tarifPeageKm: number }) => Promise<void>
+}) {
+  const [nouvelle, setNouvelle] = useState('')
+  const [erreur, setErreur] = useState<string | null>(null)
+  const [conso, setConso] = useState(String(voiture.conso))
+  const [prix, setPrix] = useState(String(voiture.prixCarburant))
+  const [peage, setPeage] = useState(String(voiture.tarifPeageKm))
+
+  const ajouter = async () => {
+    const ville = nouvelle.trim()
+    if (!ville) return
+    setErreur(null)
+    // On retrouve l'arrêt sur la carte : sans coordonnées, pas d'itinéraire.
+    const r = await fetch(
+      `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(ville)}&count=1&language=fr`,
+    ).catch(() => null)
+    const d = r?.ok ? ((await r.json().catch(() => null)) as { results?: { name?: string; latitude?: number; longitude?: number }[] } | null) : null
+    const trouve = d?.results?.[0]
+    if (!trouve || !Number.isFinite(trouve.latitude) || !Number.isFinite(trouve.longitude)) {
+      setErreur(`« ${ville} » est introuvable sur la carte — essaie le nom d'une commune.`)
+      return
+    }
+    await surEtapes([
+      ...etapes,
+      { nom: trouve.name ?? ville, lat: trouve.latitude as number, lon: trouve.longitude as number },
+    ])
+    setNouvelle('')
+  }
+
+  const nombre = (v: string, defaut: number) => {
+    const n = Number(v.replace(',', '.'))
+    return Number.isFinite(n) && n > 0 ? n : defaut
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div>
+        <p className="mb-1.5 text-legende font-[590] text-encre-3">Les arrêts, dans l'ordre du trajet</p>
+        {etapes.length === 0 && (
+          <p className="text-corps-2 text-encre-3">
+            Aucun arrêt pour l'instant — la route va directement de la maison à la destination.
+          </p>
+        )}
+        <ol className="flex flex-col gap-1.5">
+          {etapes.map((e, i) => (
+            <li key={`${e.nom}-${i}`} className="flex items-center gap-2 rounded-lg bg-fond-sourd px-3 py-2">
+              <span className="chiffres text-legende text-encre-3">{i + 1}</span>
+              <span className="min-w-0 flex-1 truncate text-corps-2 text-encre">{e.nom}</span>
+              {i > 0 && (
+                <button
+                  onClick={() => {
+                    const suivantes = [...etapes]
+                    const precedent = suivantes[i - 1]
+                    const courant = suivantes[i]
+                    if (precedent && courant) {
+                      suivantes[i - 1] = courant
+                      suivantes[i] = precedent
+                      void surEtapes(suivantes)
+                    }
+                  }}
+                  aria-label={`Monter ${e.nom}`}
+                  className="min-h-[32px] min-w-[32px] text-encre-3"
+                >
+                  ↑
+                </button>
+              )}
+              <button
+                onClick={() => void surEtapes(etapes.filter((_, j) => j !== i))}
+                aria-label={`Retirer ${e.nom}`}
+                className="min-h-[32px] min-w-[32px] text-encre-3"
+              >
+                ✕
+              </button>
+            </li>
+          ))}
+        </ol>
+      </div>
+
+      <div className="flex items-end gap-2">
+        <div className="flex-1">
+          <ChampTexte
+            etiquette="Ajouter un arrêt (ville)"
+            value={nouvelle}
+            onChange={(e) => setNouvelle(e.target.value)}
+            placeholder="Valence"
+          />
+        </div>
+        <BoutonEnvoi variante="valider" enfantsPendant="…" onEnvoi={ajouter}>
+          Ajouter
+        </BoutonEnvoi>
+      </div>
+      {erreur && <p className="text-corps-2 text-urgent">{erreur}</p>}
+
+      <div className="border-t border-trait pt-3">
+        <p className="mb-1.5 text-legende font-[590] text-encre-3">La voiture (pour estimer le coût)</p>
+        <div className="flex gap-2">
+          <ChampTexte etiquette="L / 100 km" inputMode="decimal" value={conso} onChange={(e) => setConso(e.target.value)} />
+          <ChampTexte etiquette="€ / litre" inputMode="decimal" value={prix} onChange={(e) => setPrix(e.target.value)} />
+          <ChampTexte etiquette="€ / km péage" inputMode="decimal" value={peage} onChange={(e) => setPeage(e.target.value)} />
+        </div>
+        <div className="mt-2">
+          <BoutonEnvoi
+            pleineLargeur
+            variante="valider"
+            enfantsPendant="Enregistrement…"
+            onEnvoi={() =>
+              surVoiture({
+                conso: nombre(conso, 6.5),
+                prixCarburant: nombre(prix, 1.85),
+                tarifPeageKm: nombre(peage, 0.1),
+              })
+            }
+          >
+            Enregistrer la voiture ✓
+          </BoutonEnvoi>
+        </div>
+        <p className="mt-1 text-legende text-encre-3">
+          Le péage est une estimation à partir des kilomètres d'autoroute payante (≈ 0,10 €/km en France).
+        </p>
+      </div>
     </div>
   )
 }

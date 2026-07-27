@@ -25,6 +25,7 @@ const EcranConcerts = paresseux(() => import('@/fonctionnalites/concerts/EcranCo
 const EcranCelebrations = paresseux(() => import('@/fonctionnalites/celebrations/EcranCelebrations'), 'EcranCelebrations')
 const EcranVoyages = paresseux(() => import('@/fonctionnalites/voyages/EcranVoyages'), 'EcranVoyages')
 const EcranVoyage = paresseux(() => import('@/fonctionnalites/voyages/EcranVoyage'), 'EcranVoyage')
+const EcranItineraire = paresseux(() => import('@/fonctionnalites/voyages/EcranItineraire'), 'EcranItineraire')
 const EcranSouvenirs = paresseux(() => import('@/fonctionnalites/souvenirs/EcranSouvenirs'), 'EcranSouvenirs')
 const EcranAlbum = paresseux(() => import('@/fonctionnalites/souvenirs/EcranAlbum'), 'EcranAlbum')
 const EcranCoffre = paresseux(() => import('@/fonctionnalites/coffre/EcranCoffre'), 'EcranCoffre')
@@ -267,6 +268,7 @@ function Interieur() {
             <Route path="/nous/celebrations" element={<EcranCelebrations />} />
             <Route path="/nous/voyages" element={<EcranVoyages />} />
             <Route path="/nous/voyages/:id" element={<EcranVoyage />} />
+            <Route path="/nous/voyages/:id/itineraire" element={<EcranItineraire />} />
             <Route path="/nous/souvenirs" element={<EcranSouvenirs />} />
             <Route path="/nous/souvenirs/album/:voyageId" element={<EcranAlbum />} />
             <Route path="/nous/coffre" element={<EcranCoffre />} />

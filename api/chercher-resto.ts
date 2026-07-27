@@ -97,6 +97,57 @@ async function extraireCarte(site: string): Promise<{ pageMenu: string | null; i
   return { pageMenu: pdf ?? [...liens][0] ?? null, images }
 }
 
+/**
+ * Allège une liste en n'en gardant qu'un élément sur N, sans jamais dépasser
+ * `max` — le premier et le dernier sont toujours conservés.
+ */
+function alleger<T>(liste: T[], max: number): T[] {
+  if (liste.length <= max) return liste
+  const pas = Math.ceil(liste.length / Math.max(1, max - 1))
+  const garde: T[] = []
+  for (let i = 0; i < liste.length; i += pas) {
+    const element = liste[i]
+    if (element !== undefined) garde.push(element)
+  }
+  const dernierIndex = liste.length - 1
+  if (dernierIndex % pas !== 0) {
+    const dernier = liste[dernierIndex]
+    if (dernier !== undefined) garde.push(dernier)
+  }
+  return garde
+}
+
+type GenrePoi = 'aire' | 'essence' | 'gonflage' | 'curiosite' | 'eau'
+
+/** Le genre de lieu déduit des étiquettes OSM (null si ça ne nous intéresse pas). */
+function genrePoi(tags: Record<string, unknown>): GenrePoi | null {
+  const highway = String(tags['highway'] ?? '')
+  const amenity = String(tags['amenity'] ?? '')
+  const tourism = String(tags['tourism'] ?? '')
+  if (highway === 'rest_area' || highway === 'services') return 'aire'
+  if (amenity === 'fuel') return 'essence'
+  if (amenity === 'compressed_air') return 'gonflage'
+  if (amenity === 'drinking_water') return 'eau'
+  if (tourism) return 'curiosite'
+  return null
+}
+
+/** Libellé de secours quand le lieu n'a ni nom, ni marque, ni exploitant. */
+const NOM_PAR_DEFAUT: Record<GenrePoi, string> = {
+  aire: 'Aire de repos',
+  essence: 'Station-service',
+  gonflage: 'Gonflage pneus',
+  curiosite: 'Point de vue',
+  eau: 'Eau potable',
+}
+
+/** Distance approximative en mètres — largement suffisante pour un dédoublonnage. */
+function metresEntre(laA: number, loA: number, laB: number, loB: number): number {
+  const dLat = (laA - laB) * 111320
+  const dLon = (loA - loB) * 111320 * Math.cos((laA * Math.PI) / 180)
+  return Math.sqrt(dLat * dLat + dLon * dLon)
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     if (req.method !== 'POST') {
@@ -119,7 +170,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return
     }
 
-    const { mode, nom, ville, site, requete, lat, lon, rayon, quoi, deLat, deLon, aLat, aLon, debut, fin } = (req.body ?? {}) as {
+    const {
+      mode, nom, ville, site, requete, lat, lon, rayon, quoi,
+      deLat, deLon, aLat, aLon, debut, fin, points, eviterPeages, trace,
+    } = (req.body ?? {}) as {
       mode?: string
       nom?: string
       ville?: string
@@ -135,6 +189,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       aLon?: number
       debut?: string
       fin?: string
+      points?: unknown
+      eviterPeages?: unknown
+      trace?: unknown
     }
 
     // 🌊 Relais Hub'Eau/Vigicrues : stations hydrométriques autour d'un point
@@ -503,6 +560,190 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return
     }
 
+    // 🧭 Itinéraire complet (TomTom Routing) : départ, étapes et arrivée, avec
+    // jusqu'à 3 variantes, la part de péage et un tracé allégé pour la carte.
+    if (mode === 'itineraire') {
+      const cle = process.env.TOMTOM_KEY
+      if (!cle) {
+        res.status(200).json({ erreur: 'cle_absente' })
+        return
+      }
+      // Les points intermédiaires sont des ÉTAPES : on garde l'ordre donné.
+      const etapes = (Array.isArray(points) ? points : [])
+        .map((p) => p as { lat?: unknown; lon?: unknown } | null)
+        .map((p) => ({ lat: Number(p?.lat), lon: Number(p?.lon) }))
+        .filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lon))
+        .slice(0, 10)
+      if (etapes.length < 2) {
+        res.status(200).json({ itineraires: [], erreur: 'points invalides' })
+        return
+      }
+      try {
+        const chemin = etapes.map((p) => `${p.lat},${p.lon}`).join(':')
+        // `computeTravelTimeFor=all` donne le temps sans trafic ; `sectionType`
+        // fait remonter les tronçons à péage ; `routeRepresentation=polyline`
+        // fournit le tracé point par point.
+        const r = await fetch(
+          `https://api.tomtom.com/routing/1/calculateRoute/${chemin}/json` +
+            `?traffic=true&computeTravelTimeFor=all&travelMode=car&maxAlternatives=2` +
+            `&sectionType=tollRoad&routeRepresentation=polyline` +
+            (eviterPeages ? '&avoid=tollRoads' : '') +
+            `&key=${cle}`,
+          { headers: { accept: 'application/json', 'user-agent': UA }, signal: AbortSignal.timeout(15000) },
+        )
+        if (!r.ok) {
+          res.status(200).json({ itineraires: [], erreur: `tomtom ${r.status}` })
+          return
+        }
+        const donnees = (await r.json().catch(() => null)) as { routes?: unknown } | null
+        const routes = (Array.isArray(donnees?.routes) ? donnees.routes : []) as {
+          summary?: {
+            travelTimeInSeconds?: unknown
+            noTrafficTravelTimeInSeconds?: unknown
+            trafficDelayInSeconds?: unknown
+            lengthInMeters?: unknown
+          }
+          sections?: unknown
+          legs?: unknown
+        }[]
+        const itineraires = routes
+          .map((route) => {
+            const resume = route?.summary
+            const avec = Number(resume?.travelTimeInSeconds)
+            // Sans durée, la route ne sert à rien : on la laisse tomber.
+            if (!Number.isFinite(avec)) return null
+            const sansDirect = Number(resume?.noTrafficTravelTimeInSeconds)
+            const retard = Number(resume?.trafficDelayInSeconds)
+            const sans = Number.isFinite(sansDirect)
+              ? sansDirect
+              : Number.isFinite(retard)
+                ? Math.max(0, avec - retard)
+                : avec
+            const metres = Number(resume?.lengthInMeters)
+
+            // Les tronçons à péage : la casse du type varie selon les réponses.
+            const sections = (Array.isArray(route?.sections) ? route.sections : []) as {
+              sectionType?: unknown
+              lengthInMeters?: unknown
+            }[]
+            const metresPeage = sections.reduce((somme, s) => {
+              const genre = String(s?.sectionType ?? '').toUpperCase()
+              if (genre !== 'TOLL_ROAD' && genre !== 'TOLLROAD') return somme
+              const long = Number(s?.lengthInMeters)
+              return somme + (Number.isFinite(long) ? long : 0)
+            }, 0)
+
+            // Le tracé : tous les points des tronçons mis bout à bout, allégés.
+            const legs = (Array.isArray(route?.legs) ? route.legs : []) as { points?: unknown }[]
+            const bruts: [number, number][] = []
+            for (const leg of legs) {
+              const pts = (Array.isArray(leg?.points) ? leg.points : []) as {
+                latitude?: unknown
+                longitude?: unknown
+              }[]
+              for (const pt of pts) {
+                const pLa = Number(pt?.latitude)
+                const pLo = Number(pt?.longitude)
+                if (Number.isFinite(pLa) && Number.isFinite(pLo)) bruts.push([pLa, pLo])
+              }
+            }
+
+            const minutes = Math.round(avec / 60)
+            const minutesSansTrafic = Math.round(sans / 60)
+            return {
+              minutes,
+              minutesSansTrafic,
+              bouchonsMin: Math.max(0, minutes - minutesSansTrafic),
+              km: Number.isFinite(metres) ? Math.round(metres / 1000) : null,
+              kmPeage: Math.round(metresPeage / 1000),
+              geometrie: alleger(bruts, 400),
+            }
+          })
+          .filter((x): x is NonNullable<typeof x> => x !== null)
+          // Le plus rapide MAINTENANT (trafic compris) d'abord.
+          .sort((a, b) => a.minutes - b.minutes)
+          .slice(0, 3)
+        res.status(200).json({ itineraires })
+      } catch (e) {
+        res.status(200).json({ itineraires: [], erreur: `tomtom ${String(e instanceof Error ? e.message : e).slice(0, 60)}` })
+      }
+      return
+    }
+
+    // ⛽ Points d'intérêt le long d'une route (Overpass) : aires, stations,
+    // gonflage, curiosités et points d'eau, autour de la polyligne d'un trajet.
+    if (mode === 'poi_route') {
+      const brutTrace = (Array.isArray(trace) ? trace : [])
+        .map((p) => (Array.isArray(p) ? p : []) as unknown[])
+        .map((p) => ({ lat: Number(p[0]), lon: Number(p[1]) }))
+        .filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lon))
+      // Le client en envoie au plus 25 ; s'il en met davantage on ré-échantillonne.
+      const echantillon = alleger(brutTrace, 25)
+      if (echantillon.length === 0) {
+        res.status(200).json({ lieux: [], erreur: 'trace invalide' })
+        return
+      }
+      // Overpass accepte une polyligne entière dans `around` : une seule
+      // requête au lieu d'une par point.
+      const coords = echantillon.map((p) => `${p.lat},${p.lon}`).join(',')
+      const requeteOsm =
+        `[out:json][timeout:20];(` +
+        `node(around:2000,${coords})[highway~"^(rest_area|services)$"];` +
+        `node(around:2000,${coords})[amenity="fuel"];` +
+        `node(around:2000,${coords})[amenity="compressed_air"];` +
+        `node(around:3000,${coords})[tourism~"^(attraction|viewpoint|picnic_site|zoo|theme_park)$"];` +
+        `node(around:2000,${coords})[amenity="drinking_water"];` +
+        `);out center 120;`
+      const miroirs = [
+        'https://overpass.kumi.systems/api/interpreter',
+        'https://overpass.private.coffee/api/interpreter',
+        'https://overpass-api.de/api/interpreter',
+      ]
+      // Tous les miroirs en même temps : le premier qui répond gagne.
+      const tentatives = miroirs.map(async (miroir) => {
+        const r = await fetch(miroir, {
+          method: 'POST',
+          body: `data=${encodeURIComponent(requeteOsm)}`,
+          headers: { 'content-type': 'application/x-www-form-urlencoded', 'user-agent': UA },
+          signal: AbortSignal.timeout(20000),
+        })
+        if (!r.ok) throw new Error(`overpass ${r.status}`)
+        const brut = (await r.json()) as { elements?: unknown }
+        return Array.isArray(brut?.elements) ? brut.elements : []
+      })
+      try {
+        const elements = (await Promise.any(tentatives)) as {
+          lat?: unknown
+          lon?: unknown
+          center?: { lat?: unknown; lon?: unknown }
+          tags?: Record<string, unknown> | null
+        }[]
+        const lieux: { nom: string; type: GenrePoi; lat: number; lon: number }[] = []
+        for (const element of elements) {
+          const tags = (element?.tags ?? {}) as Record<string, unknown>
+          const type = genrePoi(tags)
+          if (!type) continue
+          const pLa = Number(element?.lat ?? element?.center?.lat)
+          const pLo = Number(element?.lon ?? element?.center?.lon)
+          if (!Number.isFinite(pLa) || !Number.isFinite(pLo)) continue
+          // Doublons : même genre de lieu et moins de 150 m d'écart.
+          if (lieux.some((l) => l.type === type && metresEntre(l.lat, l.lon, pLa, pLo) < 150)) continue
+          const etiquette = tags['name'] ?? tags['brand'] ?? tags['operator']
+          lieux.push({
+            nom: typeof etiquette === 'string' && etiquette.trim() ? etiquette.trim() : NOM_PAR_DEFAUT[type],
+            type,
+            lat: pLa,
+            lon: pLo,
+          })
+          if (lieux.length >= 60) break
+        }
+        res.status(200).json({ lieux })
+      } catch {
+        res.status(200).json({ lieux: [], erreur: 'overpass indisponible' })
+      }
+      return
+    }
+
     // 🎭 Sorties : événements OpenAgenda dans une boîte de ±0,25° autour du point.
     if (mode === 'sorties') {
       const cle = process.env.OPENAGENDA_KEY
@@ -646,7 +887,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // quel que soit le mode qui a échoué — jamais un champ manquant.
     res.status(200).json({
       url: null, pageMenu: null, images: [], stations: [], elements: [], ventes: [],
-      sites: [], commune: null, evenements: [], webcams: [],
+      sites: [], commune: null, evenements: [], webcams: [], itineraires: [], lieux: [],
       erreur: String(erreur instanceof Error ? erreur.message : erreur).slice(0, 120),
     })
   }
