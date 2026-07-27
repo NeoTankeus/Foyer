@@ -17,7 +17,14 @@ const CLE_PLATS = 'stiga-roue-plats'
 const PLATS_SECOURS = ['Pizza', 'Pâtes carbo', 'Raclette', 'Burgers maison', 'Sushis', 'Crêpes', 'Gratin', 'Salade géante']
 
 const lireListe = (cle: string): string[] => {
-  try { return JSON.parse(localStorage.getItem(cle) ?? '[]') as string[] } catch { return [] }
+  try {
+    // Stockage local abîmé : sans Array.isArray, une chaîne remonterait
+    // jusqu'au rendu et ferait tomber l'écran sur `.map()`.
+    const brut = JSON.parse(localStorage.getItem(cle) ?? '[]') as unknown
+    return (Array.isArray(brut) ? brut : []).filter((x): x is string => typeof x === 'string' && x !== '')
+  } catch {
+    return []
+  }
 }
 
 interface Option { libelle: string; poids: number }

@@ -67,10 +67,14 @@ export function retenirEnregistrementSw(r: ServiceWorkerRegistration): void {
 /** La version actuellement en ligne, lue directement (jamais de cache). */
 export async function versionServeur(): Promise<string | null> {
   try {
-    const reponse = await fetch(`/version.json?t=${Date.now()}`, { cache: 'no-store' })
+    const reponse = await fetch(`/version.json?t=${Date.now()}`, {
+      cache: 'no-store',
+      signal: AbortSignal.timeout(8000),
+    })
     if (!reponse.ok) return null
-    const donnees = (await reponse.json()) as { version?: string }
-    return donnees.version ?? null
+    // Le service worker peut servir index.html à la place du JSON : .json() lèverait.
+    const donnees = ((await reponse.json().catch(() => null)) ?? {}) as { version?: unknown }
+    return typeof donnees.version === 'string' && donnees.version ? donnees.version : null
   } catch {
     return null
   }
@@ -102,7 +106,7 @@ const attendre = (ms: number) => new Promise((res) => setTimeout(res, ms))
  */
 async function reinitialiserEtRecharger(): Promise<void> {
   try {
-    const noms = await caches.keys()
+    const noms = typeof caches !== 'undefined' ? await caches.keys() : []
     await Promise.all(noms.map((n) => caches.delete(n)))
     const inscriptions = (await navigator.serviceWorker?.getRegistrations()) ?? []
     await Promise.all(inscriptions.map((i) => i.unregister()))
@@ -189,11 +193,18 @@ export async function majAutomatique(): Promise<void> {
   if (!distante || distante === __DATE_VERSION__) return
   signalerMajDisponible()
   try {
-    const memo = JSON.parse(localStorage.getItem(CLE_AUTO) ?? 'null') as { version: string; a: number } | null
-    if (memo?.version === distante && Date.now() - memo.a < 45 * 1000) return
+    const memo = JSON.parse(localStorage.getItem(CLE_AUTO) ?? 'null') as { version?: unknown; a?: unknown } | null
+    const marque = Number(memo?.a)
+    if (memo?.version === distante && Number.isFinite(marque) && Date.now() - marque < 45 * 1000) return
   } catch {
     // mémoire illisible — on tente
   }
-  localStorage.setItem(CLE_AUTO, JSON.stringify({ version: distante, a: Date.now() }))
+  // Sans ce garde-fou écrit, une mise à jour qui échoue rebouclerait sans fin :
+  // si le stockage refuse, on renonce à l'installation automatique cette fois-ci.
+  try {
+    localStorage.setItem(CLE_AUTO, JSON.stringify({ version: distante, a: Date.now() }))
+  } catch {
+    return
+  }
   await mettreAJourMaintenant()
 }

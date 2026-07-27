@@ -62,9 +62,12 @@ export function EcranRecherche() {
     for (const a of d.articles.data ?? [])
       if (contient(a.libelle))
         trouve.push({ type: 'Courses', icone: '🛒', titre: a.libelle, detail: a.coche ? 'déjà coché' : a.rayon, chemin: '/maison?ajout=courses' })
-    for (const r of d.recettes.data ?? [])
-      if (contient(r.titre) || r.ingredients.some((i) => contient(i.libelle)))
-        trouve.push({ type: 'Recette', icone: '🍽️', titre: r.titre, detail: `${r.ingredients.length} ingrédients`, chemin: '/maison' })
+    for (const r of d.recettes.data ?? []) {
+      // `ingredients` est une colonne jsonb : elle n'est pas toujours une liste.
+      const ingredients = (Array.isArray(r.ingredients) ? r.ingredients : []).filter((i) => !!i)
+      if (contient(r.titre) || ingredients.some((i) => contient(i.libelle)))
+        trouve.push({ type: 'Recette', icone: '🍽️', titre: r.titre, detail: `${ingredients.length} ingrédients`, chemin: '/maison' })
+    }
     for (const c of d.celebrations.data ?? [])
       if (contient(c.nom))
         trouve.push({ type: 'Célébration', icone: '🎂', titre: c.nom, detail: new Date(c.date).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' }), chemin: '/nous/celebrations' })

@@ -72,7 +72,7 @@ export function EcranGastif() {
 
   const ouvrirDiscussion = (c: ConversationGastif) => {
     setConversationId(c.id)
-    setMessages(c.messages ?? [])
+    setMessages(messagesDe(c))
     setErreurConfig(null)
     setHistoriqueOuvert(false)
   }
@@ -285,7 +285,7 @@ export function EcranGastif() {
                   </p>
                   <p className="text-legende text-encre-3">
                     {new Date(c.modifie_le).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })} ·{' '}
-                    {Math.ceil(c.messages.length / 2)} échange{c.messages.length > 2 ? 's' : ''}
+                    {Math.ceil(messagesDe(c).length / 2)} échange{messagesDe(c).length > 2 ? 's' : ''}
                     {c.id === conversationId ? ' · en cours' : ''}
                   </p>
                 </button>
