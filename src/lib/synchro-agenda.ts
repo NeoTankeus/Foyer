@@ -23,9 +23,12 @@ export function importerAgendaSiBesoin(clientRequetes: QueryClient): void {
       const reponse = await fetch('/api/importer-ics', {
         method: 'POST',
         headers: { authorization: `Bearer ${jeton}` },
+        // L'import iCloud dure jusqu'à 60 s côté serveur.
+        signal: AbortSignal.timeout(70000),
       })
-      const resultat = (await reponse.json()) as { importes?: number }
-      if ((resultat.importes ?? 0) > 0) {
+      // Une passerelle en timeout renvoie du HTML : .json() lèverait ici.
+      const resultat = ((await reponse.json().catch(() => null)) ?? {}) as { importes?: unknown }
+      if (Number(resultat.importes) > 0) {
         await clientRequetes.invalidateQueries({ queryKey: ['evenements'] })
       }
     } catch {

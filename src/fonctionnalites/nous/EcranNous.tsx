@@ -78,7 +78,9 @@ const SECTEURS: Record<string, { libelle: string; icone: string }> = {
 const CLE_FAVORIS = 'stg-favoris'
 const lireFavoris = (): string[] => {
   try {
-    return JSON.parse(localStorage.getItem(CLE_FAVORIS) ?? '[]') as string[]
+    // Un stockage abîmé (chaîne, objet) ferait planter `.map()` au rendu.
+    const brut = JSON.parse(localStorage.getItem(CLE_FAVORIS) ?? '[]') as unknown
+    return (Array.isArray(brut) ? brut : []).filter((x): x is string => typeof x === 'string')
   } catch {
     return []
   }
@@ -88,7 +90,8 @@ const lireFavoris = (): string[] => {
 const CLE_OUVERTS = 'stg-menu-secteurs'
 const lireOuverts = (): string[] => {
   try {
-    return JSON.parse(localStorage.getItem(CLE_OUVERTS) ?? '[]') as string[]
+    const brut = JSON.parse(localStorage.getItem(CLE_OUVERTS) ?? '[]') as unknown
+    return (Array.isArray(brut) ? brut : []).filter((x): x is string => typeof x === 'string')
   } catch {
     return []
   }

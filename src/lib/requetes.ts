@@ -38,8 +38,9 @@ export function utiliserEvenementsPeriode(debutIso: string, finIso: string) {
           .gt('fin_a', debutIso)
           .order('debut_a')
         if (error) throw error
-        await baseLocale.evenements.bulkPut(data)
-        return data
+        const lignes = Array.isArray(data) ? data : []
+        await baseLocale.evenements.bulkPut(lignes).catch(() => undefined)
+        return lignes
       } catch {
         return baseLocale.evenements
           .where('debut_a')
@@ -173,8 +174,9 @@ export function utiliserTachesOuvertes() {
           .eq('statut', 'a_faire')
           .order('echeance', { ascending: true, nullsFirst: false })
         if (error) throw error
-        await baseLocale.taches.bulkPut(data)
-        return data
+        const lignes = Array.isArray(data) ? data : []
+        await baseLocale.taches.bulkPut(lignes).catch(() => undefined)
+        return lignes
       } catch {
         return baseLocale.taches.where('statut').equals('a_faire').sortBy('echeance')
       }
@@ -195,7 +197,7 @@ export function utiliserTachesFaites() {
           .order('faite_le', { ascending: false })
           .limit(200)
         if (error) throw error
-        return data
+        return Array.isArray(data) ? data : []
       } catch {
         const locales = await baseLocale.taches.where('statut').equals('faite').toArray()
         return locales.sort((a, b) => (b.faite_le ?? '').localeCompare(a.faite_le ?? ''))
@@ -307,7 +309,7 @@ export function utiliserListeCourses() {
           .eq('type', 'courses')
           .limit(1)
         if (error) throw error
-        const liste = listes[0] ?? null
+        const liste = (Array.isArray(listes) ? listes : [])[0] ?? null
         if (!liste) return { liste: null, articles: [] }
         const { data: articles, error: erreurArticles } = await supabase
           .from('articles')
@@ -315,9 +317,11 @@ export function utiliserListeCourses() {
           .eq('liste_id', liste.id)
           .order('position')
         if (erreurArticles) throw erreurArticles
-        await baseLocale.listes.bulkPut(listes)
-        await baseLocale.articles.bulkPut(articles)
-        return { liste, articles }
+        const lignes = Array.isArray(articles) ? articles : []
+        // Un cache local en panne ne doit pas priver l'écran de ses données réseau.
+        await baseLocale.listes.bulkPut(Array.isArray(listes) ? listes : []).catch(() => undefined)
+        await baseLocale.articles.bulkPut(lignes).catch(() => undefined)
+        return { liste, articles: lignes }
       } catch {
         const listes = await baseLocale.listes.toArray()
         const liste = listes.find((l) => l.type === 'courses') ?? null
@@ -385,9 +389,13 @@ export async function supprimerArticlesCoches(articles: LigneArticle[]) {
 
 /** Historique des libellés du foyer, pour l'autocomplétion (< 3 s). */
 export async function historiqueLibelles(): Promise<string[]> {
-  const articles = await baseLocale.articles.toArray()
+  const articles = await baseLocale.articles.toArray().catch(() => [])
   const vus = new Set<string>()
-  for (const article of articles) vus.add(article.libelle.trim())
+  for (const article of articles) {
+    // `libelle` peut être null dans un cache ancien : .trim() ferait tomber l'écran.
+    const libelle = typeof article?.libelle === 'string' ? article.libelle.trim() : ''
+    if (libelle) vus.add(libelle)
+  }
   return [...vus].sort((a, b) => a.localeCompare(b))
 }
 
@@ -403,15 +411,16 @@ export function utiliserCelebrationsProches(jours = 7) {
       try {
         const { data, error } = await supabase.from('celebrations').select('*')
         if (error) throw error
-        await baseLocale.celebrations.bulkPut(data)
-        toutes = data
+        toutes = Array.isArray(data) ? data : []
+        await baseLocale.celebrations.bulkPut(toutes).catch(() => undefined)
       } catch {
         toutes = await baseLocale.celebrations.toArray()
       }
       const aujourdHui = maintenantLocal()
       const limite = addDays(aujourdHui, jours)
       return toutes.filter((c) => {
-        const date = new Date(c.date)
+        const date = new Date(c?.date ?? NaN)
+        if (!Number.isFinite(date.getTime())) return false
         const anniversaire = new Date(aujourdHui.getFullYear(), date.getMonth(), date.getDate())
         if (anniversaire < new Date(aujourdHui.getFullYear(), aujourdHui.getMonth(), aujourdHui.getDate())) {
           anniversaire.setFullYear(anniversaire.getFullYear() + 1)
@@ -430,16 +439,27 @@ export function utiliserRealtimeCourses() {
   const clientRequetes = useQueryClient()
   return {
     demarrer: () => {
-      const canal = supabase
-        .channel('courses-temps-reel')
-        .on(
-          'postgres_changes',
-          { event: '*', schema: 'public', table: 'articles' },
-          () => void clientRequetes.invalidateQueries({ queryKey: ['courses'] }),
-        )
-        .subscribe()
-      return () => {
-        void supabase.removeChannel(canal)
+      // Le temps réel est un confort : s'il refuse de démarrer (websocket bloqué
+      // par un réseau d'entreprise, quota atteint), le mode magasin doit
+      // continuer à fonctionner avec le rafraîchissement normal.
+      try {
+        const canal = supabase
+          .channel('courses-temps-reel')
+          .on(
+            'postgres_changes',
+            { event: '*', schema: 'public', table: 'articles' },
+            () => void clientRequetes.invalidateQueries({ queryKey: ['courses'] }),
+          )
+          .subscribe()
+        return () => {
+          try {
+            void supabase.removeChannel(canal)
+          } catch {
+            // canal déjà fermé
+          }
+        }
+      } catch {
+        return () => undefined
       }
     },
   }

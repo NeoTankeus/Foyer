@@ -23,6 +23,9 @@ interface Reponse {
   elements?: { id: number; lat?: number; lon?: number; center?: { lat: number; lon: number }; tags?: Record<string, string> }[]
 }
 
+/** Une étiquette OSM ramenée à du texte affichable (ou rien). */
+const texteTag = (v: unknown): string | null => (v == null || v === '' ? null : String(v))
+
 async function viaRelais(lat: number, lon: number, rayonM: number, quoi: string): Promise<Reponse> {
   const { data: session } = await supabase.auth.getSession()
   const reponse = await fetch('/api/chercher-resto', {
@@ -100,9 +103,11 @@ export async function chercherLieux(
     resultats.push({
       id: String(e.id),
       nom: String(nom),
-      telephone: e.tags?.['phone'] ?? e.tags?.['contact:phone'] ?? null,
-      site: e.tags?.['website'] ?? e.tags?.['contact:website'] ?? null,
-      horaires: e.tags?.['opening_hours'] ?? null,
+      // Ces valeurs partent dans `.replace()` / `.slice()` côté écran :
+      // le relais peut renvoyer un nombre, on les fige en texte.
+      telephone: texteTag(e.tags?.['phone'] ?? e.tags?.['contact:phone']),
+      site: texteTag(e.tags?.['website'] ?? e.tags?.['contact:website']),
+      horaires: texteTag(e.tags?.['opening_hours']),
       latitude: la,
       longitude: lo,
       distanceM: distance(la, lo),

@@ -24,6 +24,9 @@ export async function ficheParCodeBarres(code: string): Promise<FicheProduit | n
     try {
       const reponse = await fetch(
         `${base}/api/v2/product/${encodeURIComponent(code)}.json?fields=product_name,brands,image_url,quantity,nutriscore_grade,allergens_tags,nova_group,additives_tags,nutrient_levels`,
+        // Trois bases interrogées à la suite : sans délai, un scan pouvait
+        // laisser la caméra figée indéfiniment devant le rayon.
+        { signal: AbortSignal.timeout(8000) },
       )
       if (!reponse.ok) continue
       const donnees = (await reponse.json()) as {
@@ -47,13 +50,16 @@ export async function ficheParCodeBarres(code: string): Promise<FicheProduit | n
         const etiquettes = (v: unknown): string[] =>
           (Array.isArray(v) ? v : []).filter((x): x is string => typeof x === 'string')
         const niveaux = p.nutrient_levels
+        // Un champ qui revient en nombre (quantité, marque…) casserait un
+        // `.split()` plus loin : tout ce qui s'affiche est du texte ou null.
+        const texte = (v: unknown): string | null => (v == null || v === '' ? null : String(v))
         return {
           code,
-          nom: p.product_name || null,
-          marque: p.brands || null,
-          quantite: p.quantity || null,
-          image: p.image_url || null,
-          nutriscore: p.nutriscore_grade || null,
+          nom: texte(p.product_name),
+          marque: texte(p.brands),
+          quantite: texte(p.quantity),
+          image: texte(p.image_url),
+          nutriscore: texte(p.nutriscore_grade),
           nova: typeof p.nova_group === 'number' ? p.nova_group : null,
           additifs: etiquettes(p.additives_tags).map((a) => a.replace(/^[a-z]{2}:/, '').toUpperCase()),
           niveaux: niveaux && typeof niveaux === 'object' && !Array.isArray(niveaux) ? niveaux : {},

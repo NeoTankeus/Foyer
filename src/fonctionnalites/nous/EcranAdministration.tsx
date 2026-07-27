@@ -259,14 +259,20 @@ export function EcranAdministration() {
           <div key={c.id} className="flex items-center gap-2 border-b border-trait py-1.5 last:border-0">
             <span className="flex-1 truncate text-note text-encre-2">
               {(() => {
-                const ids = c.reglages.membre_ids ?? (c.membre_id ? [c.membre_id] : [])
+                // `reglages` est une colonne jsonb : on ne suppose rien de sa forme.
+                const reglages = (c.reglages ?? {}) as NonNullable<typeof c.reglages>
+                const ids = Array.isArray(reglages.membre_ids)
+                  ? reglages.membre_ids
+                  : c.membre_id
+                    ? [c.membre_id]
+                    : []
                 const prenoms = ids
                   .map((id) => membres.find((m) => m.id === id)?.prenom)
                   .filter(Boolean)
                 const qui = prenoms.length > 0 ? prenoms.join(' + ') : 'Tout le foyer'
-                const source = c.reglages.apple_id
-                  ? `🔑 iCloud direct (${c.reglages.nom_calendrier || 'tous les calendriers'})`
-                  : `${c.reglages.ics_url?.slice(0, 36)}…`
+                const source = reglages.apple_id
+                  ? `🔑 iCloud direct (${reglages.nom_calendrier || 'tous les calendriers'})`
+                  : `${String(reglages.ics_url ?? 'lien public').slice(0, 36)}…`
                 return `${qui} · ${source}`
               })()}
             </span>
@@ -524,12 +530,14 @@ function FormMembre({
         onClick={() => {
           if (!prenom.trim()) return
           setEnCours(true)
+          // `.toISOString()` lève une exception sur une date invalide.
+          const fin = expiration ? new Date(`${expiration}T23:59:59`) : null
           void surEnregistrement({
             prenom: prenom.trim(),
             role,
             couleur,
             email_invitation: email.trim() || null,
-            actif_jusqu_au: role === 'guest' && expiration ? new Date(`${expiration}T23:59:59`).toISOString() : null,
+            actif_jusqu_au: role === 'guest' && fin && !Number.isNaN(fin.getTime()) ? fin.toISOString() : null,
           })
         }}
       >
