@@ -469,7 +469,7 @@ function FicheRestaurant({
       await surMaj({
         latitude: Number(osm.lat),
         longitude: Number(osm.lon),
-        adresse: resto.adresse ?? osm.display_name.split(',').slice(0, 3).join(','),
+        adresse: resto.adresse ?? (osm.display_name ? osm.display_name.split(',').slice(0, 3).join(',') : null),
       })
       setLocalisation('repos')
     } else {

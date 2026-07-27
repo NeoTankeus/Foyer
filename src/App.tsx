@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect } from 'react'
-import { BrowserRouter, NavLink, Navigate, Route, Routes, useLocation } from 'react-router-dom'
+import { BrowserRouter, NavLink, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import { utiliserSession } from '@/etat/session'
 import { EcranConnexion } from '@/fonctionnalites/auth/EcranConnexion'
 import { EcranAujourdhui } from '@/fonctionnalites/aujourdhui/EcranAujourdhui'
@@ -219,6 +219,21 @@ function ScrollHaut() {
   return null
 }
 
+/**
+ * Le filet PAR ÉCRAN : si un écran plante, lui seul est concerné — la barre
+ * d'onglets reste utilisable et un appui ramène au tableau de bord. La clé
+ * (le chemin) remet le filet à zéro dès qu'on change d'écran.
+ */
+function EcranProtege({ children }: { children: React.ReactNode }) {
+  const { pathname } = useLocation()
+  const naviguer = useNavigate()
+  return (
+    <GardeFou key={pathname} surRetour={() => naviguer('/')}>
+      {children}
+    </GardeFou>
+  )
+}
+
 function Interieur() {
   // LA COQUE : l'app occupe exactement l'écran (h-dvh, overflow-hidden) et le
   // contenu défile dans un conteneur INTERNE. La barre d'onglets et les boutons
@@ -237,6 +252,7 @@ function Interieur() {
           style={{ paddingBottom: 'calc(96px + env(safe-area-inset-bottom))' }}
         >
         <Suspense fallback={<div className="min-h-dvh bg-fond" aria-busy="true" />}>
+          <EcranProtege>
           <Routes>
             {/* L'app s'ouvre toujours sur Aujourd'hui. */}
             <Route path="/" element={<EcranAujourdhui />} />
@@ -298,6 +314,7 @@ function Interieur() {
             <Route path="/nous/immobilier" element={<EcranImmobilier />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
+          </EcranProtege>
         </Suspense>
         </div>
         <BoutonSas />

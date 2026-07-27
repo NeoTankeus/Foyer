@@ -288,9 +288,10 @@ export function EcranVoyage() {
   }
 
   // « Une liste par ligne » renvoyée par STG → éléments propres et dédupliqués.
-  const lignesDeListe = (texte: string, dejaLa: string[]): string[] => {
-    const connus = new Set(dejaLa.map((x) => x.toLowerCase()))
-    return texte
+  const lignesDeListe = (texte: string, dejaLa: (string | null)[]): string[] => {
+    // Un libellé peut être vide en base : on ne casse pas la liste pour autant.
+    const connus = new Set(dejaLa.map((x) => String(x ?? '').toLowerCase()))
+    return String(texte ?? '')
       .split('\n')
       .map((l) => l.replace(/^[\s•\-–*\d.)]+/, '').trim())
       .filter((l) => l.length > 1 && l.length < 60 && !/[:!?]$/.test(l))
@@ -630,8 +631,11 @@ export function EcranVoyage() {
             }}
           />
           {(() => {
-            const totalResas = (reservations.data ?? []).reduce((somme, r) => somme + (r.prix ?? 0), 0)
-            const totalSurPlace = (depenses.data ?? []).reduce((somme, d) => somme + d.montant, 0)
+            // Les montants peuvent manquer en base : Number() + garde, sinon
+            // toute l'addition deviendrait « NaN € ».
+            const nombre = (v: unknown) => (Number.isFinite(Number(v)) ? Number(v) : 0)
+            const totalResas = (reservations.data ?? []).reduce((somme, r) => somme + nombre(r.prix), 0)
+            const totalSurPlace = (depenses.data ?? []).reduce((somme, d) => somme + nombre(d.montant), 0)
             return (
               <div className="mt-2 rounded-xl bg-fond-eleve p-4 shadow-carte">
                 <p className="chiffres text-titre-2 text-encre">{(totalResas + totalSurPlace).toFixed(2)} €</p>
@@ -644,7 +648,7 @@ export function EcranVoyage() {
                       <li key={d.id} className="flex items-center gap-2 py-0.5">
                         <span className="flex-1 text-corps-2 text-encre">{d.libelle}</span>
                         <span className="text-legende text-encre-3">{d.categorie}</span>
-                        <span className="chiffres text-corps-2 font-[590] text-encre">{d.montant.toFixed(2)} €</span>
+                        <span className="chiffres text-corps-2 font-[590] text-encre">{nombre(d.montant).toFixed(2)} €</span>
                         <button
                           aria-label={`Supprimer ${d.libelle}`}
                           className="min-h-[32px] min-w-[32px] text-note text-encre-3"
