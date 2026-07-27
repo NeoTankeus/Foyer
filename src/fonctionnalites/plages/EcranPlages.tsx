@@ -9,9 +9,10 @@ import { Bouton } from '@/design/composants/Bouton'
 import { Carte } from '@/design/composants/Carte'
 
 interface SiteBaignade {
-  nom: string
-  commune: string
-  qualite: string
+  nom: string | null
+  commune: string | null
+  // Le classement peut manquer (hors saison, site non contrôlé cette année).
+  qualite: string | null
 }
 
 interface ReponseBaignades {
@@ -30,8 +31,8 @@ interface Webcam {
 
 // La pastille de qualité : on matche le TEXTE du classement officiel,
 // insensible à la casse — « insuffisant » d'abord, il contient « suffisant ».
-const teinteQualite = (qualite: string): { couleur: string; dose: number } => {
-  const q = qualite.toLowerCase()
+const teinteQualite = (qualite: string | null | undefined): { couleur: string; dose: number } => {
+  const q = String(qualite ?? '').toLowerCase()
   if (q.includes('insuffisant')) return { couleur: 'var(--urgent)', dose: 16 }
   if (q.includes('excellent')) return { couleur: 'var(--sauge)', dose: 20 }
   if (q.includes('bon')) return { couleur: 'var(--sauge)', dose: 9 } // sauge claire
@@ -39,14 +40,14 @@ const teinteQualite = (qualite: string): { couleur: string; dose: number } => {
   return { couleur: 'var(--encre-3)', dose: 12 }
 }
 
-function PastilleQualite({ qualite }: { qualite: string }) {
+function PastilleQualite({ qualite }: { qualite: string | null | undefined }) {
   const { couleur, dose } = teinteQualite(qualite)
   return (
     <span
       className="inline-flex shrink-0 items-center rounded-full px-2.5 py-0.5 text-legende font-[700]"
       style={{ color: couleur, background: `color-mix(in srgb, ${couleur} ${dose}%, transparent)` }}
     >
-      {qualite}
+      {qualite?.trim() ? qualite : 'non classé'}
     </span>
   )
 }
@@ -142,11 +143,11 @@ export function EcranPlages() {
         )}
 
         {sites.map((s, i) => (
-          <Carte key={`${s.nom}-${i}`}>
+          <Carte key={`${s.nom ?? 'site'}-${i}`}>
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
-                <p className="break-words text-corps-2 font-[590] text-encre">{s.nom}</p>
-                <p className="text-legende text-encre-3">{s.commune}</p>
+                <p className="break-words text-corps-2 font-[590] text-encre">{s.nom ?? 'Site de baignade'}</p>
+                {s.commune && <p className="text-legende text-encre-3">{s.commune}</p>}
               </div>
               <PastilleQualite qualite={s.qualite} />
             </div>
