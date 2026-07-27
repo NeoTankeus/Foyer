@@ -755,15 +755,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       try {
-        // Les ÉTAPES intermédiaires sont accrochées à la route la plus proche :
-        // une commune géocodée en plein champ ferait échouer tout le calcul.
-        const surRoute = await Promise.all(
-          etapes.map((p, i) => (i === 0 || i === etapes.length - 1 ? Promise.resolve(p) : surLaRoute(p.lat, p.lon))),
-        )
         const coord = (p: { lat: number; lon: number }) => `${p.lat.toFixed(6)},${p.lon.toFixed(6)}`
-        const direct = surRoute.length === 2
+        const direct = etapes.length === 2
 
-        const principal = await demander(surRoute.map(coord).join(':'), direct)
+        // 1️⃣ D'abord les coordonnées TELLES QUELLES. TomTom accroche déjà les
+        // points au réseau routier tout seul : ne rien toucher est la version
+        // la plus sûre, et c'est celle qui doit être essayée en premier.
+        const principal = await demander(etapes.map(coord).join(':'), direct)
         if (principal.trajets.length > 0) {
           res.status(200).json({
             // Le plus rapide MAINTENANT (trafic compris) d'abord.
@@ -777,30 +775,63 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           return
         }
 
-        // 🔍 Il y a des étapes et le calcul groupé a échoué : on cherche
-        // LAQUELLE bloque. Une étape mal située (commune homonyme à l'autre
-        // bout du monde, point en pleine mer) n'est reliée à rien : TomTom
-        // répond NO_ROUTE_FOUND pour tout le voyage à cause d'elle seule.
-        const depart = surRoute[0]
+        // 2️⃣ Seulement en cas d'échec : on « accroche » les étapes à la route
+        // carrossable la plus proche. Un point qui bondirait de plus de 5 km
+        // n'est pas une route voisine mais une réponse aberrante : on garde
+        // alors l'original — c'est ce déplacement non vérifié qui pouvait
+        // envoyer une étape parfaitement correcte au milieu de nulle part.
+        const accroches = await Promise.all(
+          etapes.map(async (p, i) => {
+            if (i === 0 || i === etapes.length - 1) return p
+            const colle = await surLaRoute(p.lat, p.lon)
+            return metresEntre(p.lat, p.lon, colle.lat, colle.lon) > 5000 ? p : colle
+          }),
+        )
+        const memesPoints = accroches.every((p, i) => {
+          const o = etapes[i]
+          return !!o && metresEntre(o.lat, o.lon, p.lat, p.lon) < 5
+        })
+        if (!memesPoints) {
+          const accroche = await demander(accroches.map(coord).join(':'), false)
+          if (accroche.trajets.length > 0) {
+            res.status(200).json({
+              itineraires: accroche.trajets.sort((a, b) => a.minutes - b.minutes).slice(0, 3),
+            })
+            return
+          }
+        }
+
+        // 3️⃣ Toujours rien : on cherche LAQUELLE des étapes bloque. Une étape
+        // mal située (commune homonyme à l'autre bout du monde, point en
+        // pleine mer) n'est reliée à rien, et TomTom refuse tout le voyage à
+        // cause d'elle seule. On teste les deux sens avant d'accuser, et on
+        // ne la déclare fautive que si aucun des deux ne passe.
+        const depart = etapes[0]
+        const arrivee = etapes[etapes.length - 1]
         const fautives: number[] = []
-        if (depart) {
-          for (let i = 1; i < surRoute.length - 1; i += 1) {
-            const etape = surRoute[i]
+        if (depart && arrivee) {
+          for (let i = 1; i < etapes.length - 1; i += 1) {
+            const etape = etapes[i]
             if (!etape) continue
-            const essai = await demander(`${coord(depart)}:${coord(etape)}`, false)
-            if (essai.trajets.length === 0) fautives.push(i)
+            const aller = await demander(`${coord(depart)}:${coord(etape)}`, false)
+            if (aller.trajets.length > 0) continue
+            const retour = await demander(`${coord(etape)}:${coord(arrivee)}`, false)
+            if (retour.trajets.length === 0) fautives.push(i)
           }
         }
 
         // On recalcule SANS les étapes injoignables : le voyage reste
         // utilisable, et l'app dira lesquelles ont été mises de côté.
-        const retenus = surRoute.filter((_, i) => !fautives.includes(i))
+        const retenus = etapes.filter((_, i) => !fautives.includes(i))
         if (fautives.length > 0 && retenus.length >= 2) {
           const secours = await demander(retenus.map(coord).join(':'), retenus.length === 2)
           if (secours.trajets.length > 0) {
             res.status(200).json({
               itineraires: secours.trajets.sort((a, b) => a.minutes - b.minutes).slice(0, 3),
               etapesIgnorees: fautives,
+              // La raison brute donnée par TomTom : c'est elle qui permet de
+              // comprendre POURQUOI l'étape a été écartée.
+              diagnostic: principal.raison.slice(0, 140),
             })
             return
           }
@@ -839,7 +870,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 geometrie: alleger(geometrie, 400),
               },
             ],
-            ...(fautives.length > 0 ? { etapesIgnorees: fautives } : {}),
+            ...(fautives.length > 0
+              ? { etapesIgnorees: fautives, diagnostic: principal.raison.slice(0, 140) }
+              : {}),
           })
           return
         }

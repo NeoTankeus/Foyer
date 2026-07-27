@@ -61,6 +61,8 @@ interface ReponseItineraire {
   // Les étapes que TomTom ne sait relier à aucune route (commune homonyme
   // géocodée à l'autre bout du monde…) : le trajet est calculé sans elles.
   etapesIgnorees?: number[]
+  // La raison brute renvoyée par TomTom quand une étape est écartée.
+  diagnostic?: string
   erreur?: string
 }
 
@@ -581,6 +583,12 @@ export function EcranVoyage() {
                   ⚠️ {nomsEtapesIgnorees.join(', ')} n'{nomsEtapesIgnorees.length > 1 ? 'ont' : 'a'} pas pu être
                   {nomsEtapesIgnorees.length > 1 ? ' reliées' : ' reliée'} à la route (lieu mal situé sur la carte) —
                   le trajet est calculé sans. Corrige l'étape dans « 🧭 Étapes et coûts ».
+                  {route.data?.diagnostic ? (
+                    <>
+                      <br />
+                      <span className="text-encre-3">Diagnostic pour STG : {route.data.diagnostic.slice(0, 160)}</span>
+                    </>
+                  ) : null}
                 </p>
               )}
               <p className="chiffres mt-1 text-titre-3 text-encre">
