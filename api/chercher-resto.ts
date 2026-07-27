@@ -605,7 +605,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           )
         }
         if (!reponseRoute.ok) {
-          res.status(200).json({ itineraires: [], erreur: `tomtom ${reponseRoute.status}` })
+          // On remonte la RAISON donnée par TomTom : sans elle, un 400 est
+          // indéchiffrable (option refusée ? point hors route ? clé bridée ?).
+          const detail = await reponseRoute
+            .text()
+            .then((t) => {
+              try {
+                const j = JSON.parse(t) as { detailedError?: { message?: string }; error?: { description?: string } }
+                return j.detailedError?.message ?? j.error?.description ?? t
+              } catch {
+                return t
+              }
+            })
+            .catch(() => '')
+          res.status(200).json({
+            itineraires: [],
+            erreur: `tomtom ${reponseRoute.status}${detail ? ` — ${String(detail).slice(0, 120)}` : ''}`,
+          })
           return
         }
         const donnees = (await reponseRoute.json().catch(() => null)) as { routes?: unknown } | null

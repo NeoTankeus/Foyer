@@ -578,32 +578,6 @@ export function EcranVoyage() {
                 </p>
               )}
 
-              {/* 🚗 La voiture qui fait le trajet : un appui pour changer. */}
-              {vehicules.length > 1 && (
-                <div className="mt-2 flex flex-wrap gap-1.5">
-                  {vehicules.map((v) => (
-                    <button
-                      key={v.id}
-                      onClick={() =>
-                        void ecrireReglagesVoyage((base) => ({
-                          ...base,
-                          voyage_vehicule: {
-                            ...((base['voyage_vehicule'] ?? {}) as Record<string, string>),
-                            [id ?? '']: v.id,
-                          },
-                        }))
-                      }
-                      aria-pressed={v.id === vehicule?.id}
-                      className={`min-h-sur-tactile rounded-full border px-3 py-1.5 text-legende font-[590]
-                        ${v.id === vehicule?.id ? 'border-transparent bg-sauge/20 text-encre' : 'border-trait bg-fond-eleve text-encre-2'}`}
-                    >
-                      🚗 {v.nom.split('—')[0]?.trim()} · {v.conso} L
-                      {v.id === vehicule?.id ? ' ✓' : ''}
-                    </button>
-                  ))}
-                </div>
-              )}
-
               {/* 🗺 Voir la route dessinée + les aires, stations, curiosités. */}
               {lienItineraire && (
                 <div className="mt-2">
@@ -635,6 +609,34 @@ export function EcranVoyage() {
               <Bouton variante="discret" onClick={() => void route.refetch()}>🔄 Réessayer</Bouton>
             </div>
           )}
+
+          {/* 🚗 La voiture du trajet — TOUJOURS visible, même si la route
+              n'a pas pu être calculée : c'est elle qui chiffre le carburant. */}
+          <div className="mt-3 border-t border-trait pt-3">
+            <p className="mb-1.5 text-corps-2 font-[590] text-encre">🚗 La voiture du voyage</p>
+            <div className="flex flex-wrap gap-1.5">
+              {vehicules.map((v) => (
+                <button
+                  key={v.id}
+                  onClick={() =>
+                    void ecrireReglagesVoyage((base) => ({
+                      ...base,
+                      voyage_vehicule: {
+                        ...((base['voyage_vehicule'] ?? {}) as Record<string, string>),
+                        [id ?? '']: v.id,
+                      },
+                    }))
+                  }
+                  aria-pressed={v.id === vehicule?.id}
+                  className={`min-h-sur-tactile rounded-full border px-3 py-1.5 text-legende font-[590]
+                    ${v.id === vehicule?.id ? 'border-transparent bg-sauge/20 text-encre' : 'border-trait bg-fond-eleve text-encre-2'}`}
+                >
+                  🚗 {v.nom} · {v.conso} L
+                  {v.id === vehicule?.id ? ' ✓' : ''}
+                </button>
+              ))}
+            </div>
+          </div>
 
           {/* 🧭 Les ÉTAPES : les arrêts prévus entre la maison et l'arrivée. */}
           {maison?.lat !== undefined && (
