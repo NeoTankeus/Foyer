@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect } from 'react'
+import { Suspense, lazy, useEffect, useRef } from 'react'
 import { BrowserRouter, NavLink, Navigate, Route, Routes, useLocation, useNavigate, useNavigationType } from 'react-router-dom'
 import { utiliserSession } from '@/etat/session'
 import { EcranConnexion } from '@/fonctionnalites/auth/EcranConnexion'
@@ -222,6 +222,7 @@ function MemoireDefilement() {
   const { pathname, search } = useLocation()
   const typeNavigation = useNavigationType()
   const cle = `${pathname}${search}`
+  const precedent = useRef<string | null>(null)
 
   useEffect(() => {
     const zone = document.getElementById('defilement-app')
@@ -231,8 +232,12 @@ function MemoireDefilement() {
     zone.addEventListener('scroll', noter, { passive: true })
 
     // Retour en arrière → on restaure ; nouvel écran → on part du haut.
+    // « Remonter » d'un écran vers son parent (/nous/voyages/42 → /nous/voyages)
+    // est aussi un retour, même si l'app y va par une nouvelle adresse.
+    const remonteVersParent = precedent.current !== null && precedent.current.startsWith(`${pathname}/`)
+    precedent.current = pathname
     // Le contenu arrive parfois après le premier rendu : on réessaie un peu.
-    if (typeNavigation === 'POP') {
+    if (typeNavigation === 'POP' || remonteVersParent) {
       const voulu = positions.get(cle) ?? 0
       let essais = 0
       const restaurer = () => {

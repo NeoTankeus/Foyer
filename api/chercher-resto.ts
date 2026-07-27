@@ -772,14 +772,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       ]
       const interroger = async (p: { lat: number; lon: number }, miroir: string) => {
         const c = `${p.lat},${p.lon}`
+        // ⚠️ Les aires de repos, stations-service et parcs sont très souvent
+        // cartographiés comme des SURFACES (way), pas comme des points : ne
+        // demander que `node` revenait à n'en trouver presque aucun.
         const requeteOsm =
           `[out:json][timeout:15];(` +
           `node(around:6000,${c})[highway~"^(rest_area|services)$"];` +
+          `way(around:6000,${c})[highway~"^(rest_area|services)$"];` +
           `node(around:6000,${c})[amenity="fuel"];` +
+          `way(around:6000,${c})[amenity="fuel"];` +
           `node(around:6000,${c})[amenity="compressed_air"];` +
           `node(around:6000,${c})[amenity="drinking_water"];` +
           `node(around:6000,${c})[tourism~"^(attraction|viewpoint|picnic_site|zoo|theme_park)$"];` +
-          `);out center 40;`
+          `way(around:6000,${c})[tourism~"^(attraction|viewpoint|picnic_site|zoo|theme_park)$"];` +
+          `);out center 60;`
         const r = await fetch(miroir, {
           method: 'POST',
           body: `data=${encodeURIComponent(requeteOsm)}`,
