@@ -1,6 +1,9 @@
 // Les nouveautés de la version en cours — affichées UNE fois dans le pop-up
 // « Quoi de neuf », signé ILY. Mises à jour à chaque déploiement.
 export const NOTES_VERSION: string[] = [
+  '🧭 Étapes réparées : un arrêt géocodé en pleine campagne faisait échouer tout le calcul — chaque étape est maintenant « accrochée » à la route la plus proche.',
+  '🛣 Péage enfin calculé : les kilomètres d’autoroute payante sont mesurés sur le tracé réel (TomTom les donne en repères, pas en distances).',
+  '💶 Budget complet du trajet : aller ET aller-retour, litres de carburant nécessaires, coût du péage, durée avec bouchons, pauses conseillées et heure d’arrivée estimée.',
   '🚗 Choisis la VOITURE du voyage : le Hyundai Tucson hybride de Stéphane (6,3 L) ou l’Opel Astra 2023 de Tiphaine (5,8 L) — le coût du trajet s’adapte tout seul. Consommations et prix modifiables, et tu peux ajouter d’autres véhicules.',
   '🛠 Corrigé : ajouter une étape faisait échouer le calcul de la route (« tomtom 400 »).',
   '🗺 Voyages : l’app compare jusqu’à 3 itinéraires et propose LE PLUS RAPIDE du moment. Touche « Voir la carte » → la route dessinée, avec les aires de repos, stations-service, gonflage pneus, points de vue et eau potable sur le trajet (filtrables, « Y aller » en un appui).',

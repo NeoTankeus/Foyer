@@ -175,6 +175,16 @@ export function EcranVoyage() {
   const coutCarburant =
     meilleur?.km && vehicule ? (meilleur.km * vehicule.conso * vehicule.prixLitre) / 100 : null
   const coutPeage = meilleur?.kmPeage ? meilleur.kmPeage * tarifPeageKm : 0
+  // Le détail qui rassure avant un grand départ : litres, pauses, arrivée.
+  const litresNecessaires = meilleur?.km && vehicule ? (meilleur.km * vehicule.conso) / 100 : null
+  // La sécurité routière recommande une pause toutes les 2 heures.
+  const pausesConseillees = meilleur ? Math.max(0, Math.floor(meilleur.minutes / 120)) : 0
+  const arriveePrevue = meilleur
+    ? new Date(Date.now() + (meilleur.minutes + pausesConseillees * 15) * 60000).toLocaleTimeString('fr-FR', {
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+    : null
   // L'adresse de la carte : départ, étapes, arrivée.
   const lienItineraire = (() => {
     if (!meilleur || maison?.lat === undefined || maison.lon === undefined) return null
@@ -567,15 +577,34 @@ export function EcranVoyage() {
                   : '✅ Route fluide en ce moment — le trajet le plus rapide'}
               </p>
 
-              {/* 💶 Ce que le trajet va coûter (aller simple), selon la voiture. */}
+              {/* 💶 Le budget complet du trajet, selon la voiture choisie. */}
               {coutCarburant !== null && (
-                <p className="mt-2 text-corps-2 text-encre">
-                  💶 <strong>{euros(coutCarburant + coutPeage)}</strong> l'aller
-                  <span className="text-encre-3">
-                    {' '}— ⛽ {euros(coutCarburant)}
-                    {coutPeage > 0 ? ` · 🛣 péage ${euros(coutPeage)} (${meilleur.kmPeage} km)` : ' · sans péage'}
-                  </span>
-                </p>
+                <div className="mt-2 rounded-lg bg-fond-sourd p-3">
+                  <p className="text-corps-2 font-[590] text-encre">
+                    💶 {euros(coutCarburant + coutPeage)} l'aller ·{' '}
+                    <strong>{euros((coutCarburant + coutPeage) * 2)} aller-retour</strong>
+                  </p>
+                  <div className="mt-1 flex flex-col gap-0.5 text-legende text-encre-2">
+                    <p>
+                      ⛽ Carburant {euros(coutCarburant)} — {vehicule?.conso} L/100 sur {meilleur.km} km ·{' '}
+                      {litresNecessaires !== null ? `${litresNecessaires.toFixed(1).replace('.', ',')} L` : ''} à{' '}
+                      {vehicule?.prixLitre.toFixed(2).replace('.', ',')} €/L
+                    </p>
+                    <p>
+                      {meilleur.kmPeage > 0
+                        ? `🛣 Péage ${euros(coutPeage)} — ${meilleur.kmPeage} km d'autoroute payante (≈ ${tarifPeageKm.toFixed(2).replace('.', ',')} €/km)`
+                        : '🛣 Péage : aucun tronçon payant détecté sur ce trajet'}
+                    </p>
+                    <p>
+                      ⏱ {dureeLisible(meilleur.minutes)} de route{' '}
+                      {meilleur.bouchonsMin > 0 ? `(dont ${meilleur.bouchonsMin} min de bouchons)` : '(sans bouchons)'} ·{' '}
+                      {pausesConseillees > 0
+                        ? `${pausesConseillees} pause${pausesConseillees > 1 ? 's' : ''} conseillée${pausesConseillees > 1 ? 's' : ''}`
+                        : 'trajet court'}
+                    </p>
+                    {arriveePrevue && <p>🕐 Départ maintenant → arrivée vers {arriveePrevue}</p>}
+                  </div>
+                </div>
               )}
 
               {/* 🗺 Voir la route dessinée + les aires, stations, curiosités. */}

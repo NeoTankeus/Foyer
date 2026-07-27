@@ -141,6 +141,30 @@ const NOM_PAR_DEFAUT: Record<GenrePoi, string> = {
   eau: 'Eau potable',
 }
 
+/**
+ * « Accroche » un point à la route carrossable la plus proche (OSRM, gratuit).
+ * Une étape tombée en plein champ fait échouer tout le calcul d'itinéraire
+ * (MAP_MATCHING_FAILURE) : on la ramène sur le bitume avant de router.
+ */
+async function surLaRoute(lat: number, lon: number): Promise<{ lat: number; lon: number }> {
+  try {
+    const r = await fetch(`https://router.project-osrm.org/nearest/v1/driving/${lon},${lat}?number=1`, {
+      headers: { accept: 'application/json', 'user-agent': UA },
+      signal: AbortSignal.timeout(6000),
+    })
+    if (!r.ok) return { lat, lon }
+    const d = (await r.json().catch(() => null)) as { waypoints?: { location?: unknown }[] } | null
+    const position = d?.waypoints?.[0]?.location
+    if (!Array.isArray(position) || position.length < 2) return { lat, lon }
+    const [lonRoute, latRoute] = position as number[]
+    return Number.isFinite(latRoute) && Number.isFinite(lonRoute)
+      ? { lat: latRoute as number, lon: lonRoute as number }
+      : { lat, lon }
+  } catch {
+    return { lat, lon }
+  }
+}
+
 /** Distance approximative en mètres — largement suffisante pour un dédoublonnage. */
 function metresEntre(laA: number, loA: number, laB: number, loB: number): number {
   const dLat = (laA - laB) * 111320
@@ -579,7 +603,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return
       }
       try {
-        const chemin = etapes.map((p) => `${p.lat},${p.lon}`).join(':')
+        // Les ÉTAPES intermédiaires sont accrochées à la route la plus proche :
+        // une commune géocodée en plein champ ferait échouer tout le calcul.
+        const surRoute = await Promise.all(
+          etapes.map((p, i) => (i === 0 || i === etapes.length - 1 ? Promise.resolve(p) : surLaRoute(p.lat, p.lon))),
+        )
+        const chemin = surRoute.map((p) => `${p.lat},${p.lon}`).join(':')
         // `computeTravelTimeFor=all` donne le temps sans trafic ; `sectionType`
         // fait remonter les tronçons à péage ; `routeRepresentation=polyline`
         // fournit le tracé point par point.
@@ -599,8 +628,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         // version minimale — mieux vaut un itinéraire simple que rien.
         let reponseRoute = r
         if (r.status === 400) {
+          // On ne lâche que les options « confort » : le péage et le tracé
+          // restent demandés, sinon on perdrait le coût et la carte.
           reponseRoute = await fetch(
-            `https://api.tomtom.com/routing/1/calculateRoute/${chemin}/json?traffic=true&travelMode=car&key=${cle}`,
+            `https://api.tomtom.com/routing/1/calculateRoute/${chemin}/json` +
+              `?traffic=true&travelMode=car&sectionType=tollRoad&routeRepresentation=polyline&key=${cle}`,
             { headers: { accept: 'application/json', 'user-agent': UA }, signal: AbortSignal.timeout(15000) },
           )
         }
@@ -650,18 +682,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 : avec
             const metres = Number(resume?.lengthInMeters)
 
-            // Les tronçons à péage : la casse du type varie selon les réponses.
-            const sections = (Array.isArray(route?.sections) ? route.sections : []) as {
-              sectionType?: unknown
-              lengthInMeters?: unknown
-            }[]
-            const metresPeage = sections.reduce((somme, s) => {
-              const genre = String(s?.sectionType ?? '').toUpperCase()
-              if (genre !== 'TOLL_ROAD' && genre !== 'TOLLROAD') return somme
-              const long = Number(s?.lengthInMeters)
-              return somme + (Number.isFinite(long) ? long : 0)
-            }, 0)
-
             // Le tracé : tous les points des tronçons mis bout à bout, allégés.
             const legs = (Array.isArray(route?.legs) ? route.legs : []) as { points?: unknown }[]
             const bruts: [number, number][] = []
@@ -674,6 +694,35 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 const pLa = Number(pt?.latitude)
                 const pLo = Number(pt?.longitude)
                 if (Number.isFinite(pLa) && Number.isFinite(pLo)) bruts.push([pLa, pLo])
+              }
+            }
+
+            // 🛣 Les tronçons à péage : TomTom les décrit par des INDICES de
+            // points (startPointIndex → endPointIndex), pas par des longueurs.
+            // On mesure donc nous-mêmes la distance sur le tracé.
+            const sections = (Array.isArray(route?.sections) ? route.sections : []) as {
+              sectionType?: unknown
+              startPointIndex?: unknown
+              endPointIndex?: unknown
+              lengthInMeters?: unknown
+            }[]
+            let metresPeage = 0
+            for (const s of sections) {
+              const genre = String(s?.sectionType ?? '').toUpperCase().replace(/[^A-Z]/g, '')
+              if (genre !== 'TOLLROAD') continue
+              // Certaines réponses donnent quand même la longueur : on la prend.
+              const long = Number(s?.lengthInMeters)
+              if (Number.isFinite(long) && long > 0) {
+                metresPeage += long
+                continue
+              }
+              const debutIdx = Number(s?.startPointIndex)
+              const finIdx = Number(s?.endPointIndex)
+              if (!Number.isFinite(debutIdx) || !Number.isFinite(finIdx)) continue
+              for (let i = Math.max(0, debutIdx); i < Math.min(finIdx, bruts.length - 1); i += 1) {
+                const a = bruts[i]
+                const b = bruts[i + 1]
+                if (a && b) metresPeage += metresEntre(a[0], a[1], b[0], b[1])
               }
             }
 
