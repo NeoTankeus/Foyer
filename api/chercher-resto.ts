@@ -739,6 +739,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             // Une clé refusée ou un quota dépassé ne se soigne pas en enlevant
             // des options : inutile de descendre l'échelle.
             if (r.status !== 400) break
+            // Idem quand un POINT est en cause (introuvable sur le réseau
+            // routier, ou pas relié aux autres) : ce n'est pas une option de
+            // trop, descendre l'échelle ferait perdre du temps pour rien.
+            if (/NO_ROUTE_FOUND|MAP_MATCHING|OUT_OF_REGION|POINT_NOT/i.test(String(detail))) break
             continue
           }
           const donnees = (await r.json().catch(() => null)) as { routes?: unknown } | null
@@ -768,43 +772,76 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           return
         }
 
-        // 🧩 Dernier recours quand il y a des étapes : on calcule chaque
-        // segment séparément (un trajet à deux points passe toujours) puis on
-        // les recolle bout à bout. Mieux vaut un itinéraire recollé que rien.
-        if (!direct) {
-          const morceaux: Trajet[] = []
-          for (let i = 0; i < surRoute.length - 1; i += 1) {
-            const a = surRoute[i]
-            const b = surRoute[i + 1]
-            if (!a || !b) break
-            const segment = await demander(`${coord(a)}:${coord(b)}`, false)
-            const t = segment.trajets[0]
-            if (!t) {
-              morceaux.length = 0
-              break
-            }
-            morceaux.push(t)
+        if (direct) {
+          res.status(200).json({ itineraires: [], erreur: `tomtom ${principal.raison}` })
+          return
+        }
+
+        // 🔍 Il y a des étapes et le calcul groupé a échoué : on cherche
+        // LAQUELLE bloque. Une étape mal située (commune homonyme à l'autre
+        // bout du monde, point en pleine mer) n'est reliée à rien : TomTom
+        // répond NO_ROUTE_FOUND pour tout le voyage à cause d'elle seule.
+        const depart = surRoute[0]
+        const fautives: number[] = []
+        if (depart) {
+          for (let i = 1; i < surRoute.length - 1; i += 1) {
+            const etape = surRoute[i]
+            if (!etape) continue
+            const essai = await demander(`${coord(depart)}:${coord(etape)}`, false)
+            if (essai.trajets.length === 0) fautives.push(i)
           }
-          if (morceaux.length > 0) {
-            const geometrie: [number, number][] = []
-            for (const m of morceaux) geometrie.push(...m.geometrie)
-            const somme = (lire: (t: Trajet) => number) => morceaux.reduce((total, m) => total + lire(m), 0)
-            const minutes = somme((m) => m.minutes)
-            const minutesSansTrafic = somme((m) => m.minutesSansTrafic)
+        }
+
+        // On recalcule SANS les étapes injoignables : le voyage reste
+        // utilisable, et l'app dira lesquelles ont été mises de côté.
+        const retenus = surRoute.filter((_, i) => !fautives.includes(i))
+        if (fautives.length > 0 && retenus.length >= 2) {
+          const secours = await demander(retenus.map(coord).join(':'), retenus.length === 2)
+          if (secours.trajets.length > 0) {
             res.status(200).json({
-              itineraires: [
-                {
-                  minutes,
-                  minutesSansTrafic,
-                  bouchonsMin: Math.max(0, minutes - minutesSansTrafic),
-                  km: Math.round(somme((m) => m.km ?? 0)),
-                  kmPeage: Math.round(somme((m) => m.kmPeage)),
-                  geometrie: alleger(geometrie, 400),
-                },
-              ],
+              itineraires: secours.trajets.sort((a, b) => a.minutes - b.minutes).slice(0, 3),
+              etapesIgnorees: fautives,
             })
             return
           }
+        }
+
+        // 🧩 Dernier recours : on calcule chaque segment séparément (un trajet
+        // à deux points passe presque toujours) puis on les recolle bout à
+        // bout. Mieux vaut un itinéraire recollé que pas d'itinéraire du tout.
+        const morceaux: Trajet[] = []
+        for (let i = 0; i < retenus.length - 1; i += 1) {
+          const a = retenus[i]
+          const b = retenus[i + 1]
+          if (!a || !b) break
+          const segment = await demander(`${coord(a)}:${coord(b)}`, false)
+          const t = segment.trajets[0]
+          if (!t) {
+            morceaux.length = 0
+            break
+          }
+          morceaux.push(t)
+        }
+        if (morceaux.length > 0) {
+          const geometrie: [number, number][] = []
+          for (const m of morceaux) geometrie.push(...m.geometrie)
+          const somme = (lire: (t: Trajet) => number) => morceaux.reduce((total, m) => total + lire(m), 0)
+          const minutes = somme((m) => m.minutes)
+          const minutesSansTrafic = somme((m) => m.minutesSansTrafic)
+          res.status(200).json({
+            itineraires: [
+              {
+                minutes,
+                minutesSansTrafic,
+                bouchonsMin: Math.max(0, minutes - minutesSansTrafic),
+                km: Math.round(somme((m) => m.km ?? 0)),
+                kmPeage: Math.round(somme((m) => m.kmPeage)),
+                geometrie: alleger(geometrie, 400),
+              },
+            ],
+            ...(fautives.length > 0 ? { etapesIgnorees: fautives } : {}),
+          })
+          return
         }
 
         res.status(200).json({ itineraires: [], erreur: `tomtom ${principal.raison}` })

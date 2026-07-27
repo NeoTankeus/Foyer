@@ -1,6 +1,8 @@
 // Les nouveautés de la version en cours — affichées UNE fois dans le pop-up
 // « Quoi de neuf », signé ILY. Mises à jour à chaque déploiement.
 export const NOTES_VERSION: string[] = [
+  '🧭 Étape introuvable sur la route : l’app repère MAINTENANT laquelle bloque, calcule le trajet sans elle, et te le dit en clair (« Corrige l’étape dans Étapes et coûts ») au lieu d’afficher une erreur.',
+  '🔎 Les étapes sont géocodées en privilégiant la France, et leur nom affiche la région (ou le pays s’il est étranger) : on voit tout de suite si c’est la bonne commune et non une homonyme à l’autre bout du monde.',
   '🧭 Étapes : le calcul ne peut plus échouer en « erreur 400 ». L’app essaie plusieurs façons de demander la route à TomTom, et si aucune ne passe, elle calcule chaque segment séparément (maison → étape, étape → destination) et les recolle — durée, kilomètres et péage additionnés.',
   '📍 Les arrêts sur la route changent de source : c’est désormais TomTom (le même service que le calcul du trajet) qui les cherche LE LONG de l’itinéraire — rapide et fiable. OpenStreetMap ne vient plus qu’en complément, et ne peut plus bloquer l’affichage.',
   '🔎 Les filtres (aires, essence, gonflage, eau, curiosités) et le nombre d’arrêts trouvés sont maintenant AU-DESSUS de la carte : plus besoin de faire défiler pour savoir où en est la recherche.',

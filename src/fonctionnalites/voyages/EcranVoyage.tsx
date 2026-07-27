@@ -58,6 +58,9 @@ interface ReponseItineraire {
     kmPeage: number
     geometrie: [number, number][]
   }[]
+  // Les étapes que TomTom ne sait relier à aucune route (commune homonyme
+  // géocodée à l'autre bout du monde…) : le trajet est calculé sans elles.
+  etapesIgnorees?: number[]
   erreur?: string
 }
 
@@ -185,18 +188,26 @@ export function EcranVoyage() {
         minute: '2-digit',
       })
     : null
+  // Les étapes que le serveur n'a pas su relier à la route. Les index sont
+  // comptés sur la liste complète (0 = la maison), d'où le décalage de 1.
+  const indexIgnores = new Set(route.data?.etapesIgnorees ?? [])
+  const etapesRoutables = etapes.filter((_, i) => !indexIgnores.has(i + 1))
+  const nomsEtapesIgnorees = etapes.filter((_, i) => indexIgnores.has(i + 1)).map((e) => `« ${e.nom} »`)
+
   // L'adresse de la carte : départ, étapes, arrivée.
   const lienItineraire = (() => {
     if (!meilleur || maison?.lat === undefined || maison.lon === undefined) return null
     const arrivee = meilleur.geometrie?.[meilleur.geometrie.length - 1]
     if (!arrivee) return null
+    // Une étape écartée du calcul ne doit pas revenir par la carte : elle y
+    // ferait échouer l'itinéraire exactement de la même façon.
     const points = [
       `${maison.lat},${maison.lon}`,
-      ...etapes.map((e) => `${e.lat},${e.lon}`),
+      ...etapesRoutables.map((e) => `${e.lat},${e.lon}`),
       `${arrivee[0]},${arrivee[1]}`,
     ].join(';')
     // Les noms garnissent les bulles de la carte (« La maison », « Valence »…).
-    const noms = ['La maison', ...etapes.map((e) => e.nom), voyagePourRoute?.destination ?? 'Arrivée'].join(';')
+    const noms = ['La maison', ...etapesRoutables.map((e) => e.nom), voyagePourRoute?.destination ?? 'Arrivée'].join(';')
     return `/nous/voyages/${id}/itineraire?points=${encodeURIComponent(points)}&noms=${encodeURIComponent(noms)}`
   })()
 
@@ -563,6 +574,15 @@ export function EcranVoyage() {
             </p>
           ) : meilleur ? (
             <>
+              {/* Une étape que TomTom ne sait relier à rien : on le DIT, plutôt
+                  que de faire semblant — le trajet, lui, reste calculé. */}
+              {nomsEtapesIgnorees.length > 0 && (
+                <p className="mt-1 rounded-lg bg-fond-sourd p-2 text-legende text-ambre">
+                  ⚠️ {nomsEtapesIgnorees.join(', ')} n'{nomsEtapesIgnorees.length > 1 ? 'ont' : 'a'} pas pu être
+                  {nomsEtapesIgnorees.length > 1 ? ' reliées' : ' reliée'} à la route (lieu mal situé sur la carte) —
+                  le trajet est calculé sans. Corrige l'étape dans « 🧭 Étapes et coûts ».
+                </p>
+              )}
               <p className="chiffres mt-1 text-titre-3 text-encre">
                 {dureeLisible(meilleur.minutes)}
                 {meilleur.km ? <span className="text-corps-2 font-[400] text-encre-3"> · {meilleur.km} km</span> : null}
@@ -1219,20 +1239,34 @@ function FormEtapes({
     if (!ville) return
     setErreur(null)
     // On retrouve l'arrêt sur la carte : sans coordonnées, pas d'itinéraire.
+    // On demande PLUSIEURS résultats et on privilégie la France : sinon une
+    // commune homonyme à l'autre bout du monde est choisie sans prévenir, et
+    // le calcul de la route échoue ensuite sans qu'on comprenne pourquoi.
     const r = await fetch(
-      `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(ville)}&count=1&language=fr`,
+      `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(ville)}&count=8&language=fr`,
     ).catch(() => null)
     const d = r?.ok
-      ? ((await r.json().catch(() => null)) as { results?: { name?: string; latitude?: number; longitude?: number }[] } | null)
+      ? ((await r.json().catch(() => null)) as {
+          results?: { name?: string; latitude?: number; longitude?: number; country_code?: string; admin1?: string; country?: string }[]
+        } | null)
       : null
-    const trouve = d?.results?.[0]
-    if (!trouve || !Number.isFinite(trouve.latitude) || !Number.isFinite(trouve.longitude)) {
+    const valides = (d?.results ?? []).filter((x) => Number.isFinite(x.latitude) && Number.isFinite(x.longitude))
+    const trouve = valides.find((x) => x.country_code === 'FR') ?? valides[0]
+    if (!trouve) {
       setErreur(`« ${ville} » est introuvable sur la carte — essaie le nom d'une commune.`)
       return
     }
+    // Le nom garde la région (et le pays s'il est étranger) : d'un coup d'œil
+    // on voit si l'endroit retenu est bien celui qu'on avait en tête.
+    const precision =
+      trouve.country_code === 'FR' ? (trouve.admin1 ?? '') : [trouve.admin1, trouve.country].filter(Boolean).join(', ')
     await surEtapes([
       ...etapes,
-      { nom: trouve.name ?? ville, lat: trouve.latitude as number, lon: trouve.longitude as number },
+      {
+        nom: precision ? `${trouve.name ?? ville} (${precision})` : (trouve.name ?? ville),
+        lat: trouve.latitude as number,
+        lon: trouve.longitude as number,
+      },
     ])
     setNouvelle('')
   }
