@@ -1,6 +1,8 @@
 // Les nouveautés de la version en cours — affichées UNE fois dans le pop-up
 // « Quoi de neuf », signé ILY. Mises à jour à chaque déploiement.
 export const NOTES_VERSION: string[] = [
+  '✈️ Les voyages se modifient et se suppriment : ✏️ dans la liste (ou depuis la fiche du voyage) — titre, destination, dates. La suppression demande confirmation et prévient de ce qui part avec (les photos souvenirs, elles, restent).',
+  '🚦 Trafic réparé : TomTom ne renvoyait pas le temps « sans bouchons » — l’app le demande désormais explicitement et sait le déduire.',
   '🛡️ GRANDE RÉVISION : toute l’application a été passée au peigne fin, écran par écran, bouton par bouton. Une centaine de bugs corrigés — sans toucher à la moindre de vos données.',
   '🚫 Une page qui plante ne bloque PLUS l’app : elle seule est concernée, la barre du bas reste utilisable et un bouton ramène au tableau de bord sans recharger.',
   '💾 Vos saisies ne peuvent plus se perdre : une coupure réseau est désormais reconnue comme telle et la modification est réessayée au lieu d’être abandonnée.',

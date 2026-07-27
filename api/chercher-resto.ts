@@ -454,8 +454,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return
       }
       try {
+        // `computeTravelTimeFor=all` est INDISPENSABLE : sans lui, TomTom ne
+        // renvoie pas le temps « sans trafic » et on ne peut pas chiffrer les
+        // bouchons. On sait aussi lire `trafficDelayInSeconds` en secours.
         const r = await fetch(
-          `https://api.tomtom.com/routing/1/calculateRoute/${dLa},${dLo}:${aLa},${aLo}/json?traffic=true&key=${cle}`,
+          `https://api.tomtom.com/routing/1/calculateRoute/${dLa},${dLo}:${aLa},${aLo}/json` +
+            `?traffic=true&computeTravelTimeFor=all&travelMode=car&key=${cle}`,
           { headers: { accept: 'application/json', 'user-agent': UA }, signal: AbortSignal.timeout(12000) },
         )
         if (!r.ok) {
@@ -463,19 +467,34 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           return
         }
         const donnees = (await r.json().catch(() => null)) as {
-          routes?: { summary?: { travelTimeInSeconds?: number; noTrafficTravelTimeInSeconds?: number; lengthInMeters?: number } }[]
+          routes?: {
+            summary?: {
+              travelTimeInSeconds?: number
+              noTrafficTravelTimeInSeconds?: number
+              trafficDelayInSeconds?: number
+              lengthInMeters?: number
+            }
+          }[]
         } | null
         const resume = (Array.isArray(donnees?.routes) ? donnees.routes : [])[0]?.summary
         const avec = Number(resume?.travelTimeInSeconds)
-        const sans = Number(resume?.noTrafficTravelTimeInSeconds)
-        if (!Number.isFinite(avec) || !Number.isFinite(sans)) {
+        if (!Number.isFinite(avec)) {
           res.status(200).json({ erreur: 'tomtom reponse illisible' })
           return
         }
+        // Le temps sans trafic : donné directement, sinon déduit du retard,
+        // sinon égal au temps réel (aucun bouchon connu) — jamais d'échec.
+        const sansDirect = Number(resume?.noTrafficTravelTimeInSeconds)
+        const retard = Number(resume?.trafficDelayInSeconds)
+        const sans = Number.isFinite(sansDirect)
+          ? sansDirect
+          : Number.isFinite(retard)
+            ? Math.max(0, avec - retard)
+            : avec
         res.status(200).json({
           minutes: Math.round(avec / 60),
           minutesSansTrafic: Math.round(sans / 60),
-          bouchonsMin: Math.round((avec - sans) / 60),
+          bouchonsMin: Math.max(0, Math.round((avec - sans) / 60)),
           km: Number.isFinite(Number(resume?.lengthInMeters)) ? Math.round(Number(resume?.lengthInMeters) / 1000) : null,
         })
       } catch (e) {

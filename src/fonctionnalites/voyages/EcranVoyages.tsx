@@ -1,8 +1,10 @@
 // Voyages : liste + création. La valise des trois est générée à la création.
-import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { utiliserSession } from '@/etat/session'
+import { muter } from '@/lib/sync'
+import type { LigneVoyage } from '@/lib/basedonnees.types'
 import { creerVoyage, utiliserVoyages } from './donnees'
 import { differenceInCalendarDays, maintenantLocal } from '@/lib/dates'
 import { Bouton } from '@/design/composants/Bouton'
@@ -16,15 +18,29 @@ export function EcranVoyages() {
   const clientRequetes = useQueryClient()
   const naviguer = useNavigate()
   const voyages = utiliserVoyages()
-  const [creation, setCreation] = useState(false)
+  // Un seul état pour créer ET modifier : 'nouvelle' ou le voyage à retoucher.
+  const [enEdition, setEnEdition] = useState<LigneVoyage | 'nouvelle' | null>(null)
+  const estAdulte = membre?.role === 'adult'
+
+  // Arrivée depuis la fiche d'un voyage (« ✏️ Modifier ce voyage ») : on ouvre
+  // directement son formulaire, puis on nettoie l'adresse.
+  const [parametres, setParametres] = useSearchParams()
+  const aModifier = parametres.get('modifier')
+  useEffect(() => {
+    if (!aModifier) return
+    const trouve = voyages.data?.find((v) => v.id === aModifier)
+    if (!trouve) return
+    setEnEdition(trouve)
+    setParametres({}, { replace: true })
+  }, [aModifier, voyages.data, setParametres])
 
   return (
     <div className="px-5 pt-3">
       <BarreRetour vers="/nous" />
       <div className="flex items-center justify-between gap-3 pb-3">
         <h2 className="text-titre-3 text-encre">Voyages</h2>
-        {membre?.role === 'adult' && (
-          <Bouton variante="discret" onClick={() => setCreation(true)} etiquette="Nouveau voyage">+</Bouton>
+        {estAdulte && (
+          <Bouton variante="discret" onClick={() => setEnEdition('nouvelle')} etiquette="Nouveau voyage">+</Bouton>
         )}
       </div>
 
@@ -41,15 +57,15 @@ export function EcranVoyages() {
             ? differenceInCalendarDays(new Date(`${v.debut}T12:00:00`), maintenantLocal())
             : null
           return (
-            <li key={v.id}>
+            <li key={v.id} className="flex items-center gap-2">
               <button
                 onClick={() => naviguer(`/nous/voyages/${v.id}`)}
-                className="w-full rounded-lg bg-fond-eleve p-4 text-left shadow-carte"
+                className="min-w-0 flex-1 rounded-lg bg-fond-eleve p-4 text-left shadow-carte"
               >
-                <div className="flex items-baseline justify-between">
-                  <p className="text-corps font-[590] text-encre">{v.titre}</p>
+                <div className="flex items-baseline justify-between gap-2">
+                  <p className="min-w-0 break-words text-corps font-[590] text-encre">{v.titre}</p>
                   {dans !== null && dans >= 0 && (
-                    <span className="chiffres text-note font-[590] text-ardoise">J-{dans}</span>
+                    <span className="chiffres shrink-0 text-note font-[590] text-ardoise">J-{dans}</span>
                   )}
                 </div>
                 <p className="text-note text-encre-3">
@@ -59,20 +75,55 @@ export function EcranVoyages() {
                     : ''}
                 </p>
               </button>
+              {estAdulte && (
+                <button
+                  onClick={() => setEnEdition(v)}
+                  aria-label={`Modifier ${v.titre}`}
+                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-fond-eleve text-[16px] shadow-carte"
+                >
+                  ✏️
+                </button>
+              )}
             </li>
           )
         })}
       </ul>
 
-      <Feuille ouverte={creation} onFermer={() => setCreation(false)} titre="Nouveau voyage">
-        {foyer && (
+      <Feuille
+        ouverte={enEdition !== null}
+        onFermer={() => setEnEdition(null)}
+        titre={enEdition === 'nouvelle' ? 'Nouveau voyage' : `Modifier « ${enEdition?.titre ?? ''} »`}
+      >
+        {enEdition !== null && foyer && (
           <FormVoyage
-            surCreation={async (brouillon) => {
-              const id = await creerVoyage(foyer.id, membres, brouillon)
+            initial={enEdition === 'nouvelle' ? null : enEdition}
+            surEnregistrement={async (brouillon) => {
+              if (enEdition === 'nouvelle') {
+                const id = await creerVoyage(foyer.id, membres, brouillon)
+                await clientRequetes.invalidateQueries({ queryKey: ['voyages'] })
+                setEnEdition(null)
+                naviguer(`/nous/voyages/${id}`)
+                return
+              }
+              // Une destination retouchée invalide les coordonnées mémorisées :
+              // la route et la météo se recalculeront sur la nouvelle ville.
+              const destinationChangee = brouillon.destination !== enEdition.destination
+              await muter({
+                table: 'voyages', type: 'update', cible_id: enEdition.id,
+                charge: destinationChangee ? { ...brouillon, lat: null, lng: null } : brouillon,
+              })
               await clientRequetes.invalidateQueries({ queryKey: ['voyages'] })
-              setCreation(false)
-              naviguer(`/nous/voyages/${id}`)
+              setEnEdition(null)
             }}
+            surSuppression={
+              enEdition === 'nouvelle'
+                ? undefined
+                : async () => {
+                    await muter({ table: 'voyages', type: 'delete', cible_id: enEdition.id, charge: {} })
+                    await clientRequetes.invalidateQueries({ queryKey: ['voyages'] })
+                    setEnEdition(null)
+                  }
+            }
           />
         )}
       </Feuille>
@@ -81,15 +132,20 @@ export function EcranVoyages() {
 }
 
 function FormVoyage({
-  surCreation,
+  initial,
+  surEnregistrement,
+  surSuppression,
 }: {
-  surCreation: (b: { titre: string; destination: string | null; debut: string | null; fin: string | null }) => Promise<void>
+  initial: LigneVoyage | null
+  surEnregistrement: (b: { titre: string; destination: string | null; debut: string | null; fin: string | null }) => Promise<void>
+  surSuppression?: () => Promise<void>
 }) {
-  const [titre, setTitre] = useState('')
-  const [destination, setDestination] = useState('')
-  const [debut, setDebut] = useState('')
-  const [fin, setFin] = useState('')
+  const [titre, setTitre] = useState(initial?.titre ?? '')
+  const [destination, setDestination] = useState(initial?.destination ?? '')
+  const [debut, setDebut] = useState(initial?.debut ?? '')
+  const [fin, setFin] = useState(initial?.fin ?? '')
   const [enCours, setEnCours] = useState(false)
+  const [confirme, setConfirme] = useState(false)
   return (
     <div className="flex flex-col gap-3">
       <ChampTexte etiquette="Titre" value={titre} onChange={(e) => setTitre(e.target.value)} placeholder="Pays basque en août" />
@@ -100,22 +156,51 @@ function FormVoyage({
       </div>
       <Bouton
         pleineLargeur
-        desactive={enCours}
+        variante="valider"
+        desactive={enCours || !titre.trim()}
         onClick={() => {
           if (!titre.trim()) return
           setEnCours(true)
-          void surCreation({
+          void surEnregistrement({
             titre: titre.trim(),
             destination: destination.trim() || null,
             debut: debut || null,
             fin: fin || null,
-          })
+          }).finally(() => setEnCours(false))
         }}
       >
-        {enCours ? 'Préparation des valises…' : 'Créer le voyage'}
+        {enCours ? (initial ? 'Enregistrement…' : 'Préparation des valises…') : initial ? 'Enregistrer ✓' : 'Créer le voyage'}
       </Bouton>
+
+      {surSuppression && (
+        <Bouton
+          pleineLargeur
+          variante={confirme ? 'urgent' : 'discret'}
+          desactive={enCours}
+          onClick={() => {
+            if (!confirme) {
+              setConfirme(true)
+              window.setTimeout(() => setConfirme(false), 4000)
+              return
+            }
+            setEnCours(true)
+            void surSuppression().finally(() => setEnCours(false))
+          }}
+        >
+          {confirme ? 'Confirmer : supprimer ce voyage ?' : '🗑 Supprimer ce voyage'}
+        </Bouton>
+      )}
+      {surSuppression && confirme && (
+        <p className="text-legende text-urgent">
+          Les valises, réservations et dépenses de ce voyage partiront avec lui. Les photos souvenirs,
+          elles, sont conservées.
+        </p>
+      )}
+
       <p className="text-legende text-encre-3">
-        À la création : une valise par personne (le doudou de Gabriel en tête) et la checklist maison.
+        {initial
+          ? 'Modifier la destination recalcule la météo et l’état de la route.'
+          : 'À la création : une valise par personne (le doudou de Gabriel en tête) et la checklist maison.'}
       </p>
     </div>
   )

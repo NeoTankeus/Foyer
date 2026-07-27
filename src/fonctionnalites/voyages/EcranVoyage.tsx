@@ -400,6 +400,15 @@ export function EcranVoyage() {
         </a>
       )}
 
+      {/* Modifier ou supprimer ce voyage — depuis sa propre fiche. */}
+      {membre?.role === 'adult' && (
+        <div className="mt-2 flex gap-2">
+          <Bouton variante="discret" onClick={() => naviguer('/nous/voyages?modifier=' + voyage.id)}>
+            ✏️ Modifier ce voyage
+          </Bouton>
+        </div>
+      )}
+
       {meteo && meteo.length > 0 && (
         <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
           {meteo.map((j) => (
