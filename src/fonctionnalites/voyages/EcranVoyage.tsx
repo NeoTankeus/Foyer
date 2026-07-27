@@ -632,7 +632,7 @@ export function EcranVoyage() {
                   Diagnostic pour STG :{' '}
                   {String(
                     route.data?.erreur ?? (route.error instanceof Error ? route.error.message : route.error ?? 'aucune réponse'),
-                  ).slice(0, 90)}
+                  ).slice(0, 200)}
                 </span>
               </p>
               <Bouton variante="discret" onClick={() => void route.refetch()}>🔄 Réessayer</Bouton>

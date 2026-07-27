@@ -436,7 +436,7 @@ export function EcranItineraire() {
               <br />
               <span className="text-legende">
                 Diagnostic pour STG :{' '}
-                {String(calcul.error instanceof Error ? calcul.error.message : calcul.error).slice(0, 90)}
+                {String(calcul.error instanceof Error ? calcul.error.message : calcul.error).slice(0, 200)}
               </span>
             </p>
             <Bouton pleineLargeur variante="primaire" onClick={() => void calcul.refetch()}>

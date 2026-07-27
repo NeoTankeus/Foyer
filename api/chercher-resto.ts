@@ -602,146 +602,212 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         res.status(200).json({ itineraires: [], erreur: 'points invalides' })
         return
       }
+      /** Un itinéraire prêt pour la carte, extrait d'une route TomTom. */
+      interface Trajet {
+        minutes: number
+        minutesSansTrafic: number
+        bouchonsMin: number
+        km: number | null
+        kmPeage: number
+        geometrie: [number, number][]
+      }
+
+      const analyser = (route: {
+        summary?: {
+          travelTimeInSeconds?: unknown
+          noTrafficTravelTimeInSeconds?: unknown
+          trafficDelayInSeconds?: unknown
+          lengthInMeters?: unknown
+        }
+        sections?: unknown
+        legs?: unknown
+      }): Trajet | null => {
+        const resume = route?.summary
+        const avec = Number(resume?.travelTimeInSeconds)
+        // Sans durée, la route ne sert à rien : on la laisse tomber.
+        if (!Number.isFinite(avec)) return null
+        const sansDirect = Number(resume?.noTrafficTravelTimeInSeconds)
+        const retard = Number(resume?.trafficDelayInSeconds)
+        const sans = Number.isFinite(sansDirect)
+          ? sansDirect
+          : Number.isFinite(retard)
+            ? Math.max(0, avec - retard)
+            : avec
+        const metres = Number(resume?.lengthInMeters)
+
+        // Le tracé : tous les points des tronçons mis bout à bout, allégés.
+        const legs = (Array.isArray(route?.legs) ? route.legs : []) as { points?: unknown }[]
+        const bruts: [number, number][] = []
+        for (const leg of legs) {
+          const pts = (Array.isArray(leg?.points) ? leg.points : []) as {
+            latitude?: unknown
+            longitude?: unknown
+          }[]
+          for (const pt of pts) {
+            const pLa = Number(pt?.latitude)
+            const pLo = Number(pt?.longitude)
+            if (Number.isFinite(pLa) && Number.isFinite(pLo)) bruts.push([pLa, pLo])
+          }
+        }
+
+        // 🛣 Les tronçons à péage : TomTom les décrit par des INDICES de
+        // points (startPointIndex → endPointIndex), pas par des longueurs.
+        // On mesure donc nous-mêmes la distance sur le tracé.
+        const sections = (Array.isArray(route?.sections) ? route.sections : []) as {
+          sectionType?: unknown
+          startPointIndex?: unknown
+          endPointIndex?: unknown
+          lengthInMeters?: unknown
+        }[]
+        let metresPeage = 0
+        for (const s of sections) {
+          const genre = String(s?.sectionType ?? '').toUpperCase().replace(/[^A-Z]/g, '')
+          if (genre !== 'TOLLROAD') continue
+          // Certaines réponses donnent quand même la longueur : on la prend.
+          const long = Number(s?.lengthInMeters)
+          if (Number.isFinite(long) && long > 0) {
+            metresPeage += long
+            continue
+          }
+          const debutIdx = Number(s?.startPointIndex)
+          const finIdx = Number(s?.endPointIndex)
+          if (!Number.isFinite(debutIdx) || !Number.isFinite(finIdx)) continue
+          for (let i = Math.max(0, debutIdx); i < Math.min(finIdx, bruts.length - 1); i += 1) {
+            const a = bruts[i]
+            const b = bruts[i + 1]
+            if (a && b) metresPeage += metresEntre(a[0], a[1], b[0], b[1])
+          }
+        }
+
+        const minutes = Math.round(avec / 60)
+        const minutesSansTrafic = Math.round(sans / 60)
+        return {
+          minutes,
+          minutesSansTrafic,
+          bouchonsMin: Math.max(0, minutes - minutesSansTrafic),
+          km: Number.isFinite(metres) ? Math.round(metres / 1000) : null,
+          kmPeage: Math.round(metresPeage / 1000),
+          geometrie: alleger(bruts, 400),
+        }
+      }
+
+      const evitement = eviterPeages ? '&avoid=tollRoads' : ''
+
+      /**
+       * Demande une route à TomTom en DÉGRADANT les options tant qu'il répond
+       * « 400 ». Certaines combinaisons sont refusées dès qu'il y a une étape
+       * intermédiaire, et le message d'erreur ne dit pas toujours laquelle :
+       * on descend donc l'échelle jusqu'à ce que ça passe, sans jamais rendre
+       * la main les mains vides sans avoir tout essayé.
+       */
+      const demander = async (
+        chemin: string,
+        avecAlternatives: boolean,
+      ): Promise<{ trajets: Trajet[]; raison: string }> => {
+        const echelons = [
+          `traffic=true&computeTravelTimeFor=all&travelMode=car&sectionType=tollRoad&routeRepresentation=polyline${avecAlternatives ? '&maxAlternatives=2' : ''}`,
+          'traffic=true&computeTravelTimeFor=all&travelMode=car&sectionType=tollRoad&routeRepresentation=polyline',
+          'traffic=true&travelMode=car&sectionType=tollRoad&routeRepresentation=polyline',
+          'traffic=true&travelMode=car&routeRepresentation=polyline',
+          'travelMode=car&routeRepresentation=polyline',
+        ]
+        let raison = 'aucune réponse'
+        for (const options of echelons) {
+          const r = await fetch(
+            `https://api.tomtom.com/routing/1/calculateRoute/${chemin}/json?${options}${evitement}&key=${cle}`,
+            { headers: { accept: 'application/json', 'user-agent': UA }, signal: AbortSignal.timeout(12000) },
+          ).catch((e: unknown) => {
+            raison = `réseau ${String(e instanceof Error ? e.message : e).slice(0, 30)}`
+            return null
+          })
+          if (!r) continue
+          if (!r.ok) {
+            // On remonte la RAISON donnée par TomTom : sans elle, un 400 est
+            // indéchiffrable (option refusée ? point hors route ? clé bridée ?).
+            const detail = await r
+              .text()
+              .then((t) => {
+                try {
+                  const j = JSON.parse(t) as { detailedError?: { message?: string }; error?: { description?: string } }
+                  return j.detailedError?.message ?? j.error?.description ?? t
+                } catch {
+                  return t
+                }
+              })
+              .catch(() => '')
+            raison = `${r.status}${detail ? ` — ${String(detail).slice(0, 110)}` : ''}`
+            // Une clé refusée ou un quota dépassé ne se soigne pas en enlevant
+            // des options : inutile de descendre l'échelle.
+            if (r.status !== 400) break
+            continue
+          }
+          const donnees = (await r.json().catch(() => null)) as { routes?: unknown } | null
+          const routes = (Array.isArray(donnees?.routes) ? donnees.routes : []) as Parameters<typeof analyser>[0][]
+          const trajets = routes.map(analyser).filter((x): x is Trajet => x !== null)
+          if (trajets.length > 0) return { trajets, raison: '' }
+          raison = 'réponse sans itinéraire'
+        }
+        return { trajets: [], raison }
+      }
+
       try {
         // Les ÉTAPES intermédiaires sont accrochées à la route la plus proche :
         // une commune géocodée en plein champ ferait échouer tout le calcul.
         const surRoute = await Promise.all(
           etapes.map((p, i) => (i === 0 || i === etapes.length - 1 ? Promise.resolve(p) : surLaRoute(p.lat, p.lon))),
         )
-        const chemin = surRoute.map((p) => `${p.lat},${p.lon}`).join(':')
-        // `computeTravelTimeFor=all` donne le temps sans trafic ; `sectionType`
-        // fait remonter les tronçons à péage ; `routeRepresentation=polyline`
-        // fournit le tracé point par point.
-        // ⚠️ TomTom REFUSE `maxAlternatives` dès qu'il y a une étape
-        // intermédiaire (erreur 400) : on ne le demande que sur un trajet
-        // direct, sinon on se contente de l'itinéraire optimal.
-        const alternatives = etapes.length === 2 ? '&maxAlternatives=2' : ''
-        const r = await fetch(
-          `https://api.tomtom.com/routing/1/calculateRoute/${chemin}/json` +
-            `?traffic=true&computeTravelTimeFor=all&travelMode=car${alternatives}` +
-            `&sectionType=tollRoad&routeRepresentation=polyline` +
-            (eviterPeages ? '&avoid=tollRoads' : '') +
-            `&key=${cle}`,
-          { headers: { accept: 'application/json', 'user-agent': UA }, signal: AbortSignal.timeout(15000) },
-        )
-        // Filet : si TomTom refuse encore une option (400), on retente en
-        // version minimale — mieux vaut un itinéraire simple que rien.
-        let reponseRoute = r
-        if (r.status === 400) {
-          // On ne lâche que les options « confort » : le péage et le tracé
-          // restent demandés, sinon on perdrait le coût et la carte.
-          reponseRoute = await fetch(
-            `https://api.tomtom.com/routing/1/calculateRoute/${chemin}/json` +
-              `?traffic=true&travelMode=car&sectionType=tollRoad&routeRepresentation=polyline&key=${cle}`,
-            { headers: { accept: 'application/json', 'user-agent': UA }, signal: AbortSignal.timeout(15000) },
-          )
-        }
-        if (!reponseRoute.ok) {
-          // On remonte la RAISON donnée par TomTom : sans elle, un 400 est
-          // indéchiffrable (option refusée ? point hors route ? clé bridée ?).
-          const detail = await reponseRoute
-            .text()
-            .then((t) => {
-              try {
-                const j = JSON.parse(t) as { detailedError?: { message?: string }; error?: { description?: string } }
-                return j.detailedError?.message ?? j.error?.description ?? t
-              } catch {
-                return t
-              }
-            })
-            .catch(() => '')
+        const coord = (p: { lat: number; lon: number }) => `${p.lat.toFixed(6)},${p.lon.toFixed(6)}`
+        const direct = surRoute.length === 2
+
+        const principal = await demander(surRoute.map(coord).join(':'), direct)
+        if (principal.trajets.length > 0) {
           res.status(200).json({
-            itineraires: [],
-            erreur: `tomtom ${reponseRoute.status}${detail ? ` — ${String(detail).slice(0, 120)}` : ''}`,
+            // Le plus rapide MAINTENANT (trafic compris) d'abord.
+            itineraires: principal.trajets.sort((a, b) => a.minutes - b.minutes).slice(0, 3),
           })
           return
         }
-        const donnees = (await reponseRoute.json().catch(() => null)) as { routes?: unknown } | null
-        const routes = (Array.isArray(donnees?.routes) ? donnees.routes : []) as {
-          summary?: {
-            travelTimeInSeconds?: unknown
-            noTrafficTravelTimeInSeconds?: unknown
-            trafficDelayInSeconds?: unknown
-            lengthInMeters?: unknown
+
+        // 🧩 Dernier recours quand il y a des étapes : on calcule chaque
+        // segment séparément (un trajet à deux points passe toujours) puis on
+        // les recolle bout à bout. Mieux vaut un itinéraire recollé que rien.
+        if (!direct) {
+          const morceaux: Trajet[] = []
+          for (let i = 0; i < surRoute.length - 1; i += 1) {
+            const a = surRoute[i]
+            const b = surRoute[i + 1]
+            if (!a || !b) break
+            const segment = await demander(`${coord(a)}:${coord(b)}`, false)
+            const t = segment.trajets[0]
+            if (!t) {
+              morceaux.length = 0
+              break
+            }
+            morceaux.push(t)
           }
-          sections?: unknown
-          legs?: unknown
-        }[]
-        const itineraires = routes
-          .map((route) => {
-            const resume = route?.summary
-            const avec = Number(resume?.travelTimeInSeconds)
-            // Sans durée, la route ne sert à rien : on la laisse tomber.
-            if (!Number.isFinite(avec)) return null
-            const sansDirect = Number(resume?.noTrafficTravelTimeInSeconds)
-            const retard = Number(resume?.trafficDelayInSeconds)
-            const sans = Number.isFinite(sansDirect)
-              ? sansDirect
-              : Number.isFinite(retard)
-                ? Math.max(0, avec - retard)
-                : avec
-            const metres = Number(resume?.lengthInMeters)
+          if (morceaux.length > 0) {
+            const geometrie: [number, number][] = []
+            for (const m of morceaux) geometrie.push(...m.geometrie)
+            const somme = (lire: (t: Trajet) => number) => morceaux.reduce((total, m) => total + lire(m), 0)
+            const minutes = somme((m) => m.minutes)
+            const minutesSansTrafic = somme((m) => m.minutesSansTrafic)
+            res.status(200).json({
+              itineraires: [
+                {
+                  minutes,
+                  minutesSansTrafic,
+                  bouchonsMin: Math.max(0, minutes - minutesSansTrafic),
+                  km: Math.round(somme((m) => m.km ?? 0)),
+                  kmPeage: Math.round(somme((m) => m.kmPeage)),
+                  geometrie: alleger(geometrie, 400),
+                },
+              ],
+            })
+            return
+          }
+        }
 
-            // Le tracé : tous les points des tronçons mis bout à bout, allégés.
-            const legs = (Array.isArray(route?.legs) ? route.legs : []) as { points?: unknown }[]
-            const bruts: [number, number][] = []
-            for (const leg of legs) {
-              const pts = (Array.isArray(leg?.points) ? leg.points : []) as {
-                latitude?: unknown
-                longitude?: unknown
-              }[]
-              for (const pt of pts) {
-                const pLa = Number(pt?.latitude)
-                const pLo = Number(pt?.longitude)
-                if (Number.isFinite(pLa) && Number.isFinite(pLo)) bruts.push([pLa, pLo])
-              }
-            }
-
-            // 🛣 Les tronçons à péage : TomTom les décrit par des INDICES de
-            // points (startPointIndex → endPointIndex), pas par des longueurs.
-            // On mesure donc nous-mêmes la distance sur le tracé.
-            const sections = (Array.isArray(route?.sections) ? route.sections : []) as {
-              sectionType?: unknown
-              startPointIndex?: unknown
-              endPointIndex?: unknown
-              lengthInMeters?: unknown
-            }[]
-            let metresPeage = 0
-            for (const s of sections) {
-              const genre = String(s?.sectionType ?? '').toUpperCase().replace(/[^A-Z]/g, '')
-              if (genre !== 'TOLLROAD') continue
-              // Certaines réponses donnent quand même la longueur : on la prend.
-              const long = Number(s?.lengthInMeters)
-              if (Number.isFinite(long) && long > 0) {
-                metresPeage += long
-                continue
-              }
-              const debutIdx = Number(s?.startPointIndex)
-              const finIdx = Number(s?.endPointIndex)
-              if (!Number.isFinite(debutIdx) || !Number.isFinite(finIdx)) continue
-              for (let i = Math.max(0, debutIdx); i < Math.min(finIdx, bruts.length - 1); i += 1) {
-                const a = bruts[i]
-                const b = bruts[i + 1]
-                if (a && b) metresPeage += metresEntre(a[0], a[1], b[0], b[1])
-              }
-            }
-
-            const minutes = Math.round(avec / 60)
-            const minutesSansTrafic = Math.round(sans / 60)
-            return {
-              minutes,
-              minutesSansTrafic,
-              bouchonsMin: Math.max(0, minutes - minutesSansTrafic),
-              km: Number.isFinite(metres) ? Math.round(metres / 1000) : null,
-              kmPeage: Math.round(metresPeage / 1000),
-              geometrie: alleger(bruts, 400),
-            }
-          })
-          .filter((x): x is NonNullable<typeof x> => x !== null)
-          // Le plus rapide MAINTENANT (trafic compris) d'abord.
-          .sort((a, b) => a.minutes - b.minutes)
-          .slice(0, 3)
-        res.status(200).json({ itineraires })
+        res.status(200).json({ itineraires: [], erreur: `tomtom ${principal.raison}` })
       } catch (e) {
         res.status(200).json({ itineraires: [], erreur: `tomtom ${String(e instanceof Error ? e.message : e).slice(0, 60)}` })
       }
