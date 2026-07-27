@@ -416,12 +416,10 @@ export function EcranVoyage() {
         </div>
       )}
 
-      {/* 🛣 L'état de la route vers la destination — trafic réel, actualisé
-          à chaque ouverture (et d'un appui sur Actualiser). */}
-      {route.isFetching && !route.data && (
-        <p className="mt-3 text-legende text-encre-3">🛣 Relevé de la route…</p>
-      )}
-      {route.data && !route.data.erreur && route.data.minutes !== undefined && (
+      {/* 🛣 L'état de la route vers la destination — TOUJOURS visible tant que
+          le voyage n'est pas terminé : la carte dit franchement ce qui se
+          passe (relevé, trafic, ou ce qui manque pour le calculer). */}
+      {voyage.statut !== 'termine' && (
         <div className="mt-3 rounded-xl bg-fond-eleve p-4 shadow-carte">
           <div className="flex items-center justify-between gap-2">
             <h3 className="text-note font-[700] uppercase tracking-wide text-encre-3">
@@ -431,31 +429,56 @@ export function EcranVoyage() {
               🔄
             </button>
           </div>
-          <p className="chiffres mt-1 text-titre-3 text-encre">
-            {dureeLisible(route.data.minutes)}
-            {route.data.km ? <span className="text-corps-2 font-[400] text-encre-3"> · {route.data.km} km</span> : null}
-          </p>
-          <p
-            className={`text-corps-2 font-[590] ${
-              (route.data.bouchonsMin ?? 0) >= 15 ? 'text-urgent' : (route.data.bouchonsMin ?? 0) >= 5 ? 'text-ambre' : 'text-fait'
-            }`}
-          >
-            {(route.data.bouchonsMin ?? 0) >= 5
-              ? `🚧 +${route.data.bouchonsMin} min de bouchons en ce moment`
-              : '✅ Route fluide en ce moment'}
-          </p>
-          <p className="mt-1 text-legende text-encre-3">Trafic en direct — revérifie juste avant de charger la voiture.</p>
+
+          {maison?.lat === undefined ? (
+            <p className="mt-1 text-corps-2 text-encre-2">
+              Renseigne l'adresse de la maison dans le <strong>Radar de départ</strong> — c'est le point de
+              départ du trajet.
+            </p>
+          ) : !voyage.destination && voyage.lat === null ? (
+            <p className="mt-1 text-corps-2 text-encre-2">
+              Ajoute une destination à ce voyage (bouton Modifier) pour connaître la route et les bouchons.
+            </p>
+          ) : route.isPending || route.isFetching ? (
+            <p className="mt-1 text-corps-2 text-encre-3">Relevé de la route en cours…</p>
+          ) : route.data?.erreur === 'cle_absente' ? (
+            <p className="mt-1 text-corps-2 text-encre-2">
+              Pour le trafic en direct : clé gratuite sur developer.tomtom.com, à coller dans Vercel sous le nom{' '}
+              <span className="chiffres font-[590]">TOMTOM_KEY</span> (puis Redeploy).
+            </p>
+          ) : route.data?.minutes !== undefined ? (
+            <>
+              <p className="chiffres mt-1 text-titre-3 text-encre">
+                {dureeLisible(route.data.minutes)}
+                {route.data.km ? <span className="text-corps-2 font-[400] text-encre-3"> · {route.data.km} km</span> : null}
+              </p>
+              <p
+                className={`text-corps-2 font-[590] ${
+                  (route.data.bouchonsMin ?? 0) >= 15 ? 'text-urgent' : (route.data.bouchonsMin ?? 0) >= 5 ? 'text-ambre' : 'text-fait'
+                }`}
+              >
+                {(route.data.bouchonsMin ?? 0) >= 5
+                  ? `🚧 +${route.data.bouchonsMin} min de bouchons en ce moment`
+                  : '✅ Route fluide en ce moment'}
+              </p>
+              <p className="mt-1 text-legende text-encre-3">Trafic en direct — revérifie juste avant de charger la voiture.</p>
+            </>
+          ) : (
+            <div className="mt-1 flex flex-col gap-2">
+              <p className="text-corps-2 text-encre-2">
+                La route n'a pas pu être calculée.
+                <br />
+                <span className="text-legende text-encre-3">
+                  Diagnostic pour STG :{' '}
+                  {String(
+                    route.data?.erreur ?? (route.error instanceof Error ? route.error.message : route.error ?? 'aucune réponse'),
+                  ).slice(0, 90)}
+                </span>
+              </p>
+              <Bouton variante="discret" onClick={() => void route.refetch()}>🔄 Réessayer</Bouton>
+            </div>
+          )}
         </div>
-      )}
-      {route.data?.erreur === 'cle_absente' && (
-        <p className="mt-3 text-legende text-encre-3">
-          🛣 Pour l'état des routes en direct : clé gratuite TomTom → variable <span className="chiffres">TOMTOM_KEY</span> dans Vercel.
-        </p>
-      )}
-      {maison?.lat === undefined && voyage.statut !== 'termine' && (
-        <p className="mt-3 text-legende text-encre-3">
-          🛣 Renseigne l'adresse de la maison (Radar de départ) pour voir l'état de la route vers ce voyage.
-        </p>
       )}
 
       {/* Valises */}
