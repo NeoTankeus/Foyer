@@ -1,6 +1,8 @@
 // Les nouveautés de la version en cours — affichées UNE fois dans le pop-up
 // « Quoi de neuf », signé ILY. Mises à jour à chaque déploiement.
 export const NOTES_VERSION: string[] = [
+  '🚗 Choisis la VOITURE du voyage : le Hyundai Tucson hybride de Stéphane (6,3 L) ou l’Opel Astra 2023 de Tiphaine (5,8 L) — le coût du trajet s’adapte tout seul. Consommations et prix modifiables, et tu peux ajouter d’autres véhicules.',
+  '🛠 Corrigé : ajouter une étape faisait échouer le calcul de la route (« tomtom 400 »).',
   '🗺 Voyages : l’app compare jusqu’à 3 itinéraires et propose LE PLUS RAPIDE du moment. Touche « Voir la carte » → la route dessinée, avec les aires de repos, stations-service, gonflage pneus, points de vue et eau potable sur le trajet (filtrables, « Y aller » en un appui).',
   '💶 Le coût du trajet est estimé : carburant (selon la conso de ta voiture) + péage — réglable dans « 🧭 Étapes et coûts ».',
   '🧭 Étapes multiples : ajoute autant d’arrêts que tu veux entre la maison et la destination, réordonne-les — la route, les bouchons et le coût se recalculent.',

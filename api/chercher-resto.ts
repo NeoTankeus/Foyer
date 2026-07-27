@@ -583,19 +583,32 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         // `computeTravelTimeFor=all` donne le temps sans trafic ; `sectionType`
         // fait remonter les tronçons à péage ; `routeRepresentation=polyline`
         // fournit le tracé point par point.
+        // ⚠️ TomTom REFUSE `maxAlternatives` dès qu'il y a une étape
+        // intermédiaire (erreur 400) : on ne le demande que sur un trajet
+        // direct, sinon on se contente de l'itinéraire optimal.
+        const alternatives = etapes.length === 2 ? '&maxAlternatives=2' : ''
         const r = await fetch(
           `https://api.tomtom.com/routing/1/calculateRoute/${chemin}/json` +
-            `?traffic=true&computeTravelTimeFor=all&travelMode=car&maxAlternatives=2` +
+            `?traffic=true&computeTravelTimeFor=all&travelMode=car${alternatives}` +
             `&sectionType=tollRoad&routeRepresentation=polyline` +
             (eviterPeages ? '&avoid=tollRoads' : '') +
             `&key=${cle}`,
           { headers: { accept: 'application/json', 'user-agent': UA }, signal: AbortSignal.timeout(15000) },
         )
-        if (!r.ok) {
-          res.status(200).json({ itineraires: [], erreur: `tomtom ${r.status}` })
+        // Filet : si TomTom refuse encore une option (400), on retente en
+        // version minimale — mieux vaut un itinéraire simple que rien.
+        let reponseRoute = r
+        if (r.status === 400) {
+          reponseRoute = await fetch(
+            `https://api.tomtom.com/routing/1/calculateRoute/${chemin}/json?traffic=true&travelMode=car&key=${cle}`,
+            { headers: { accept: 'application/json', 'user-agent': UA }, signal: AbortSignal.timeout(15000) },
+          )
+        }
+        if (!reponseRoute.ok) {
+          res.status(200).json({ itineraires: [], erreur: `tomtom ${reponseRoute.status}` })
           return
         }
-        const donnees = (await r.json().catch(() => null)) as { routes?: unknown } | null
+        const donnees = (await reponseRoute.json().catch(() => null)) as { routes?: unknown } | null
         const routes = (Array.isArray(donnees?.routes) ? donnees.routes : []) as {
           summary?: {
             travelTimeInSeconds?: unknown

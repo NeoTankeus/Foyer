@@ -32,6 +32,22 @@ export interface EtapeVoyage {
   lon: number
 }
 
+// Un véhicule du foyer : sa consommation sert à chiffrer le trajet.
+export interface Vehicule {
+  id: string
+  nom: string
+  conso: number // litres / 100 km
+  carburant: string
+  prixLitre: number
+}
+
+// Les voitures de la maison, prêtes à l'emploi (consommations réelles
+// constatées — modifiables à tout moment).
+const VEHICULES_DEFAUT: Vehicule[] = [
+  { id: 'tucson', nom: 'Hyundai Tucson hybride — Stéphane', conso: 6.3, carburant: 'SP95', prixLitre: 1.85 },
+  { id: 'astra', nom: 'Opel Astra 2023 — Tiphaine', conso: 5.8, carburant: 'SP95', prixLitre: 1.85 },
+]
+
 // Ce que renvoie le relais pour un itinéraire (le premier est le plus rapide).
 interface ReponseItineraire {
   itineraires?: {
@@ -86,11 +102,20 @@ export function EcranVoyage() {
   const etapes = (Array.isArray(toutesEtapes[id ?? '']) ? toutesEtapes[id ?? ''] : []) as EtapeVoyage[]
   const [etapesOuvertes, setEtapesOuvertes] = useState(false)
 
-  // Le véhicule : consommation, prix du carburant, tarif de péage au km.
-  const voiture = {
-    ...{ conso: 6.5, prixCarburant: 1.85, tarifPeageKm: 0.1 },
-    ...((foyer?.reglages['voiture'] ?? {}) as Partial<{ conso: number; prixCarburant: number; tarifPeageKm: number }>),
-  }
+  // 🚗 Les véhicules du foyer et celui choisi pour CE voyage.
+  const vehiculesBruts = foyer?.reglages['vehicules']
+  const vehicules: Vehicule[] = (Array.isArray(vehiculesBruts) && vehiculesBruts.length > 0
+    ? (vehiculesBruts as Vehicule[])
+    : VEHICULES_DEFAUT
+  ).filter((v): v is Vehicule => !!v && typeof v.nom === 'string' && Number.isFinite(v.conso))
+  const choixVehicules = (foyer?.reglages['voyage_vehicule'] ?? {}) as Record<string, string>
+  // Par défaut : la voiture de la personne connectée, sinon la première.
+  const vehiculeParDefaut =
+    vehicules.find((v) => membre?.prenom && v.nom.toLowerCase().includes(membre.prenom.toLowerCase())) ?? vehicules[0]
+  const vehicule = vehicules.find((v) => v.id === choixVehicules[id ?? '']) ?? vehiculeParDefaut
+  const tarifPeageKm = Number(
+    (foyer?.reglages['peage_km'] as number | undefined) ?? 0.1,
+  )
 
   const ecrireReglagesVoyage = async (patch: (base: Record<string, unknown>) => Record<string, unknown>) => {
     if (!foyer) return
@@ -147,8 +172,9 @@ export function EcranVoyage() {
   const dureeLisible = (min: number) => (min >= 60 ? `${Math.floor(min / 60)} h ${String(min % 60).padStart(2, '0')}` : `${min} min`)
   const euros = (v: number) => `${v.toFixed(2).replace('.', ',')} €`
   // Le coût estimé : carburant (conso × prix) + péage (km à péage × tarif).
-  const coutCarburant = meilleur?.km ? (meilleur.km * voiture.conso * voiture.prixCarburant) / 100 : null
-  const coutPeage = meilleur?.kmPeage ? meilleur.kmPeage * voiture.tarifPeageKm : 0
+  const coutCarburant =
+    meilleur?.km && vehicule ? (meilleur.km * vehicule.conso * vehicule.prixLitre) / 100 : null
+  const coutPeage = meilleur?.kmPeage ? meilleur.kmPeage * tarifPeageKm : 0
   // L'adresse de la carte : départ, étapes, arrivée.
   const lienItineraire = (() => {
     if (!meilleur || maison?.lat === undefined || maison.lon === undefined) return null
@@ -541,7 +567,7 @@ export function EcranVoyage() {
                   : '✅ Route fluide en ce moment — le trajet le plus rapide'}
               </p>
 
-              {/* 💶 Ce que le trajet va coûter (aller simple). */}
+              {/* 💶 Ce que le trajet va coûter (aller simple), selon la voiture. */}
               {coutCarburant !== null && (
                 <p className="mt-2 text-corps-2 text-encre">
                   💶 <strong>{euros(coutCarburant + coutPeage)}</strong> l'aller
@@ -550,6 +576,32 @@ export function EcranVoyage() {
                     {coutPeage > 0 ? ` · 🛣 péage ${euros(coutPeage)} (${meilleur.kmPeage} km)` : ' · sans péage'}
                   </span>
                 </p>
+              )}
+
+              {/* 🚗 La voiture qui fait le trajet : un appui pour changer. */}
+              {vehicules.length > 1 && (
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {vehicules.map((v) => (
+                    <button
+                      key={v.id}
+                      onClick={() =>
+                        void ecrireReglagesVoyage((base) => ({
+                          ...base,
+                          voyage_vehicule: {
+                            ...((base['voyage_vehicule'] ?? {}) as Record<string, string>),
+                            [id ?? '']: v.id,
+                          },
+                        }))
+                      }
+                      aria-pressed={v.id === vehicule?.id}
+                      className={`min-h-sur-tactile rounded-full border px-3 py-1.5 text-legende font-[590]
+                        ${v.id === vehicule?.id ? 'border-transparent bg-sauge/20 text-encre' : 'border-trait bg-fond-eleve text-encre-2'}`}
+                    >
+                      🚗 {v.nom.split('—')[0]?.trim()} · {v.conso} L
+                      {v.id === vehicule?.id ? ' ✓' : ''}
+                    </button>
+                  ))}
+                </div>
               )}
 
               {/* 🗺 Voir la route dessinée + les aires, stations, curiosités. */}
@@ -613,7 +665,9 @@ export function EcranVoyage() {
       <Feuille ouverte={etapesOuvertes} onFermer={() => setEtapesOuvertes(false)} titre="🧭 Étapes et coûts du trajet">
         <FormEtapes
           etapes={etapes}
-          voiture={voiture}
+          vehicules={vehicules}
+          vehiculeChoisi={vehicule?.id ?? ''}
+          tarifPeageKm={tarifPeageKm}
           surEtapes={async (suivantes) => {
             await ecrireReglagesVoyage((base) => ({
               ...base,
@@ -623,8 +677,17 @@ export function EcranVoyage() {
               },
             }))
           }}
-          surVoiture={async (v) => {
-            await ecrireReglagesVoyage((base) => ({ ...base, voiture: v }))
+          surVehicules={async (liste, peageKm) => {
+            await ecrireReglagesVoyage((base) => ({ ...base, vehicules: liste, peage_km: peageKm }))
+          }}
+          surChoixVehicule={async (idVehicule) => {
+            await ecrireReglagesVoyage((base) => ({
+              ...base,
+              voyage_vehicule: {
+                ...((base['voyage_vehicule'] ?? {}) as Record<string, string>),
+                [id ?? '']: idVehicule,
+              },
+            }))
           }}
         />
       </Feuille>
@@ -1092,27 +1155,33 @@ function FormDepense({
   )
 }
 
+
 /**
- * Les étapes du trajet (arrêts intermédiaires) et les réglages du véhicule
- * qui servent à estimer le coût : consommation, prix du carburant, tarif de
- * péage au kilomètre.
+ * Les étapes du trajet (arrêts intermédiaires) et les VOITURES du foyer :
+ * on choisit celle qui fait le voyage, et sa consommation chiffre le trajet.
  */
 function FormEtapes({
   etapes,
-  voiture,
+  vehicules,
+  vehiculeChoisi,
+  tarifPeageKm,
   surEtapes,
-  surVoiture,
+  surVehicules,
+  surChoixVehicule,
 }: {
   etapes: EtapeVoyage[]
-  voiture: { conso: number; prixCarburant: number; tarifPeageKm: number }
+  vehicules: Vehicule[]
+  vehiculeChoisi: string
+  tarifPeageKm: number
   surEtapes: (e: EtapeVoyage[]) => Promise<void>
-  surVoiture: (v: { conso: number; prixCarburant: number; tarifPeageKm: number }) => Promise<void>
+  surVehicules: (liste: Vehicule[], peageKm: number) => Promise<void>
+  surChoixVehicule: (id: string) => Promise<void>
 }) {
   const [nouvelle, setNouvelle] = useState('')
   const [erreur, setErreur] = useState<string | null>(null)
-  const [conso, setConso] = useState(String(voiture.conso))
-  const [prix, setPrix] = useState(String(voiture.prixCarburant))
-  const [peage, setPeage] = useState(String(voiture.tarifPeageKm))
+  const [liste, setListe] = useState<Vehicule[]>(vehicules)
+  const [peage, setPeage] = useState(String(tarifPeageKm))
+  const [nouveauNom, setNouveauNom] = useState('')
 
   const ajouter = async () => {
     const ville = nouvelle.trim()
@@ -1122,7 +1191,9 @@ function FormEtapes({
     const r = await fetch(
       `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(ville)}&count=1&language=fr`,
     ).catch(() => null)
-    const d = r?.ok ? ((await r.json().catch(() => null)) as { results?: { name?: string; latitude?: number; longitude?: number }[] } | null) : null
+    const d = r?.ok
+      ? ((await r.json().catch(() => null)) as { results?: { name?: string; latitude?: number; longitude?: number }[] } | null)
+      : null
     const trouve = d?.results?.[0]
     if (!trouve || !Number.isFinite(trouve.latitude) || !Number.isFinite(trouve.longitude)) {
       setErreur(`« ${ville} » est introuvable sur la carte — essaie le nom d'une commune.`)
@@ -1136,8 +1207,22 @@ function FormEtapes({
   }
 
   const nombre = (v: string, defaut: number) => {
-    const n = Number(v.replace(',', '.'))
+    const n = Number(String(v).replace(',', '.'))
     return Number.isFinite(n) && n > 0 ? n : defaut
+  }
+
+  const majVehicule = (i: number, champ: 'nom' | 'conso' | 'prixLitre' | 'carburant', valeur: string) => {
+    setListe((actuelle) =>
+      actuelle.map((v, j) =>
+        j !== i
+          ? v
+          : champ === 'conso'
+            ? { ...v, conso: nombre(valeur, v.conso) }
+            : champ === 'prixLitre'
+              ? { ...v, prixLitre: nombre(valeur, v.prixLitre) }
+              : { ...v, [champ]: valeur },
+      ),
+    )
   }
 
   return (
@@ -1199,27 +1284,95 @@ function FormEtapes({
       </div>
       {erreur && <p className="text-corps-2 text-urgent">{erreur}</p>}
 
+      {/* 🚗 Les voitures du foyer : celle qui roule décide du coût. */}
       <div className="border-t border-trait pt-3">
-        <p className="mb-1.5 text-legende font-[590] text-encre-3">La voiture (pour estimer le coût)</p>
-        <div className="flex gap-2">
-          <ChampTexte etiquette="L / 100 km" inputMode="decimal" value={conso} onChange={(e) => setConso(e.target.value)} />
-          <ChampTexte etiquette="€ / litre" inputMode="decimal" value={prix} onChange={(e) => setPrix(e.target.value)} />
-          <ChampTexte etiquette="€ / km péage" inputMode="decimal" value={peage} onChange={(e) => setPeage(e.target.value)} />
+        <p className="mb-1.5 text-legende font-[590] text-encre-3">La voiture de ce voyage</p>
+        <div className="mb-2 flex flex-wrap gap-1.5">
+          {liste.map((v) => (
+            <button
+              key={v.id}
+              onClick={() => void surChoixVehicule(v.id)}
+              aria-pressed={v.id === vehiculeChoisi}
+              className={`min-h-sur-tactile rounded-full border px-3 py-1.5 text-legende font-[590]
+                ${v.id === vehiculeChoisi ? 'border-transparent bg-sauge/20 text-encre' : 'border-trait bg-fond-eleve text-encre-2'}`}
+            >
+              🚗 {v.nom}
+              {v.id === vehiculeChoisi ? ' ✓' : ''}
+            </button>
+          ))}
+        </div>
+
+        {liste.map((v, i) => (
+          <div key={v.id} className="mb-2 rounded-lg bg-fond-sourd p-2">
+            <ChampTexte etiquette="Voiture" value={v.nom} onChange={(e) => majVehicule(i, 'nom', e.target.value)} />
+            <div className="mt-1.5 flex gap-2">
+              <ChampTexte
+                etiquette="L / 100 km"
+                inputMode="decimal"
+                value={String(v.conso)}
+                onChange={(e) => majVehicule(i, 'conso', e.target.value)}
+              />
+              <ChampTexte
+                etiquette="Carburant"
+                value={v.carburant}
+                onChange={(e) => majVehicule(i, 'carburant', e.target.value)}
+              />
+              <ChampTexte
+                etiquette="€ / litre"
+                inputMode="decimal"
+                value={String(v.prixLitre)}
+                onChange={(e) => majVehicule(i, 'prixLitre', e.target.value)}
+              />
+            </div>
+            {liste.length > 1 && (
+              <button
+                onClick={() => setListe((a) => a.filter((_, j) => j !== i))}
+                className="mt-1 text-legende text-encre-3"
+              >
+                ✕ Retirer cette voiture
+              </button>
+            )}
+          </div>
+        ))}
+
+        <div className="flex items-end gap-2">
+          <div className="flex-1">
+            <ChampTexte
+              etiquette="Ajouter une voiture"
+              value={nouveauNom}
+              onChange={(e) => setNouveauNom(e.target.value)}
+              placeholder="Renault Clio — Mamie"
+            />
+          </div>
+          <Bouton
+            variante="discret"
+            onClick={() => {
+              const nom = nouveauNom.trim()
+              if (!nom) return
+              setListe((a) => [...a, { id: crypto.randomUUID(), nom, conso: 6, carburant: 'SP95', prixLitre: 1.85 }])
+              setNouveauNom('')
+            }}
+          >
+            +
+          </Bouton>
+        </div>
+
+        <div className="mt-2">
+          <ChampTexte
+            etiquette="Tarif de péage (€ / km)"
+            inputMode="decimal"
+            value={peage}
+            onChange={(e) => setPeage(e.target.value)}
+          />
         </div>
         <div className="mt-2">
           <BoutonEnvoi
             pleineLargeur
             variante="valider"
             enfantsPendant="Enregistrement…"
-            onEnvoi={() =>
-              surVoiture({
-                conso: nombre(conso, 6.5),
-                prixCarburant: nombre(prix, 1.85),
-                tarifPeageKm: nombre(peage, 0.1),
-              })
-            }
+            onEnvoi={() => surVehicules(liste, nombre(peage, 0.1))}
           >
-            Enregistrer la voiture ✓
+            Enregistrer les voitures ✓
           </BoutonEnvoi>
         </div>
         <p className="mt-1 text-legende text-encre-3">
