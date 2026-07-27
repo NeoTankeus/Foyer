@@ -39,7 +39,13 @@ export function demarrerDictee(onTexte: (texte: string) => void, onEchec: () => 
     onEchec()
     return
   }
-  const reconnaissance = new Reconnaissance()
+  let reconnaissance: ReconnaissanceVocale
+  try {
+    reconnaissance = new Reconnaissance()
+  } catch {
+    onEchec()
+    return
+  }
   reconnaissance.lang = 'fr-FR'
   reconnaissance.interimResults = false
   reconnaissance.maxAlternatives = 1
@@ -55,5 +61,11 @@ export function demarrerDictee(onTexte: (texte: string) => void, onEchec: () => 
   reconnaissance.onend = () => {
     if (!recu) onEchec()
   }
-  reconnaissance.start()
+  // `start()` jette si le micro est refusé ou si une écoute est déjà en cours :
+  // sans ce garde-fou, un tap sur 🎙 pouvait faire tomber l'écran Courses.
+  try {
+    reconnaissance.start()
+  } catch {
+    onEchec()
+  }
 }

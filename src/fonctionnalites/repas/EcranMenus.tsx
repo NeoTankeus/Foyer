@@ -1,5 +1,5 @@
 // Menus de la semaine → liste de courses. On ne fait pas la liste, on fait les menus.
-import { useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { utiliserSession } from '@/etat/session'
 import {
@@ -34,8 +34,13 @@ export function EcranMenus() {
   const [recetteEnEdition, setRecetteEnEdition] = useState<LigneRecette | 'nouvelle' | null>(null)
   const [confirmeSuppr, setConfirmeSuppr] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
+  const minuteurMessage = useRef<number | undefined>(undefined)
+  useEffect(() => () => window.clearTimeout(minuteurMessage.current), [])
 
-  const jours = Array.from({ length: 7 }, (_, i) => addDays(maintenantLocal(), i))
+  // La semaine est calée sur le jour courant : recalculée à chaque rendu, elle
+  // fabriquait sept objets Date neufs pour rien.
+  const aujourdHui = dateIsoJour(maintenantLocal())
+  const jours = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(maintenantLocal(), i)), [aujourdHui])
   const estAdulte = membre?.role === 'adult'
 
   const repasPour = (date: string, creneau: LigneRepas['creneau']) =>
@@ -44,27 +49,45 @@ export function EcranMenus() {
   const libelleRepas = (r: LigneRepas | undefined) => {
     if (!r) return null
     if (r.notes) return r.notes
-    return recettes.data?.find((rec) => rec.id === r.recette_id)?.titre ?? '…'
+    const titre = recettes.data?.find((rec) => rec.id === r.recette_id)?.titre
+    if (titre) return titre
+    // On distingue « ça charge » de « la recette n'existe plus » : avant, les
+    // deux affichaient « … » sans qu'on sache s'il fallait attendre.
+    return recettes.isLoading ? '…' : 'Recette supprimée'
   }
 
   const rafraichir = () => clientRequetes.invalidateQueries({ queryKey: ['repas'] })
 
+  const annoncer = (texte: string) => {
+    setMessage(texte)
+    window.clearTimeout(minuteurMessage.current)
+    minuteurMessage.current = window.setTimeout(() => setMessage(null), 4000)
+  }
+
   const genererCourses = async () => {
-    if (!courses.data?.liste || !membre) return
-    const n = await genererCoursesDepuisMenus(
-      repas.data ?? [],
-      recettes.data ?? [],
-      courses.data.articles,
-      courses.data.liste.id,
-      membre.id,
-    )
-    await clientRequetes.invalidateQueries({ queryKey: ['courses'] })
-    setMessage(
-      n === 0
-        ? 'Tout y est déjà — rien à ajouter.'
-        : `${n} ingrédient${n > 1 ? 's' : ''} ajouté${n > 1 ? 's' : ''} aux courses.`,
-    )
-    setTimeout(() => setMessage(null), 4000)
+    if (!membre) return
+    if (!courses.data?.liste) {
+      // Le bouton « → Courses » ne faisait rien du tout sans liste : on le dit.
+      annoncer('Liste de courses introuvable — ouvre l’onglet Courses une fois, puis réessaie.')
+      return
+    }
+    try {
+      const n = await genererCoursesDepuisMenus(
+        repas.data ?? [],
+        recettes.data ?? [],
+        courses.data.articles,
+        courses.data.liste.id,
+        membre.id,
+      )
+      await clientRequetes.invalidateQueries({ queryKey: ['courses'] })
+      annoncer(
+        n === 0
+          ? 'Tout y est déjà — rien à ajouter.'
+          : `${n} ingrédient${n > 1 ? 's' : ''} ajouté${n > 1 ? 's' : ''} aux courses.`,
+      )
+    } catch {
+      annoncer('Ajout aux courses impossible — vérifie le réseau et réessaie.')
+    }
   }
 
   return (
@@ -78,6 +101,9 @@ export function EcranMenus() {
         )}
       </div>
       {message && <p className="mb-2 px-1 text-note text-fait">{message}</p>}
+      {repas.isLoading && (
+        <p className="px-8 py-6 text-center text-corps-2 text-encre-3">Chargement de la semaine…</p>
+      )}
 
       <div className="flex flex-col gap-2">
         {jours.map((jour) => {
@@ -92,13 +118,16 @@ export function EcranMenus() {
                   return (
                     <button
                       key={valeur}
+                      // Un enfant ne pose pas les menus : le bouton n'annonce
+                      // plus « Ajouter » pour ne rien faire ensuite.
+                      disabled={!estAdulte}
                       onClick={() => estAdulte && setCreneauOuvert({ date, creneau: valeur })}
-                      className={`min-h-sur-tactile flex-1 rounded-sm px-3 py-2 text-left
+                      className={`min-h-sur-tactile flex-1 rounded-sm px-3 py-2 text-left disabled:opacity-60
                         ${titre ? 'bg-fond-sourd' : 'border border-dashed border-trait'}`}
                     >
                       <span className="block text-legende uppercase tracking-wide text-encre-3">{libelle}</span>
                       <span className={`text-corps-2 ${titre ? 'text-encre' : 'text-encre-3'}`}>
-                        {titre ?? 'Ajouter'}
+                        {titre ?? (estAdulte ? 'Ajouter' : 'Rien de prévu')}
                       </span>
                     </button>
                   )
@@ -117,21 +146,29 @@ export function EcranMenus() {
         {creneauOuvert && foyer && (
           <ChoixRepas
             surChoix={async (choix) => {
-              await planifierRepas(
-                foyer.id,
-                repasPour(creneauOuvert.date, creneauOuvert.creneau),
-                creneauOuvert.date,
-                creneauOuvert.creneau,
-                choix,
-              )
-              await rafraichir()
+              try {
+                await planifierRepas(
+                  foyer.id,
+                  repasPour(creneauOuvert.date, creneauOuvert.creneau),
+                  creneauOuvert.date,
+                  creneauOuvert.creneau,
+                  choix,
+                )
+                await rafraichir()
+              } catch {
+                annoncer('Menu non enregistré — vérifie le réseau et réessaie.')
+              }
               setCreneauOuvert(null)
             }}
             surRetrait={async () => {
               const existant = repasPour(creneauOuvert.date, creneauOuvert.creneau)
-              if (existant) {
-                await retirerRepas(existant.id)
-                await rafraichir()
+              try {
+                if (existant) {
+                  await retirerRepas(existant.id)
+                  await rafraichir()
+                }
+              } catch {
+                annoncer('Retrait non enregistré — vérifie le réseau et réessaie.')
               }
               setCreneauOuvert(null)
             }}
@@ -149,11 +186,18 @@ export function EcranMenus() {
       >
         {recetteEnEdition !== null && foyer && (
           <FormRecette
+            // Le formulaire garde son état interne : la clé garantit qu'il
+            // repart des bonnes valeurs quand on change de recette.
+            key={recetteEnEdition === 'nouvelle' ? 'nouvelle' : recetteEnEdition.id}
             initiale={recetteEnEdition === 'nouvelle' ? null : recetteEnEdition}
             surEnregistrement={async (titre, ingredients) => {
-              if (recetteEnEdition === 'nouvelle') await creerRecette(foyer.id, titre, ingredients)
-              else await modifierRecette(recetteEnEdition.id, titre, ingredients)
-              await clientRequetes.invalidateQueries({ queryKey: ['recettes'] })
+              try {
+                if (recetteEnEdition === 'nouvelle') await creerRecette(foyer.id, titre, ingredients)
+                else await modifierRecette(recetteEnEdition.id, titre, ingredients)
+                await clientRequetes.invalidateQueries({ queryKey: ['recettes'] })
+              } catch {
+                annoncer('Recette non enregistrée — vérifie le réseau et réessaie.')
+              }
               setRecetteEnEdition(null)
             }}
             surSuppression={
@@ -164,9 +208,13 @@ export function EcranMenus() {
                       setConfirmeSuppr(recetteEnEdition.id)
                       return
                     }
-                    await supprimerRecette(recetteEnEdition.id)
+                    try {
+                      await supprimerRecette(recetteEnEdition.id)
+                      await clientRequetes.invalidateQueries({ queryKey: ['recettes'] })
+                    } catch {
+                      annoncer('Suppression non enregistrée — vérifie le réseau et réessaie.')
+                    }
                     setConfirmeSuppr(null)
-                    await clientRequetes.invalidateQueries({ queryKey: ['recettes'] })
                     setRecetteEnEdition(null)
                   }
             }
@@ -224,7 +272,10 @@ function ChoixRepas({
                   className="min-h-sur-tactile min-w-0 flex-1 px-3 text-left text-corps text-encre"
                 >
                   {r.titre}
-                  <span className="ml-2 text-note text-encre-3">{r.ingredients.length} ingrédients</span>
+                  {/* `ingredients` est une colonne JSON : jamais de `.length` à l'aveugle. */}
+                  <span className="ml-2 text-note text-encre-3">
+                    {(Array.isArray(r.ingredients) ? r.ingredients.length : 0)} ingrédients
+                  </span>
                 </button>
                 <button
                   aria-label={`Modifier la recette ${r.titre}`}
@@ -263,8 +314,10 @@ function FormRecette({
   confirme: boolean
 }) {
   const [titre, setTitre] = useState(initiale?.titre ?? '')
-  const [ingredients, setIngredients] = useState(
-    initiale ? initiale.ingredients.map((i) => i.libelle).join('\n') : '',
+  const [ingredients, setIngredients] = useState(() =>
+    Array.isArray(initiale?.ingredients)
+      ? initiale.ingredients.map((i) => i?.libelle ?? '').filter(Boolean).join('\n')
+      : '',
   )
   return (
     <div className="flex flex-col gap-3">

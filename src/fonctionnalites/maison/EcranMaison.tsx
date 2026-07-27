@@ -1,5 +1,5 @@
 // Maison : les tâches et les courses, côte à côte.
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { EcranTaches } from '@/fonctionnalites/taches/EcranTaches'
 import { EcranCourses } from '@/fonctionnalites/courses/EcranCourses'
@@ -8,14 +8,26 @@ import { EcranMur } from '@/fonctionnalites/mur/EcranMur'
 
 type Volet = 'taches' | 'courses' | 'menus' | 'mur'
 
+/** Le volet demandé par l'URL, ou null si l'URL ne dit rien. */
+function voletDemande(parametres: URLSearchParams): Volet | null {
+  const demande = parametres.get('volet')
+  if (demande === 'mur' || demande === 'menus' || demande === 'courses' || demande === 'taches') return demande
+  return parametres.get('ajout') === 'courses' ? 'courses' : null
+}
+
 export function EcranMaison() {
   const [parametres] = useSearchParams()
   // Le raccourci PWA « Ajouter aux courses » ouvre directement le bon volet.
-  const [volet, setVolet] = useState<Volet>(() => {
-    const demande = parametres.get('volet')
-    if (demande === 'mur' || demande === 'menus' || demande === 'courses' || demande === 'taches') return demande
-    return parametres.get('ajout') === 'courses' ? 'courses' : 'taches'
-  })
+  const [volet, setVolet] = useState<Volet>(() => voletDemande(parametres) ?? 'taches')
+
+  // On arrive souvent ici depuis l'accueil ou une notification (/maison?volet=…)
+  // alors que l'écran est DÉJÀ monté : sans cela le lien ouvrait le mauvais
+  // onglet. On ne suit que les changements d'URL, jamais les taps sur les
+  // onglets (l'URL ne bouge pas quand l'utilisateur change de volet à la main).
+  const cible = voletDemande(parametres)
+  useEffect(() => {
+    if (cible) setVolet(cible)
+  }, [cible])
 
   return (
     <div className="pb-4">

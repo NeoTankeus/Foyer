@@ -29,12 +29,12 @@ async function relevesPour(code: string): Promise<ReleveProduit['releves']> {
         location?: { osm_name?: string; osm_display_name?: string } | null
       }[]
     }
-    return (donnees.items ?? [])
-      .filter((i) => typeof i.price === 'number' && (i.currency ?? 'EUR') === 'EUR')
+    return (Array.isArray(donnees.items) ? donnees.items : [])
+      .filter((i) => !!i && Number.isFinite(i.price) && (i.currency ?? 'EUR') === 'EUR')
       .map((i) => ({
         prix: i.price ?? 0,
-        date: i.date ?? '',
-        magasin: i.location?.osm_name ?? i.location?.osm_display_name?.split(',')[0] ?? 'magasin inconnu',
+        date: typeof i.date === 'string' ? i.date : '',
+        magasin: String(i.location?.osm_name ?? i.location?.osm_display_name?.split(',')[0] ?? 'magasin inconnu'),
       }))
   } catch {
     return []
@@ -58,9 +58,9 @@ export function EcranRadarPrix() {
         code_barres: string | null
         image_url: string | null
       }[]) {
-        if (!p.code_barres || vus.has(p.code_barres)) continue
+        if (!p?.code_barres || vus.has(p.code_barres)) continue
         vus.add(p.code_barres)
-        candidats.push({ code: p.code_barres, libelle: p.libelle, image: p.image_url })
+        candidats.push({ code: p.code_barres, libelle: String(p.libelle ?? 'Produit'), image: p.image_url ?? null })
       }
       const resultats = await Promise.all(
         candidats.slice(0, 12).map(async (c) => ({ ...c, releves: await relevesPour(c.code) })),
@@ -108,7 +108,7 @@ export function EcranRadarPrix() {
                       <li key={i} className="flex justify-between text-legende text-encre-3">
                         <span className="truncate">{r.magasin}</span>
                         <span className="chiffres shrink-0">
-                          {r.prix.toFixed(2).replace('.', ',')} € · {r.date ? new Date(`${r.date}T12:00:00`).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }) : ''}
+                          {r.prix.toFixed(2).replace('.', ',')} € · {r.date && !Number.isNaN(new Date(`${r.date}T12:00:00`).getTime()) ? new Date(`${r.date}T12:00:00`).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }) : ''}
                         </span>
                       </li>
                     ))}

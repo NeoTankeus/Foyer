@@ -24,17 +24,25 @@ const CACHE_GEO = 'stiga-radar-geocache'
 
 async function geocoder(texte: string): Promise<{ lat: number; lon: number } | null> {
   try {
-    const cache = JSON.parse(localStorage.getItem(CACHE_GEO) ?? '{}') as Record<string, { lat: number; lon: number }>
+    const brut = JSON.parse(localStorage.getItem(CACHE_GEO) ?? '{}') as unknown
+    // Cache local abîmé : on repart d'un dictionnaire vide plutôt que de
+    // planter à la lecture (ou d'utiliser des coordonnées fantômes).
+    const cache: Record<string, { lat: number; lon: number }> =
+      brut && typeof brut === 'object' && !Array.isArray(brut)
+        ? (brut as Record<string, { lat: number; lon: number }>)
+        : {}
     const connu = cache[texte]
-    if (connu) return connu
+    if (connu && Number.isFinite(connu.lat) && Number.isFinite(connu.lon)) return connu
     const r = await fetch(
       `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(texte)}&format=jsonv2&limit=1&accept-language=fr`,
       { headers: { accept: 'application/json' } },
     )
     if (!r.ok) return null
-    const [premier] = (await r.json()) as { lat: string; lon: string }[]
+    const reponse = (await r.json()) as { lat: string; lon: string }[]
+    const premier = Array.isArray(reponse) ? reponse[0] : undefined
     if (!premier) return null
     const point = { lat: Number(premier.lat), lon: Number(premier.lon) }
+    if (!Number.isFinite(point.lat) || !Number.isFinite(point.lon)) return null
     cache[texte] = point
     localStorage.setItem(CACHE_GEO, JSON.stringify(cache))
     return point

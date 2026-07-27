@@ -25,17 +25,43 @@ interface FicheMedicament {
   generique: string | null
 }
 
+// Une ville n'est retenue que si ses coordonnées sont vraiment chiffrées :
+// sinon la recherche partirait avec « undefined » en latitude.
+function villeValide(v: unknown): PointVille | null {
+  if (!v || typeof v !== 'object') return null
+  const p = v as Partial<PointVille>
+  if (!Number.isFinite(p.lat) || !Number.isFinite(p.lon)) return null
+  return { nom: String(p.nom ?? 'Ville'), lat: p.lat as number, lon: p.lon as number }
+}
+
 async function geocoderVille(nom: string): Promise<PointVille | null> {
   try {
     const r = await fetch(
       `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(nom)}&count=1&language=fr&format=json`,
     )
     if (!r.ok) return null
-    const d = (await r.json()) as { results?: { name: string; latitude: number; longitude: number }[] }
-    const premier = d.results?.[0]
-    return premier ? { nom: premier.name, lat: premier.latitude, lon: premier.longitude } : null
+    const d = (await r.json()) as { results?: { name?: string; latitude?: number; longitude?: number }[] }
+    const premier = Array.isArray(d.results) ? d.results[0] : undefined
+    return premier ? villeValide({ nom: premier.name ?? nom, lat: premier.latitude, lon: premier.longitude }) : null
   } catch {
     return null
+  }
+}
+
+// La fiche vient d'une lecture d'image par le relais : chaque champ peut
+// manquer, et « précautions » n'est pas toujours une liste.
+function ficheSure(v: unknown): FicheMedicament | null {
+  if (!v || typeof v !== 'object') return null
+  const f = v as Partial<FicheMedicament>
+  return {
+    nom: String(f.nom ?? 'Médicament'),
+    substance: String(f.substance ?? 'non précisée'),
+    usage: String(f.usage ?? 'non précisé'),
+    posologie: String(f.posologie ?? 'non précisée'),
+    precautions: (Array.isArray(f.precautions) ? f.precautions : []).filter(
+      (p): p is string => typeof p === 'string' && p.trim() !== '',
+    ),
+    generique: f.generique != null ? String(f.generique) : null,
   }
 }
 
@@ -43,7 +69,7 @@ export function EcranPharmacies() {
   const { foyer } = utiliserSession()
   const maison = (foyer?.reglages['maison'] ?? null) as { adresse?: string; lat?: number; lon?: number } | null
   const [villeMemo, setVilleMemo] = useState<PointVille | null>(() => {
-    try { return JSON.parse(localStorage.getItem(CLE_VILLE) ?? 'null') as PointVille | null } catch { return null }
+    try { return villeValide(JSON.parse(localStorage.getItem(CLE_VILLE) ?? 'null')) } catch { return null }
   })
   const [source, setSource] = useState<'maison' | 'gps' | 'ville' | null>(null)
   const [saisieVille, setSaisieVille] = useState('')
@@ -73,7 +99,8 @@ export function EcranPharmacies() {
       })
       if (!r.ok) throw new Error(`serveur ${r.status}`)
       const d = (await r.json()) as { proposition?: FicheMedicament; message?: string }
-      if (d.proposition) setFiche(d.proposition)
+      const propre = ficheSure(d.proposition)
+      if (propre) setFiche(propre)
       else setErreurFiche(d.message ?? 'La boîte n’a pas pu être lue.')
     } catch (e) {
       setErreurFiche(String(e instanceof Error ? e.message : e))

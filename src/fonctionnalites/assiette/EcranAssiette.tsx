@@ -34,6 +34,39 @@ const couleurScore = (score: number) =>
 const libelleScore = (score: number) =>
   score < 50 ? 'Pas bon pour ton régime' : score < 75 ? 'Moyen — peut mieux faire' : 'Bien joué !'
 
+// L'analyse vient du relais (texte généré) et l'historique d'un JSON stocké
+// côté serveur : score en chaîne, « conseils » qui n'est pas une liste,
+// champs manquants… tout est remis en forme avant d'être affiché.
+const listeDeTextes = (v: unknown): string[] =>
+  (Array.isArray(v) ? v : []).filter((x): x is string => typeof x === 'string' && x.trim() !== '')
+
+const scoreSur100 = (v: unknown): number => {
+  const n = typeof v === 'number' ? v : typeof v === 'string' ? Number(v) : NaN
+  return Number.isFinite(n) ? Math.max(0, Math.min(100, Math.round(n))) : 0
+}
+
+const analyseSure = (v: unknown): Analyse => {
+  const a = (v && typeof v === 'object' ? v : {}) as Partial<Analyse>
+  return {
+    score: scoreSur100(a.score),
+    plat: String(a.plat ?? 'Repas'),
+    verdict: String(a.verdict ?? ''),
+    conseils: listeDeTextes(a.conseils),
+    alternative: a.alternative != null ? String(a.alternative) : undefined,
+  }
+}
+
+const entreeSure = (v: unknown, i: number): EntreeAssiette => {
+  const e = (v && typeof v === 'object' ? v : {}) as Partial<EntreeAssiette>
+  return {
+    ...analyseSure(v),
+    id: String(e.id ?? `assiette-${i}`),
+    membre_id: String(e.membre_id ?? ''),
+    quand: String(e.quand ?? ''),
+    texte: String(e.texte ?? ''),
+  }
+}
+
 export function EcranAssiette() {
   const { foyer, membre } = utiliserSession()
   const clientRequetes = useQueryClient()
@@ -45,10 +78,12 @@ export function EcranAssiette() {
     staleTime: 30 * 1000,
     queryFn: async (): Promise<{ entrees: EntreeAssiette[]; regimes: Record<string, string> }> => {
       const { data } = await supabase.from('foyers').select('reglages').eq('id', foyer?.id ?? '').single()
-      const reglages = (data?.reglages as Record<string, unknown> | null) ?? {}
+      const brut = data?.reglages as unknown
+      const reglages = (brut && typeof brut === 'object' && !Array.isArray(brut) ? brut : {}) as Record<string, unknown>
+      const regimes = reglages['regimes']
       return {
-        entrees: Array.isArray(reglages['assiette']) ? (reglages['assiette'] as EntreeAssiette[]) : [],
-        regimes: (reglages['regimes'] ?? {}) as Record<string, string>,
+        entrees: (Array.isArray(reglages['assiette']) ? reglages['assiette'] : []).map(entreeSure),
+        regimes: (regimes && typeof regimes === 'object' && !Array.isArray(regimes) ? regimes : {}) as Record<string, string>,
       }
     },
   })
@@ -99,7 +134,7 @@ export function EcranAssiette() {
       setErreur(corps.message ?? 'STG n’a pas réussi à analyser — réessaie.')
       return
     }
-    const analyse: Analyse = { ...corps.proposition, score: Math.max(0, Math.min(100, Math.round(corps.proposition.score))) }
+    const analyse: Analyse = analyseSure(corps.proposition)
     setResultat(analyse)
     // L'entrée part directement dans l'historique partagé (borné à 150).
     const entree: EntreeAssiette = {
@@ -121,7 +156,7 @@ export function EcranAssiette() {
     setSuppression(null)
     await ecrireReglages((base) => ({
       ...base,
-      assiette: (Array.isArray(base['assiette']) ? (base['assiette'] as EntreeAssiette[]) : []).filter((e) => e.id !== id),
+      assiette: (Array.isArray(base['assiette']) ? (base['assiette'] as EntreeAssiette[]) : []).filter((e) => e?.id !== id),
     }))
   }
 
@@ -277,7 +312,9 @@ export function EcranAssiette() {
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-corps-2 font-[590] text-encre">{e.plat || e.texte}</span>
                 <span className="block text-legende text-encre-3">
-                  {new Date(e.quand).toLocaleString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                  {Number.isNaN(new Date(e.quand).getTime())
+                    ? 'date inconnue'
+                    : new Date(e.quand).toLocaleString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
                 </span>
               </span>
               <span className="text-legende text-encre-3">{ouvert === e.id ? '▲' : '▼'}</span>

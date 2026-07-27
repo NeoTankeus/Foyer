@@ -24,14 +24,16 @@ export function EcranTaches() {
   const [enEdition, setEnEdition] = useState<LigneTache | 'nouvelle' | null>(null)
   const [confirmeSuppr, setConfirmeSuppr] = useState<string | null>(null)
   const [vueHistorique, setVueHistorique] = useState(false)
+  const [erreurAction, setErreurAction] = useState<string | null>(null)
 
   const aujourdHui = dateIsoJour(maintenantLocal())
 
   const completer = (tache: LigneTache) => {
     if (!membre) return
-    void completerTache(tache, membre.id, membres).then(() =>
-      clientRequetes.invalidateQueries({ queryKey: ['taches'] }),
-    )
+    setErreurAction(null)
+    void completerTache(tache, membre.id, membres)
+      .then(() => clientRequetes.invalidateQueries({ queryKey: ['taches'] }))
+      .catch(() => setErreurAction('La tâche n’a pas pu être validée — vérifie le réseau et réessaie.'))
   }
 
   const groupes: { titre: string; filtre: (t: LigneTache) => boolean }[] = [
@@ -65,21 +67,33 @@ export function EcranTaches() {
         </div>
       </div>
 
+      {erreurAction && <p className="mb-2 px-1 text-legende text-urgent">{erreurAction}</p>}
+
       {vueHistorique && (
         <HistoriqueTaches
           taches={faites.data ?? []}
+          enChargement={faites.isLoading}
           surRetour={(tache) => {
+            setErreurAction(null)
             void muter({
               table: 'taches', type: 'update', cible_id: tache.id,
               charge: { statut: 'a_faire', faite_par: null, faite_le: null },
-            }).then(() => clientRequetes.invalidateQueries({ queryKey: ['taches'] }))
+            })
+              .then(() => clientRequetes.invalidateQueries({ queryKey: ['taches'] }))
+              .catch(() => setErreurAction('Impossible de remettre la tâche à faire — vérifie le réseau.'))
           }}
           surSuppression={(tache) => {
-            void muter({ table: 'taches', type: 'delete', cible_id: tache.id, charge: {} }).then(() =>
-              clientRequetes.invalidateQueries({ queryKey: ['taches'] }),
-            )
+            setErreurAction(null)
+            void muter({ table: 'taches', type: 'delete', cible_id: tache.id, charge: {} })
+              .then(() => clientRequetes.invalidateQueries({ queryKey: ['taches'] }))
+              .catch(() => setErreurAction('Suppression impossible — vérifie le réseau.'))
           }}
         />
+      )}
+
+      {/* Un écran muet pendant le chargement laissait croire qu'il n'y a rien. */}
+      {!vueHistorique && taches.isLoading && (
+        <p className="px-8 py-10 text-center text-corps-2 text-encre-3">Chargement des tâches…</p>
       )}
 
       {!vueHistorique && (taches.data?.length ?? 0) === 0 && !taches.isLoading && (
@@ -131,9 +145,10 @@ export function EcranTaches() {
                       onClick={() => {
                         if (confirmeSuppr === tache.id) {
                           setConfirmeSuppr(null)
-                          void muter({ table: 'taches', type: 'delete', cible_id: tache.id, charge: {} }).then(() =>
-                            clientRequetes.invalidateQueries({ queryKey: ['taches'] }),
-                          )
+                          setErreurAction(null)
+                          void muter({ table: 'taches', type: 'delete', cible_id: tache.id, charge: {} })
+                            .then(() => clientRequetes.invalidateQueries({ queryKey: ['taches'] }))
+                            .catch(() => setErreurAction('Suppression impossible — vérifie le réseau.'))
                         } else {
                           navigator.vibrate?.(4)
                           setConfirmeSuppr(tache.id)
@@ -160,15 +175,20 @@ export function EcranTaches() {
           initiale={enEdition !== null && enEdition !== 'nouvelle' ? enEdition : null}
           onFermer={() => setEnEdition(null)}
           onCreer={async (brouillon) => {
-            if (enEdition !== null && enEdition !== 'nouvelle') {
-              // On ne touche pas aux points déjà attribués lors d'une modification.
-              const { points, ...champs } = brouillon
-              void points
-              await muter({ table: 'taches', type: 'update', cible_id: enEdition.id, charge: champs })
-            } else {
-              await creerTache(foyer.id, membre.id, brouillon)
+            try {
+              if (enEdition !== null && enEdition !== 'nouvelle') {
+                // On ne touche pas aux points déjà attribués lors d'une modification.
+                const { points, ...champs } = brouillon
+                void points
+                await muter({ table: 'taches', type: 'update', cible_id: enEdition.id, charge: champs })
+              } else {
+                await creerTache(foyer.id, membre.id, brouillon)
+              }
+              await clientRequetes.invalidateQueries({ queryKey: ['taches'] })
+            } catch {
+              // Sans cela, le panneau se fermait comme si tout allait bien.
+              setErreurAction('Tâche non enregistrée — vérifie le réseau et réessaie.')
             }
-            await clientRequetes.invalidateQueries({ queryKey: ['taches'] })
             setEnEdition(null)
           }}
         />
@@ -177,18 +197,33 @@ export function EcranTaches() {
   )
 }
 
+/** « · 14:05 » si l'horodatage est lisible, rien sinon (jamais « Invalid Date »). */
+function heureLisible(iso: string | null): string {
+  if (!iso) return ''
+  const quand = new Date(iso)
+  if (Number.isNaN(quand.getTime())) return ''
+  return ` · ${quand.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`
+}
+
 /** Tout ce qui a été coché — groupé par jour, avec qui l'a fait et quand. */
 function HistoriqueTaches({
   taches,
+  enChargement,
   surRetour,
   surSuppression,
 }: {
   taches: LigneTache[]
+  enChargement: boolean
   surRetour: (t: LigneTache) => void
   surSuppression: (t: LigneTache) => void
 }) {
   const { membres, membre } = utiliserSession()
   const [confirme, setConfirme] = useState<string | null>(null)
+
+  // « Encore rien de coché » pendant le chargement était un mensonge.
+  if (enChargement && taches.length === 0) {
+    return <p className="px-8 py-10 text-center text-corps-2 text-encre-3">Chargement de l’historique…</p>
+  }
 
   if (taches.length === 0) {
     return (
@@ -198,7 +233,10 @@ function HistoriqueTaches({
 
   const parJour = new Map<string, LigneTache[]>()
   for (const t of taches) {
-    const jour = (t.faite_le ?? '').slice(0, 10) || 'inconnu'
+    // On n'accepte comme jour qu'un vrai AAAA-MM-JJ : une valeur tronquée
+    // produisait un en-tête « Invalid Date ».
+    const debut = (t.faite_le ?? '').slice(0, 10)
+    const jour = /^\d{4}-\d{2}-\d{2}$/.test(debut) ? debut : 'inconnu'
     parJour.set(jour, [...(parJour.get(jour) ?? []), t])
   }
 
@@ -226,9 +264,7 @@ function HistoriqueTaches({
                     <p className="truncate text-corps-2 text-encre-2 line-through">{t.titre}</p>
                     <p className="text-legende text-encre-3">
                       {auteur?.prenom ?? 'quelqu’un'}
-                      {t.faite_le
-                        ? ` · ${new Date(t.faite_le).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`
-                        : ''}
+                      {heureLisible(t.faite_le)}
                     </p>
                   </div>
                   {auteur && <PastilleMembre membre={auteur} taille={22} />}
@@ -378,7 +414,8 @@ function FeuilleNouvelleTache({ ouverte, initiale, onFermer, onCreer }: PropsCre
             <option value={90}>1 h 30</option>
           </select>
         </label>
-        <Bouton pleineLargeur onClick={() => void valider()}>
+        {/* Le bouton ne fait plus semblant : sans titre, il est visiblement inactif. */}
+        <Bouton pleineLargeur desactive={!titre.trim()} onClick={() => void valider()}>
           {initiale ? 'Enregistrer' : 'Ajouter'}
         </Bouton>
       </div>

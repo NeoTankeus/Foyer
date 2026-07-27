@@ -122,6 +122,21 @@ interface Apod {
   thumbnail_url?: string
 }
 
+// La NASA renvoie parfois un objet d'erreur au lieu de la photo du jour :
+// on ne garde la carte que si les champs affichés sont bien du texte.
+function apodSur(v: unknown): Apod | null {
+  if (!v || typeof v !== 'object') return null
+  const a = v as Partial<Apod>
+  if (typeof a.url !== 'string' || a.url === '') return null
+  return {
+    title: String(a.title ?? 'Photo du jour'),
+    url: a.url,
+    hdurl: typeof a.hdurl === 'string' ? a.hdurl : undefined,
+    media_type: String(a.media_type ?? 'image'),
+    thumbnail_url: typeof a.thumbnail_url === 'string' ? a.thumbnail_url : undefined,
+  }
+}
+
 export function EcranCiel() {
   const lune = phaseLune()
   const ville = villeMeteo()
@@ -133,17 +148,19 @@ export function EcranCiel() {
   const [iss, setIss] = useState<{ lat: number; lon: number; km: number | null; direct: boolean } | null>(() => {
     try {
       const memo = JSON.parse(localStorage.getItem(CLE_ISS) ?? 'null') as {
-        lat: number
-        lon: number
+        lat?: number
+        lon?: number
         vlat?: number
         vlon?: number
         a?: number
       } | null
-      if (!memo) return null
+      // Sans coordonnées chiffrées, la position calculée serait NaN et la
+      // pastille de la Station partirait hors de la carte.
+      if (!memo || !Number.isFinite(memo.lat) || !Number.isFinite(memo.lon)) return null
       // On projette la position mémorisée jusqu'à MAINTENANT (max 45 min).
-      const ecartS = memo.a ? Math.min((Date.now() - memo.a) / 1000, 2700) : 0
-      const lat = Math.max(-51.6, Math.min(51.6, memo.lat + (memo.vlat ?? 0) * ecartS))
-      const lon = (((memo.lon + (memo.vlon ?? -0.06) * ecartS) + 540) % 360) - 180
+      const ecartS = Number.isFinite(memo.a) ? Math.min((Date.now() - (memo.a as number)) / 1000, 2700) : 0
+      const lat = Math.max(-51.6, Math.min(51.6, (memo.lat as number) + (Number.isFinite(memo.vlat) ? (memo.vlat as number) : 0) * ecartS))
+      const lon = ((((memo.lon as number) + (Number.isFinite(memo.vlon) ? (memo.vlon as number) : -0.06) * ecartS) + 540) % 360) - 180
       return {
         lat,
         lon,
@@ -170,6 +187,9 @@ export function EcranCiel() {
         if (!r.ok) return
         const d = (await r.json()) as { latitude: number; longitude: number }
         if (arret) return
+        // Le service renvoie parfois un objet d'erreur : sans coordonnées
+        // chiffrées, `.toFixed()` plus bas tomberait sur une chaîne.
+        if (!Number.isFinite(d.latitude) || !Number.isFinite(d.longitude)) return
         if (derniere) {
           const dt = (Date.now() - derniere.a) / 1000
           if (dt > 2) {
@@ -231,10 +251,11 @@ export function EcranCiel() {
       )
       if (!r.ok) return null
       const d = (await r.json()) as { daily?: { sunrise?: string[]; sunset?: string[] } }
-      return {
-        lever: d.daily?.sunrise?.[0]?.slice(11) ?? null,
-        coucher: d.daily?.sunset?.[0]?.slice(11) ?? null,
+      const heure = (v: string[] | undefined): string | null => {
+        const brut = Array.isArray(v) ? v[0] : undefined
+        return typeof brut === 'string' ? brut.slice(11) : null
       }
+      return { lever: heure(d.daily?.sunrise), coucher: heure(d.daily?.sunset) }
     },
   })
 
@@ -247,15 +268,17 @@ export function EcranCiel() {
     retry: false,
     queryFn: async (): Promise<Apod | null> => {
       try {
-        const memo = JSON.parse(localStorage.getItem(CLE_APOD) ?? 'null') as { jour: string; donnees: Apod } | null
-        if (memo?.jour === jour) return memo.donnees
+        const memo = JSON.parse(localStorage.getItem(CLE_APOD) ?? 'null') as { jour?: string; donnees?: Apod } | null
+        const propre = apodSur(memo?.donnees)
+        if (memo?.jour === jour && propre) return propre
       } catch {
         // cache illisible : on re-télécharge
       }
       try {
         const r = await fetch('https://api.nasa.gov/planetary/apod?api_key=DEMO_KEY&thumbs=true')
         if (!r.ok) return null
-        const donnees = (await r.json()) as Apod
+        const donnees = apodSur(await r.json())
+        if (!donnees) return null
         localStorage.setItem(CLE_APOD, JSON.stringify({ jour, donnees }))
         return donnees
       } catch {

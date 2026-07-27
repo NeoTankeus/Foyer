@@ -91,7 +91,19 @@ export function EcranWeekend() {
       const d = (await r.json()) as { evenements?: Sortie[]; erreur?: string }
       if (d.erreur === 'cle_absente') return { sansCle: true }
       if (d.erreur) throw new Error(d.erreur)
-      return { sansCle: false, evenements: d.evenements ?? [] }
+      // Le relais peut renvoyer autre chose qu'une liste, ou des entrées
+      // incomplètes : on les remet en forme avant tout affichage.
+      return {
+        sansCle: false,
+        evenements: (Array.isArray(d.evenements) ? d.evenements : [])
+          .filter((s): s is Sortie => !!s && typeof s === 'object')
+          .map((s) => ({
+            titre: String(s.titre ?? 'Sortie'),
+            lieu: String(s.lieu ?? ''),
+            quand: String(s.quand ?? ''),
+            url: typeof s.url === 'string' ? s.url : '',
+          })),
+      }
     },
   })
 
@@ -117,7 +129,7 @@ export function EcranWeekend() {
         `Point de départ : ${maison?.adresse ?? ville?.nom ?? 'notre ville'}. ` +
         `Budget total ${budget === 0 ? 'zéro — que du gratuit' : `~${budget} €`}, rayon ${rayon} km maximum. ` +
         `Météo du week-end : ${ciel || 'inconnue — prévois un plan A dehors et un plan B abrité'}. ` +
-        `${vacances ? `Vacances scolaires zone B : ${vacances.description} du ${vacances.debut.slice(0, 10)} au ${vacances.fin.slice(0, 10)}. ` : ''}` +
+        `${vacances ? `Vacances scolaires zone B : ${vacances.description} du ${String(vacances.debut ?? '').slice(0, 10)} au ${String(vacances.fin ?? '').slice(0, 10)}. ` : ''}` +
         `Nos goûts : restos aimés ${gouts.data?.restos || 'inconnus'} ; lieux déjà visités et aimés : ${gouts.data?.lieux || 'inconnus'} (propose du NOUVEAU). ` +
         `Réponds en sections : 🎯 LA DESTINATION (réelle, à ${rayon} km max, et pourquoi elle va nous plaire) · ` +
         `🗓 LE PROGRAMME (samedi et dimanche, heure par heure, réaliste avec un enfant) · ` +

@@ -52,6 +52,16 @@ export function CartesDuJour({ taches, celebrations, membres, onCompleter }: Pro
       {celebrations.map((celebration) => {
         const date = new Date(celebration.date)
         const maintenant = maintenantLocal()
+        // Une date de célébration illisible ne doit pas produire « dans NaN jours ».
+        if (Number.isNaN(date.getTime())) {
+          return (
+            <Carte key={celebration.id}>
+              <p className="text-corps text-encre">
+                🎂 {celebration.nom} <span className="text-encre-3">— date à compléter</span>
+              </p>
+            </Carte>
+          )
+        }
         const anniversaire = new Date(maintenant.getFullYear(), date.getMonth(), date.getDate())
         if (anniversaire < new Date(maintenant.getFullYear(), maintenant.getMonth(), maintenant.getDate())) {
           anniversaire.setFullYear(anniversaire.getFullYear() + 1)

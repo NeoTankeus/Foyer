@@ -42,18 +42,21 @@ async function recetteSurprise(): Promise<RecetteMonde | null> {
     const r = await fetch('https://www.themealdb.com/api/json/v1/1/random.php')
     if (!r.ok) return null
     const d = (await r.json()) as { meals?: Record<string, string | null>[] }
-    const meal = d.meals?.[0]
-    if (!meal) return null
+    const meal = Array.isArray(d.meals) ? d.meals[0] : undefined
+    if (!meal || typeof meal !== 'object') return null
+    // Chaque champ de TheMealDB peut être null ou absent : on ne garde que
+    // des chaînes, sinon `.trim()` ferait tomber l'écran.
+    const texte = (v: unknown): string => (typeof v === 'string' ? v.trim() : '')
     const ingredients: string[] = []
     for (let i = 1; i <= 20; i++) {
-      const ing = meal[`strIngredient${i}`]
-      const mesure = meal[`strMeasure${i}`]
-      if (ing?.trim()) ingredients.push(`${ing.trim()}${mesure?.trim() ? ` (${mesure.trim()})` : ''}`)
+      const ing = texte(meal[`strIngredient${i}`])
+      const mesure = texte(meal[`strMeasure${i}`])
+      if (ing) ingredients.push(`${ing}${mesure ? ` (${mesure})` : ''}`)
     }
     return {
-      nom: meal['strMeal'] ?? '?',
-      image: meal['strMealThumb'] ?? null,
-      origine: meal['strArea'] ?? null,
+      nom: texte(meal['strMeal']) || '?',
+      image: texte(meal['strMealThumb']) || null,
+      origine: texte(meal['strArea']) || null,
       ingredients,
     }
   } catch {

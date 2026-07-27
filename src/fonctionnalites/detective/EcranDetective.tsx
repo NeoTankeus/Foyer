@@ -19,6 +19,31 @@ interface Etiquette {
   unite: string | null
 }
 
+// La lecture d'étiquette est faite par le relais : les « nombres » y arrivent
+// souvent en texte (« 3,50 »), et les champs peuvent manquer. On normalise
+// avant tout affichage, sinon `.toFixed()` tomberait sur une chaîne.
+const nombreOuNull = (v: unknown): number | null => {
+  if (typeof v === 'number') return Number.isFinite(v) ? v : null
+  if (typeof v === 'string') {
+    const n = Number(v.replace(',', '.').replace(/[^\d.-]/g, ''))
+    return Number.isFinite(n) ? n : null
+  }
+  return null
+}
+
+const etiquetteSure = (v: unknown): Etiquette | null => {
+  if (!v || typeof v !== 'object') return null
+  const e = v as Partial<Etiquette>
+  return {
+    produit: e.produit != null ? String(e.produit) : null,
+    marque: e.marque != null ? String(e.marque) : null,
+    prix: nombreOuNull(e.prix),
+    quantite: e.quantite != null ? String(e.quantite) : null,
+    prix_unitaire: nombreOuNull(e.prix_unitaire),
+    unite: e.unite != null ? String(e.unite) : null,
+  }
+}
+
 export function EcranDetective() {
   const fichierRef = useRef<HTMLInputElement>(null)
   const [photo, setPhoto] = useState<string | null>(null)
@@ -42,12 +67,12 @@ export function EcranDetective() {
         body: JSON.stringify({ image }),
       })
       const donnees = (await reponse.json()) as { etiquette?: Etiquette; message?: string }
-      if (!donnees.etiquette) throw new Error(donnees.message ?? 'étiquette illisible')
-      setEtiquette(donnees.etiquette)
+      const e = etiquetteSure(donnees.etiquette)
+      if (!e) throw new Error(donnees.message ?? 'étiquette illisible')
+      setEtiquette(e)
 
       // Le verdict : STG compare au prix habituel de ce type de produit.
       setEtat('juge')
-      const e = donnees.etiquette
       setVerdict(
         await demanderAStiga(
           `Je suis en magasin devant cette étiquette : produit « ${e.produit ?? '?'} »${e.marque ? ` (${e.marque})` : ''}, ` +

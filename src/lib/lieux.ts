@@ -32,9 +32,14 @@ async function viaRelais(lat: number, lon: number, rayonM: number, quoi: string)
       authorization: `Bearer ${session.session?.access_token ?? ''}`,
     },
     body: JSON.stringify({ mode: 'autour', lat, lon, rayon: rayonM, quoi }),
+    // Le relais dispose de 60 s côté serveur : au-delà, on laisse gagner les miroirs.
+    signal: AbortSignal.timeout(30000),
   })
   if (!reponse.ok) throw new Error(`relais ${reponse.status}`)
-  const donnees = (await reponse.json()) as Reponse & { erreur?: string }
+  // Une passerelle qui rend du HTML (502, page de maintenance) ferait lever
+  // .json() : on préfère un échec explicite que Promise.any saura ignorer.
+  const donnees = (await reponse.json().catch(() => null)) as (Reponse & { erreur?: string }) | null
+  if (!donnees) throw new Error('relais illisible')
   if (donnees.erreur) throw new Error(donnees.erreur)
   return donnees
 }
@@ -86,14 +91,15 @@ export async function chercherLieux(
     return Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)))
   }
   const resultats: LieuAutour[] = []
-  for (const e of donnees.elements ?? []) {
+  for (const e of Array.isArray(donnees.elements) ? donnees.elements : []) {
+    if (!e) continue
     const la = e.lat ?? e.center?.lat
     const lo = e.lon ?? e.center?.lon
     const nom = e.tags?.['name'] ?? e.tags?.['brand'] ?? e.tags?.['operator']
-    if (la === undefined || lo === undefined || !nom) continue
+    if (typeof la !== 'number' || typeof lo !== 'number' || !Number.isFinite(la) || !Number.isFinite(lo) || !nom) continue
     resultats.push({
       id: String(e.id),
-      nom,
+      nom: String(nom),
       telephone: e.tags?.['phone'] ?? e.tags?.['contact:phone'] ?? null,
       site: e.tags?.['website'] ?? e.tags?.['contact:website'] ?? null,
       horaires: e.tags?.['opening_hours'] ?? null,

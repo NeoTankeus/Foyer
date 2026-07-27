@@ -28,8 +28,33 @@ const mediane = (valeurs: number[]): number | null => {
   return tri.length % 2 === 1 ? centre : ((tri[milieu - 1] ?? centre) + centre) / 2
 }
 
-const enEuros = (n: number) => `${Math.round(n).toLocaleString('fr-FR')} €`
-const moisAn = (date: string) => new Date(date).toLocaleDateString('fr-FR', { month: 'short', year: 'numeric' })
+const enEuros = (n: number) => (Number.isFinite(n) ? `${Math.round(n).toLocaleString('fr-FR')} €` : '—')
+const moisAn = (date: string | null | undefined) => {
+  const d = new Date(date ?? NaN)
+  return Number.isNaN(d.getTime()) ? '—' : d.toLocaleDateString('fr-FR', { month: 'short', year: 'numeric' })
+}
+const jourMoisAn = (date: string | null | undefined) => {
+  const d = new Date(date ?? NaN)
+  return Number.isNaN(d.getTime()) ? 'date inconnue' : d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })
+}
+
+// DVF est de l'open data brut : type, adresse, date ou prix peuvent manquer
+// sur un acte. On remet chaque vente en forme avant de la manipuler.
+const venteSure = (v: unknown): VenteDvf => {
+  const b = (v && typeof v === 'object' ? v : {}) as Partial<VenteDvf>
+  const nombre = (x: unknown) => {
+    const n = typeof x === 'number' ? x : typeof x === 'string' ? Number(x) : NaN
+    return Number.isFinite(n) ? n : NaN
+  }
+  return {
+    date: typeof b.date === 'string' ? b.date : '',
+    prix: nombre(b.prix),
+    surface: nombre(b.surface),
+    prixM2: nombre(b.prixM2),
+    type: String(b.type ?? 'Bien'),
+    adresse: String(b.adresse ?? ''),
+  }
+}
 
 export function EcranImmobilier() {
   const { foyer } = utiliserSession()
@@ -52,7 +77,7 @@ export function EcranImmobilier() {
       if (!r.ok) throw new Error(`relais ${r.status}`)
       const donnees = (await r.json()) as { ventes?: VenteDvf[]; erreur?: string }
       if (donnees.erreur) throw new Error(donnees.erreur)
-      return donnees.ventes ?? []
+      return (Array.isArray(donnees.ventes) ? donnees.ventes : []).map(venteSure)
     },
   })
 
@@ -62,7 +87,7 @@ export function EcranImmobilier() {
   const fiables = liste.filter((v) => v.prixM2 >= 500 && v.prixM2 <= 20000)
   const medianeAppart = mediane(fiables.filter((v) => v.type.toLowerCase().includes('appartement')).map((v) => v.prixM2))
   const medianeMaison = mediane(fiables.filter((v) => v.type.toLowerCase().includes('maison')).map((v) => v.prixM2))
-  const dates = liste.map((v) => v.date).sort()
+  const dates = liste.map((v) => v.date).filter((d) => d !== '').sort()
   const premiere = dates[0]
   const derniere = dates[dates.length - 1]
 
@@ -133,14 +158,12 @@ export function EcranImmobilier() {
           <Carte key={`${v.date}-${v.adresse}-${i}`}>
             <div className="flex items-baseline justify-between gap-3">
               <p className="text-corps-2 font-[590] text-encre">{v.type}</p>
-              <p className="shrink-0 text-legende text-encre-3">
-                {new Date(v.date).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })}
-              </p>
+              <p className="shrink-0 text-legende text-encre-3">{jourMoisAn(v.date)}</p>
             </div>
             <p className="break-words text-legende text-encre-3">{v.adresse}</p>
             <p className="chiffres mt-1 text-corps-2 text-encre">
               {enEuros(v.prix)}
-              <span className="text-encre-3"> · {Math.round(v.surface)} m² · {enEuros(v.prixM2)}/m²</span>
+              <span className="text-encre-3"> · {Number.isFinite(v.surface) ? `${Math.round(v.surface)} m²` : '— m²'} · {enEuros(v.prixM2)}/m²</span>
             </p>
           </Carte>
         ))}

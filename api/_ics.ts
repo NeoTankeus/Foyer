@@ -7,6 +7,8 @@ import { lireIcsDepuisIcloud } from './_caldav.js'
 async function sb<T>(base: string, cle: string, chemin: string, options?: RequestInit): Promise<T> {
   const reponse = await fetch(`${base}/rest/v1/${chemin}`, {
     ...options,
+    // Sans délai maximal, une base muette bloque l'import jusqu'au couperet Vercel.
+    signal: AbortSignal.timeout(15000),
     headers: {
       apikey: cle,
       authorization: `Bearer ${cle}`,
@@ -19,23 +21,56 @@ async function sb<T>(base: string, cle: string, chemin: string, options?: Reques
   return (await reponse.json()) as T
 }
 
+/** Une liste venue de la base : jamais autre chose qu'un tableau. */
+function enListe<T>(valeur: unknown): T[] {
+  return Array.isArray(valeur) ? (valeur as T[]) : []
+}
+
+/**
+ * Le décalage RÉEL d'Europe/Paris à un instant donné, en minutes.
+ * (L'ancienne règle « avril→octobre = +2 h » décalait d'une heure tous les
+ * rendez-vous importés fin mars et fin octobre.)
+ */
+function decalageMinutesParis(instant: Date): number {
+  try {
+    const parties = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'Europe/Paris',
+      timeZoneName: 'longOffset',
+    }).formatToParts(instant)
+    const brut = parties.find((p) => p.type === 'timeZoneName')?.value ?? ''
+    const m = /GMT([+-])(\d{1,2}):?(\d{2})?/.exec(brut)
+    if (!m) return 60
+    return (m[1] === '-' ? -1 : 1) * (Number(m[2]) * 60 + Number(m[3] ?? 0))
+  } catch {
+    return 60
+  }
+}
+
+/** L'instant UTC d'une heure « murale » de Paris (point fixe en 2 passes). */
+function instantParis(iso: string): Date | null {
+  const nominal = new Date(`${iso}Z`).getTime()
+  if (!Number.isFinite(nominal)) return null
+  let candidat = new Date(nominal - 60 * 60000)
+  for (let i = 0; i < 2; i += 1) candidat = new Date(nominal - decalageMinutesParis(candidat) * 60000)
+  return Number.isFinite(candidat.getTime()) ? candidat : null
+}
+
 function deplierIcs(brut: string): string[] {
   return brut.replace(/\r\n[ \t]/g, '').split(/\r?\n/)
 }
 
 function dateIcs(valeur: string): string | null {
+  if (typeof valeur !== 'string') return null
   const complet = /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})(Z?)$/.exec(valeur)
   if (complet) {
     const [, a, m, j, h, mi, s, z] = complet
     if (z === 'Z') return `${a}-${m}-${j}T${h}:${mi}:${s}Z`
-    const mois = Number(m)
-    const decalage = mois >= 4 && mois <= 10 ? '+02:00' : '+01:00'
-    return new Date(`${a}-${m}-${j}T${h}:${mi}:${s}${decalage}`).toISOString()
+    return instantParis(`${a}-${m}-${j}T${h}:${mi}:${s}`)?.toISOString() ?? null
   }
   const jourSeul = /^(\d{4})(\d{2})(\d{2})$/.exec(valeur)
   if (jourSeul) {
     const [, a, m, j] = jourSeul
-    return new Date(`${a}-${m}-${j}T00:00:00+01:00`).toISOString()
+    return instantParis(`${a}-${m}-${j}T00:00:00`)?.toISOString() ?? null
   }
   return null
 }
@@ -136,9 +171,9 @@ export async function importerIcs(base: string, cle: string): Promise<ResultatIm
       nom_calendrier?: string
     }
   }
-  const integrations = await sb<Integration[]>(base, cle,
-    `integrations?fournisseur=eq.icloud_caldav&statut=eq.active&select=*`,
-  )
+  const integrations = enListe<Integration>(
+    await sb<unknown>(base, cle, `integrations?fournisseur=eq.icloud_caldav&statut=eq.active&select=*`),
+  ).filter((i) => i?.id && i.foyer_id && i.reglages && typeof i.reglages === 'object')
   const resultat: ResultatImport = { importes: 0, erreurs: [] }
 
   // 1. On lit toutes les sources et on rassemble les lignes par foyer.
@@ -160,7 +195,12 @@ export async function importerIcs(base: string, cle: string): Promise<ResultatIm
           ?.replace(/^webcal:\/\//, 'https://')
           .replace(/[^\x21-\x7E]/g, '')
         if (!url) continue
-        brut = await (await fetch(url)).text()
+        const reponseIcs = await fetch(url, { signal: AbortSignal.timeout(20000) })
+        // Sans ce contrôle, une page d'erreur HTML passait pour un calendrier vide,
+        // et la phase de miroir supprimait alors tous les événements du foyer.
+        if (!reponseIcs.ok) throw new Error(`lien ICS → ${reponseIcs.status}`)
+        brut = await reponseIcs.text()
+        if (!/BEGIN:VCALENDAR/i.test(brut)) throw new Error('le lien ICS ne renvoie pas un calendrier')
       }
 
       const participants =
@@ -197,8 +237,10 @@ export async function importerIcs(base: string, cle: string): Promise<ResultatIm
       fin_a: string
       lieu: string | null
     }
-    const existants = await sb<Existant[]>(base, cle,
-      `evenements?foyer_id=eq.${foyerId}&source=eq.ics&select=id,source_id,titre,debut_a,fin_a,lieu`,
+    const existants = enListe<Existant>(
+      await sb<unknown>(base, cle,
+        `evenements?foyer_id=eq.${foyerId}&source=eq.ics&select=id,source_id,titre,debut_a,fin_a,lieu`,
+      ),
     )
     const parSourceId = new Map(existants.map((e) => [String(e.source_id), e]))
 
@@ -230,8 +272,11 @@ export async function importerIcs(base: string, cle: string): Promise<ResultatIm
     }
 
     // Disparus côté Apple (annulés) dans la fenêtre : on les retire — mais
-    // jamais si une source du foyer a échoué (on ne supprime pas à l'aveugle).
-    if (!foyersEnEchec.has(foyerId)) {
+    // jamais si une source du foyer a échoué (on ne supprime pas à l'aveugle),
+    // et jamais non plus sur une lecture VIDE : un iCloud qui répond « rien »
+    // sans erreur (jeton expiré, calendrier temporairement inaccessible) aurait
+    // effacé six mois d'agenda familial d'un coup.
+    if (!foyersEnEchec.has(foyerId) && lignes.size > 0) {
       const ilYA30j = new Date(Date.now() - 30 * 86400000).toISOString()
       const dans180j = new Date(Date.now() + 180 * 86400000).toISOString()
       const disparus = existants.filter(

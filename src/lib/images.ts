@@ -9,10 +9,12 @@ export async function chercherVisuels(libelles: string[]): Promise<Record<string
     method: 'POST',
     headers: { 'content-type': 'application/json', authorization: `Bearer ${jeton}` },
     body: JSON.stringify({ libelles: libelles.slice(0, 25) }),
+    signal: AbortSignal.timeout(45000),
   })
   if (!reponse.ok) return {}
-  const donnees = (await reponse.json()) as { images?: Record<string, string | null> }
-  return donnees.images ?? {}
+  const donnees = ((await reponse.json().catch(() => null)) ?? {}) as { images?: Record<string, string | null> }
+  const images = donnees.images
+  return images && typeof images === 'object' && !Array.isArray(images) ? images : {}
 }
 
 /** Plusieurs images candidates pour une requête — l'utilisateur choisit. */
@@ -24,8 +26,9 @@ export async function chercherChoixVisuels(requete: string): Promise<string[]> {
     method: 'POST',
     headers: { 'content-type': 'application/json', authorization: `Bearer ${jeton}` },
     body: JSON.stringify({ requete: requete.trim() }),
+    signal: AbortSignal.timeout(45000),
   })
   if (!reponse.ok) return []
-  const donnees = (await reponse.json()) as { choix?: string[] }
-  return donnees.choix ?? []
+  const donnees = ((await reponse.json().catch(() => null)) ?? {}) as { choix?: string[] }
+  return Array.isArray(donnees.choix) ? donnees.choix.filter((c): c is string => typeof c === 'string' && c !== '') : []
 }

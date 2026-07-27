@@ -26,11 +26,24 @@ const RYTHMES = [
 
 const jourIso = () => new Date().toISOString().slice(0, 10)
 
+// Les réglages du foyer sont du JSON libre : une entrée incomplète ferait
+// planter `.toLowerCase()` ou le calcul du prochain rachat.
+const produitSur = (v: unknown): ProduitStock | null => {
+  if (!v || typeof v !== 'object') return null
+  const p = v as Partial<ProduitStock>
+  if (typeof p.libelle !== 'string' || p.libelle.trim() === '') return null
+  return {
+    libelle: p.libelle,
+    jours: Number.isFinite(p.jours) ? (p.jours as number) : 7,
+    dernier: typeof p.dernier === 'string' && p.dernier !== '' ? p.dernier : new Date().toISOString().slice(0, 10),
+  }
+}
+
 export function EcranStock() {
   const { foyer } = utiliserSession()
   const [produits, setProduits] = useState<ProduitStock[]>(() => {
     const brut = foyer?.reglages['stock_fantome']
-    return Array.isArray(brut) ? (brut as ProduitStock[]) : []
+    return (Array.isArray(brut) ? brut : []).map(produitSur).filter((p): p is ProduitStock => p !== null)
   })
   const [libelle, setLibelle] = useState('')
   const [jours, setJours] = useState(7)
@@ -59,7 +72,10 @@ export function EcranStock() {
   }
 
   const prochain = (p: ProduitStock) => {
-    const d = new Date(`${p.dernier}T12:00:00`)
+    // Une date d'achat illisible ne doit pas donner « Invalid Date » : on
+    // repart d'aujourd'hui.
+    const brut = new Date(`${p.dernier}T12:00:00`)
+    const d = Number.isNaN(brut.getTime()) ? new Date() : brut
     d.setDate(d.getDate() + p.jours)
     return d
   }

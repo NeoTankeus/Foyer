@@ -19,8 +19,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
     const verification = await fetch(`${base}/auth/v1/user`, {
       headers: { apikey: anon, authorization: `Bearer ${jeton}` },
-    })
-    if (!verification.ok) {
+      signal: AbortSignal.timeout(8000),
+    }).catch(() => null)
+    if (!verification?.ok) {
       res.status(401).json({ erreur: 'non_connecte' })
       return
     }
@@ -30,23 +31,28 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Mode « choix » : plusieurs candidates pour UNE requête, l'humain tranche.
     if (typeof requete === 'string' && requete.trim()) {
       const { chercherImages } = await import('./_images.js')
-      const choix = await chercherImages(requete.trim(), 9)
-      res.status(200).json({ choix })
+      const choix = await chercherImages(requete.trim(), 9).catch(() => [])
+      res.status(200).json({ choix: Array.isArray(choix) ? choix : [] })
       return
     }
 
     if (!Array.isArray(libelles) || libelles.length === 0) {
-      res.status(400).json({ erreur: 'libelles requis' })
+      res.status(400).json({ erreur: 'libelles_requis', images: {} })
       return
     }
     const { chercherImage } = await import('./_images.js')
     const images: Record<string, string | null> = {}
     for (const libelle of libelles.slice(0, 25)) {
       if (typeof libelle !== 'string' || !libelle.trim()) continue
-      images[libelle] = await chercherImage(libelle.trim())
+      // Un libellé qui échoue ne doit pas faire perdre les 24 autres.
+      images[libelle] = await chercherImage(libelle.trim()).catch(() => null)
     }
     res.status(200).json({ images })
   } catch (erreur) {
-    res.status(200).json({ images: {}, erreur: String(erreur instanceof Error ? erreur.message : erreur).slice(0, 160) })
+    res.status(200).json({
+      images: {},
+      choix: [],
+      erreur: String(erreur instanceof Error ? erreur.message : erreur).slice(0, 160),
+    })
   }
 }

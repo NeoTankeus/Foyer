@@ -55,6 +55,7 @@ export function ScannerYuka({ ouverte, onFermer, onAjout }: Props) {
   const [codeInconnu, setCodeInconnu] = useState<string | null>(null)
   const [recherche, setRecherche] = useState(false)
   const [ajoute, setAjoute] = useState<string | null>(null)
+  const [echecAjout, setEchecAjout] = useState<string | null>(null)
   const video = useRef<HTMLVideoElement>(null)
   const controles = useRef<IScannerControls | null>(null)
   const [generation, setGeneration] = useState(0)
@@ -66,6 +67,7 @@ export function ScannerYuka({ ouverte, onFermer, onAjout }: Props) {
     setFiche(null)
     setCodeInconnu(null)
     setAjoute(null)
+    setEchecAjout(null)
     void (async () => {
       try {
         const [{ BrowserMultiFormatReader }, { DecodeHintType }] = await Promise.all([
@@ -107,24 +109,39 @@ export function ScannerYuka({ ouverte, onFermer, onAjout }: Props) {
   }, [ouverte, generation])
 
   const ajouterAuxCourses = () => {
-    if (!fiche || !membre || !courses.data?.liste) return
-    const libelle = [fiche.marque?.split(',')[0], fiche.nom].filter(Boolean).join(' ').slice(0, 120)
+    if (!fiche || !membre) return
+    if (!courses.data?.liste) {
+      // Sans liste de courses, le bouton ne faisait RIEN : on le dit.
+      setEchecAjout('Liste de courses introuvable — ouvre l’onglet Courses une fois, puis réessaie.')
+      return
+    }
+    setEchecAjout(null)
+    const libelle =
+      [fiche.marque?.split(',')[0], fiche.nom].filter(Boolean).join(' ').slice(0, 120) || 'Produit scanné'
     void ajouterArticle(courses.data.liste.id, membre.id, libelle, devinerRayon(libelle), fiche.image ?? undefined)
+      .catch(() => setEchecAjout('Ajout impossible — vérifie le réseau et réessaie.'))
     setAjoute('courses')
     onAjout?.()
   }
 
   const ajouterAuxPlacards = (zone: string) => {
     if (!fiche || !foyer) return
-    const libelle = [fiche.marque?.split(',')[0], fiche.nom, fiche.quantite].filter(Boolean).join(' ').slice(0, 120)
+    setEchecAjout(null)
+    const libelle =
+      [fiche.marque?.split(',')[0], fiche.nom, fiche.quantite].filter(Boolean).join(' ').slice(0, 120) ||
+      'Produit scanné'
+    // Un SEUL identifiant : `cible_id` et `charge.id` étaient tirés séparément,
+    // la copie locale et la ligne distante ne portaient donc pas le même id
+    // (doublon au premier réveil du réseau).
+    const id = crypto.randomUUID()
     void muter({
-      table: 'inventaire', type: 'insert', cible_id: crypto.randomUUID(),
+      table: 'inventaire', type: 'insert', cible_id: id,
       charge: {
-        id: crypto.randomUUID(), foyer_id: foyer.id, zone, libelle,
+        id, foyer_id: foyer.id, zone, libelle,
         code_barres: fiche.code, image_url: fiche.image, quantite: 1, dlc: null,
         cree_le: new Date().toISOString(),
       },
-    })
+    }).catch(() => setEchecAjout('Ajout impossible — vérifie le réseau et réessaie.'))
     setAjoute(zone)
     onAjout?.()
   }
@@ -219,6 +236,7 @@ export function ScannerYuka({ ouverte, onFermer, onAjout }: Props) {
                 </Bouton>
               ))}
             </div>
+            {echecAjout && <p className="text-legende text-urgent">{echecAjout}</p>}
             <Bouton pleineLargeur variante="discret" onClick={rescanner}>📷 Scanner un autre</Bouton>
           </div>
         </div>

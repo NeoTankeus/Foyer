@@ -41,17 +41,23 @@ export async function ficheParCodeBarres(code: string): Promise<FicheProduit | n
         }
       }
       if (donnees.status === 1 && donnees.product) {
+        const p = donnees.product
+        // Les listes de tags manquent souvent, et contiennent parfois des
+        // valeurs nulles : on ne garde que les chaînes réelles.
+        const etiquettes = (v: unknown): string[] =>
+          (Array.isArray(v) ? v : []).filter((x): x is string => typeof x === 'string')
+        const niveaux = p.nutrient_levels
         return {
           code,
-          nom: donnees.product.product_name || null,
-          marque: donnees.product.brands || null,
-          quantite: donnees.product.quantity || null,
-          image: donnees.product.image_url || null,
-          nutriscore: donnees.product.nutriscore_grade || null,
-          nova: donnees.product.nova_group ?? null,
-          additifs: (donnees.product.additives_tags ?? []).map((a) => a.replace(/^[a-z]{2}:/, '').toUpperCase()),
-          niveaux: donnees.product.nutrient_levels ?? {},
-          allergenes: (donnees.product.allergens_tags ?? []).map((a) => a.replace(/^[a-z]{2}:/, '')),
+          nom: p.product_name || null,
+          marque: p.brands || null,
+          quantite: p.quantity || null,
+          image: p.image_url || null,
+          nutriscore: p.nutriscore_grade || null,
+          nova: typeof p.nova_group === 'number' ? p.nova_group : null,
+          additifs: etiquettes(p.additives_tags).map((a) => a.replace(/^[a-z]{2}:/, '').toUpperCase()),
+          niveaux: niveaux && typeof niveaux === 'object' && !Array.isArray(niveaux) ? niveaux : {},
+          allergenes: etiquettes(p.allergens_tags).map((a) => a.replace(/^[a-z]{2}:/, '')),
         }
       }
     } catch {

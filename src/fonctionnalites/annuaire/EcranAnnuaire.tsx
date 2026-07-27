@@ -38,12 +38,12 @@ export function EcranAnnuaire() {
         }[]
       }
       setResultats(
-        (donnees.results ?? []).map((x) => ({
-          nom: x.nom_complet ?? '?',
-          adresse: x.siege?.adresse ?? null,
-          activite: x.activite_principale ?? null,
-          etat: x.etat_administratif ?? null,
-          creation: x.date_creation ?? null,
+        (Array.isArray(donnees.results) ? donnees.results : []).map((x) => ({
+          nom: String(x?.nom_complet ?? '?'),
+          adresse: x?.siege?.adresse != null ? String(x.siege.adresse) : null,
+          activite: x?.activite_principale != null ? String(x.activite_principale) : null,
+          etat: x?.etat_administratif != null ? String(x.etat_administratif) : null,
+          creation: x?.date_creation != null ? String(x.date_creation) : null,
         })),
       )
     } catch (e) {

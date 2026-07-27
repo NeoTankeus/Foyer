@@ -31,15 +31,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
     const verification = await fetch(`${base}/auth/v1/user`, {
       headers: { apikey: anon, authorization: `Bearer ${jeton}` },
-    })
-    if (!verification.ok) {
+      signal: AbortSignal.timeout(8000),
+    }).catch(() => null)
+    if (!verification?.ok) {
       res.status(401).json({ erreur: 'non_connecte' })
       return
     }
     // Import dynamique : même une erreur de chargement du module remonte proprement.
     const { importerIcs } = await import('./_ics.js')
     const resultat = await importerIcs(base, service)
-    res.status(200).json({ ...resultat, version: 3 })
+    // Forme de réponse toujours identique, même si le moteur rend autre chose.
+    res.status(200).json({
+      importes: Number.isFinite(resultat?.importes) ? resultat.importes : 0,
+      erreurs: Array.isArray(resultat?.erreurs) ? resultat.erreurs : [],
+      version: 3,
+    })
   } catch (erreur) {
     // Jamais de plantage muet : la cause exacte remonte jusqu'au téléphone.
     const detail = erreur instanceof Error ? `${erreur.message}` : String(erreur)

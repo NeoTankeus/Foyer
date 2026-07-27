@@ -42,9 +42,11 @@ export function ModeMagasin({ ouvert, onFermer, articles, onBascule }: Props) {
     }
   }, [ouvert])
 
-  const tries = [...articles].sort((a, b) => {
+  // `libelle` peut manquer sur une ligne venue de la base : jamais de
+  // `.localeCompare()` sur null (l'écran magasin est utilisé en plein magasin).
+  const tries = [...(Array.isArray(articles) ? articles : [])].sort((a, b) => {
     if (a.coche !== b.coche) return a.coche ? 1 : -1
-    return indexRayon(a.rayon) - indexRayon(b.rayon) || a.libelle.localeCompare(b.libelle)
+    return indexRayon(a.rayon) - indexRayon(b.rayon) || (a.libelle ?? '').localeCompare(b.libelle ?? '')
   })
 
   return (
@@ -65,6 +67,11 @@ export function ModeMagasin({ ouvert, onFermer, articles, onBascule }: Props) {
               Terminé
             </button>
           </div>
+          {tries.length === 0 && (
+            <p className="px-8 py-12 text-center text-corps text-encre-3">
+              La liste est vide — rien à attraper dans les rayons. 🛒
+            </p>
+          )}
           <ul className="flex-1 overflow-y-auto px-3 pb-8">
             <AnimatePresence initial={false}>
               {tries.map((article) => (

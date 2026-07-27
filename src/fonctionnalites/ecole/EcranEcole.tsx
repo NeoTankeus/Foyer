@@ -22,8 +22,13 @@ export function EcranEcole() {
   const { membre, foyer } = utiliserSession()
   const clientRequetes = useQueryClient()
   const [fournitures, setFournitures] = useState<Fourniture[]>(() => {
+    // Réglages en JSON libre : on ne garde que les lignes exploitables,
+    // sinon un élément null ferait tomber l'écran au rendu.
     const brut = foyer?.reglages['ecole_fournitures']
-    return Array.isArray(brut) ? (brut as Fourniture[]) : []
+    return (Array.isArray(brut) ? brut : [])
+      .filter((f): f is Partial<Fourniture> => !!f && typeof f === 'object')
+      .map((f) => ({ libelle: String(f.libelle ?? ''), coche: f.coche === true }))
+      .filter((f) => f.libelle !== '')
   })
   const [nouvelle, setNouvelle] = useState('')
   const [enEdition, setEnEdition] = useState<number | null>(null) // index de la fourniture en cours de renommage

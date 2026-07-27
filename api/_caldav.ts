@@ -41,16 +41,22 @@ async function requeteDav(
       'content-type': 'application/xml; charset=utf-8',
     },
     body: corps,
+    // iCloud peut ne jamais répondre : sans délai, l'import mange les 60 s de la fonction.
+    signal: AbortSignal.timeout(20000),
   })
   if (reponse.status === 401) throw new Error('identifiants iCloud refusés (mot de passe d’app ?)')
   if (!reponse.ok && reponse.status !== 207) throw new Error(`iCloud ${methode} → ${reponse.status}`)
   return reponse.text()
 }
 
-/** Résout un href CalDAV (relatif ou absolu) contre l'hôte concerné. */
-function resoudre(href: string, base: string): string {
+/** Résout un href CalDAV (relatif ou absolu) contre l'hôte concerné, ou null. */
+function resoudre(href: string, base: string): string | null {
   if (/^https?:\/\//i.test(href)) return href
-  return new URL(href, base).toString()
+  try {
+    return new URL(href, base).toString()
+  } catch {
+    return null
+  }
 }
 
 /**
@@ -88,6 +94,7 @@ export async function lireIcsDepuisIcloud(
 
   // 2. La maison des calendriers.
   const urlPrincipal = resoudre(hrefPrincipal, RACINE)
+  if (!urlPrincipal) throw new Error('adresse du principal iCloud illisible')
   const xmlMaison = await requeteDav(
     urlPrincipal,
     'PROPFIND',
@@ -105,6 +112,7 @@ export async function lireIcsDepuisIcloud(
 
   // 3. La liste des calendriers.
   const urlMaison = resoudre(hrefMaison, urlPrincipal)
+  if (!urlMaison) throw new Error('adresse du dossier de calendriers iCloud illisible')
   const xmlListe = await requeteDav(
     urlMaison,
     'PROPFIND',
@@ -124,7 +132,8 @@ export async function lireIcsDepuisIcloud(
     if (/schedule-(?:inbox|outbox)|notification/i.test(bloc)) continue
     const href = premierHref(bloc)
     const nom = /<(?:[\w-]+:)?displayname[^>]*>([^<]*)<\/(?:[\w-]+:)?displayname>/i.exec(bloc)?.[1] ?? ''
-    if (href) calendriers.push({ url: resoudre(href, urlMaison), nom: desechapperXml(nom) })
+    const urlCalendrier = href ? resoudre(href, urlMaison) : null
+    if (urlCalendrier) calendriers.push({ url: urlCalendrier, nom: desechapperXml(nom) })
   }
 
   const filtre = (filtreNom ?? '').trim().toLowerCase()

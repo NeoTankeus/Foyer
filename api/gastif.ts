@@ -31,16 +31,49 @@ interface MessageEntrant {
   texte: string
 }
 
+/** Toute réponse part en JSON, avec le bon en-tête : le client peut TOUJOURS la lire. */
+const repondre = (corps: unknown, status = 200): Response =>
+  new Response(JSON.stringify(corps), { status, headers: { 'content-type': 'application/json; charset=utf-8' } })
+
+/** Un corps de requête illisible ne doit jamais devenir un 500. */
+async function lireCorps(req: Request): Promise<Record<string, unknown> | null> {
+  try {
+    const brut: unknown = await req.json()
+    return brut && typeof brut === 'object' && !Array.isArray(brut) ? (brut as Record<string, unknown>) : null
+  } catch {
+    return null
+  }
+}
+
+/** JSON d'une réponse tierce : null plutôt qu'une exception. */
+async function jsonDe(reponse: Response): Promise<unknown> {
+  try {
+    return await reponse.json()
+  } catch {
+    return null
+  }
+}
+
+/** Texte d'une réponse tierce, sans jamais lever. */
+async function texteDe(reponse: Response): Promise<string> {
+  try {
+    return await reponse.text()
+  } catch {
+    return ''
+  }
+}
+
 export default async function handler(req: Request): Promise<Response> {
+  try {
   if (req.method !== 'POST') {
-    return new Response(JSON.stringify({ erreur: 'Méthode non autorisée' }), { status: 405 })
+    return repondre({ erreur: 'methode', message: 'POST uniquement' }, 405)
   }
 
   const cleGemini = process.env.GEMINI_API_KEY
   if (!cleGemini) {
-    return new Response(
-      JSON.stringify({ erreur: 'cle_absente', message: 'La clé GEMINI_API_KEY n’est pas configurée dans Vercel.' }),
-      { status: 503, headers: { 'content-type': 'application/json' } },
+    return repondre(
+      { erreur: 'cle_absente', message: 'La clé GEMINI_API_KEY n’est pas configurée dans Vercel.' },
+      503,
     )
   }
 
@@ -49,29 +82,39 @@ export default async function handler(req: Request): Promise<Response> {
   const cleAnon = process.env.VITE_SUPABASE_ANON_KEY
   const jeton = req.headers.get('authorization')?.replace(/^Bearer\s+/i, '')
   if (!urlSupabase || !cleAnon || !jeton) {
-    return new Response(JSON.stringify({ erreur: 'non_connecte' }), { status: 401 })
+    return repondre({ erreur: 'non_connecte' }, 401)
   }
   const verification = await fetch(`${urlSupabase}/auth/v1/user`, {
     headers: { apikey: cleAnon, authorization: `Bearer ${jeton}` },
-  })
-  if (!verification.ok) {
-    return new Response(JSON.stringify({ erreur: 'non_connecte' }), { status: 401 })
+    signal: AbortSignal.timeout(8000),
+  }).catch(() => null)
+  if (!verification?.ok) {
+    return repondre({ erreur: 'non_connecte' }, 401)
   }
 
-  const corps = (await req.json()) as {
-    messages: MessageEntrant[]
-    contexte: string
-    role_membre?: string
+  // Le corps peut arriver vide, tronqué ou mal formé : on ne suppose RIEN.
+  const corps = await lireCorps(req)
+  const messagesBruts = Array.isArray(corps?.['messages']) ? (corps['messages'] as unknown[]) : []
+  const contexte = typeof corps?.['contexte'] === 'string' ? (corps['contexte'] as string) : ''
+  const roleMembre = typeof corps?.['role_membre'] === 'string' ? (corps['role_membre'] as string) : ''
+
+  const messages: MessageEntrant[] = messagesBruts.flatMap((m) => {
+    const o = m as { role?: unknown; texte?: unknown } | null
+    if (!o || typeof o.texte !== 'string' || !o.texte.trim()) return []
+    return [{ role: o.role === 'gastif' ? 'gastif' : 'utilisateur', texte: o.texte }]
+  })
+  if (messages.length === 0) {
+    return repondre({ erreur: 'vide', message: 'Pose-moi une question.' }, 400)
   }
 
   const systeme = `${IDENTITE}
 
-L'interlocuteur actuel a le rôle : ${corps.role_membre === 'child' ? 'ENFANT (applique les règles enfant)' : 'adulte'}.
+L'interlocuteur actuel a le rôle : ${roleMembre === 'child' ? 'ENFANT (applique les règles enfant)' : 'adulte'}.
 
 Voici l'état réel du foyer en ce moment — c'est ta seule source de vérité sur la famille :
-${corps.contexte}`
+${contexte}`
 
-  const contenus = corps.messages.slice(-20).map((m) => ({
+  const contenus = messages.slice(-20).map((m) => ({
     role: m.role === 'utilisateur' ? 'user' : 'model',
     parts: [{ text: m.texte }],
   }))
@@ -92,38 +135,47 @@ ${corps.contexte}`
       {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
+        signal: AbortSignal.timeout(22000),
         body: JSON.stringify({
           ...(estGemma ? {} : { system_instruction: { parts: [{ text: systeme }] } }),
           contents: contenusEnvoyes,
           generationConfig: { maxOutputTokens: 4096, temperature: 0.6 },
         }),
       },
-    )
+    ).catch(() => null)
   }
 
   // On ne devine plus les modèles : on demande à Google la liste exacte de
   // ceux que CETTE clé peut appeler, puis on essaie les meilleurs dans l'ordre.
   const listeReponse = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models?key=${cleGemini}&pageSize=100`,
-  )
-  if (!listeReponse.ok) {
-    const detail = await listeReponse.text()
-    return new Response(
-      JSON.stringify({
-        erreur: 'cle',
-        message: `Cette clé ne peut même pas lister les modèles (${listeReponse.status}) — elle est invalide ou restreinte. Recrée-la sur aistudio.google.com → Get API key → « Create API key in NEW project ». Détail : ${detail.slice(0, 200)}`,
-      }),
-      { status: 502, headers: { 'content-type': 'application/json' } },
+    { signal: AbortSignal.timeout(10000) },
+  ).catch(() => null)
+  if (!listeReponse) {
+    return repondre(
+      { erreur: 'reseau', message: 'Google ne répond pas (délai dépassé) — réessaie dans un instant.' },
+      502,
     )
   }
-  const liste = (await listeReponse.json()) as {
-    models?: { name: string; supportedGenerationMethods?: string[] }[]
+  if (!listeReponse.ok) {
+    const detail = await texteDe(listeReponse)
+    return repondre(
+      {
+        erreur: 'cle',
+        message: `Cette clé ne peut même pas lister les modèles (${listeReponse.status}) — elle est invalide ou restreinte. Recrée-la sur aistudio.google.com → Get API key → « Create API key in NEW project ». Détail : ${detail.slice(0, 200)}`,
+      },
+      502,
+    )
   }
-  const disponibles = (liste.models ?? [])
-    .filter((m) => m.supportedGenerationMethods?.includes('generateContent'))
-    .map((m) => m.name.replace(/^models\//, ''))
+  const liste = (await jsonDe(listeReponse)) as {
+    models?: { name?: string; supportedGenerationMethods?: string[] }[]
+  } | null
+  // `name` peut manquer : on ne chaîne jamais sur une valeur non vérifiée.
+  const disponibles = (Array.isArray(liste?.models) ? liste.models : [])
+    .filter((m) => Array.isArray(m?.supportedGenerationMethods) && m.supportedGenerationMethods.includes('generateContent'))
+    .map((m) => (typeof m.name === 'string' ? m.name.replace(/^models\//, '') : ''))
     // ni vision-only, ni embeddings, ni TTS/images
-    .filter((n) => !/embedding|image|tts|audio|veo|imagen|aqa/i.test(n))
+    .filter((n) => n !== '' && !/embedding|image|tts|audio|veo|imagen|aqa/i.test(n))
 
   const score = (n: string): number => {
     if (/flash-lite/.test(n)) return 0 // quotas gratuits les plus larges d'abord
@@ -138,46 +190,47 @@ ${corps.contexte}`
   let modeleUtilise = ''
   for (const modele of candidats) {
     const tentative = await appeler(modele)
+    if (!tentative) {
+      // Délai dépassé ou réseau coupé : on tente le modèle suivant.
+      derniereRaison = `${modele} → pas de réponse (délai dépassé)`
+      continue
+    }
     if (tentative.ok) {
       reponseGemini = tentative
       modeleUtilise = modele
       break
     }
-    try {
-      const detail = (await tentative.json()) as { error?: { message?: string } }
-      derniereRaison = `${modele} → ${detail.error?.message ?? tentative.status}`
-    } catch {
-      derniereRaison = `${modele} → ${tentative.status}`
-    }
+    const detail = (await jsonDe(tentative)) as { error?: { message?: unknown } } | null
+    const message = typeof detail?.error?.message === 'string' ? detail.error.message : String(tentative.status)
+    derniereRaison = `${modele} → ${message}`
   }
 
   if (!reponseGemini) {
-    return new Response(
-      JSON.stringify({
+    return repondre(
+      {
         erreur: 'quota',
         message: `Ta clé voit ${candidats.length} modèle(s) [${candidats.slice(0, 3).join(', ')}…] mais aucun n'accepte de répondre (quota à zéro sur ce projet Google). Dernier refus : « ${derniereRaison.slice(0, 180)} ». La solution qui marche : aistudio.google.com → Get API key → « Create API key in NEW project » → remplace GEMINI_API_KEY dans Vercel → Redeploy.`,
-      }),
-      { status: 429, headers: { 'content-type': 'application/json' } },
+      },
+      429,
     )
   }
   void modeleUtilise
 
-  if (!reponseGemini.ok) {
-    const detail = await reponseGemini.text()
-    return new Response(
-      JSON.stringify({ erreur: 'gemini', message: `Gemini a répondu ${reponseGemini.status}`, detail: detail.slice(0, 300) }),
-      { status: 502, headers: { 'content-type': 'application/json' } },
+  // Une réponse 200 peut quand même être vide ou d'une forme inattendue.
+  const donnees = (await jsonDe(reponseGemini)) as {
+    candidates?: { content?: { parts?: unknown } }[]
+  } | null
+  const parts = donnees?.candidates?.[0]?.content?.parts
+  const texte = (Array.isArray(parts) ? parts : [])
+    .map((p) => (typeof (p as { text?: unknown })?.text === 'string' ? (p as { text: string }).text : ''))
+    .join('')
+
+  return repondre({ reponse: texte.trim() || 'Je n’ai pas de réponse — réessaie.' })
+  } catch (erreur) {
+    // Aucun chemin ne doit finir en 500 opaque : le client reçoit toujours du JSON.
+    return repondre(
+      { erreur: 'serveur', message: String(erreur instanceof Error ? erreur.message : erreur).slice(0, 160) },
+      500,
     )
   }
-
-  const donnees = (await reponseGemini.json()) as {
-    candidates?: { content?: { parts?: { text?: string }[] } }[]
-  }
-  const texte =
-    donnees.candidates?.[0]?.content?.parts?.map((p) => p.text ?? '').join('') ??
-    'Je n’ai pas de réponse — réessaie.'
-
-  return new Response(JSON.stringify({ reponse: texte }), {
-    headers: { 'content-type': 'application/json' },
-  })
 }

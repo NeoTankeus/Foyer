@@ -15,10 +15,14 @@ export function EcranOlympiades() {
   const { membres, foyer } = utiliserSession()
   const participants = membres.filter((m) => m.role !== 'guest')
   const [scores, setScores] = useState<Scores>(() => {
-    const brut = foyer?.reglages['olympiades']
-    return brut && typeof brut === 'object'
-      ? { points: {}, titres: [], ...(brut as Partial<Scores>) }
-      : { points: {}, titres: [] }
+    // Réglages en JSON libre : un « titres » qui ne serait pas une liste
+    // ferait planter le rendu — on ne reprend que ce qui a la bonne forme.
+    const brut = foyer?.reglages['olympiades'] as Partial<Scores> | undefined
+    const pts = brut?.points
+    return {
+      points: pts && typeof pts === 'object' && !Array.isArray(pts) ? pts : {},
+      titres: (Array.isArray(brut?.titres) ? brut.titres : []).filter((t): t is string => typeof t === 'string'),
+    }
   })
   const [epreuve, setEpreuve] = useState<string | null>(null)
   const [enCours, setEnCours] = useState(false)

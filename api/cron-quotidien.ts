@@ -13,6 +13,8 @@ const CLE_SERVICE = process.env.SUPABASE_SERVICE_ROLE ?? ''
 async function sb<T>(chemin: string, options?: RequestInit): Promise<T> {
   const reponse = await fetch(`${URL_SUPABASE}/rest/v1/${chemin}`, {
     ...options,
+    // Sans délai maximal, une base muette bloque la tournée jusqu'au couperet Vercel.
+    signal: AbortSignal.timeout(12000),
     headers: {
       apikey: CLE_SERVICE,
       authorization: `Bearer ${CLE_SERVICE}`,
@@ -21,18 +23,51 @@ async function sb<T>(chemin: string, options?: RequestInit): Promise<T> {
       ...(options?.headers ?? {}),
     },
   })
-  if (!reponse.ok) throw new Error(`${chemin} → ${reponse.status} ${await reponse.text()}`)
+  if (!reponse.ok) throw new Error(`${chemin} → ${reponse.status} ${await reponse.text().catch(() => '')}`)
   return (await reponse.json()) as T
+}
+
+/** Une liste venue de la base : jamais autre chose qu'un tableau. */
+function liste<T>(valeur: unknown): T[] {
+  return Array.isArray(valeur) ? (valeur as T[]) : []
+}
+
+/**
+ * Le décalage RÉEL d'Europe/Paris à un instant donné, en minutes.
+ * (L'ancienne règle « avril→octobre = +2 h » se trompait d'une heure pendant
+ * la fin mars et la fin octobre — les bornes du jour glissaient et le brief
+ * pouvait oublier un rendez-vous.)
+ */
+function decalageMinutesParis(instant: Date): number {
+  try {
+    const parties = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'Europe/Paris',
+      timeZoneName: 'longOffset',
+    }).formatToParts(instant)
+    const brut = parties.find((p) => p.type === 'timeZoneName')?.value ?? ''
+    const m = /GMT([+-])(\d{1,2}):?(\d{2})?/.exec(brut)
+    if (!m) return 60
+    return (m[1] === '-' ? -1 : 1) * (Number(m[2]) * 60 + Number(m[3] ?? 0))
+  } catch {
+    return 60
+  }
+}
+
+/** L'instant UTC d'une heure « murale » de Paris (point fixe en 2 passes). */
+function instantParis(jour: string, heure: string): Date {
+  const nominal = new Date(`${jour}T${heure}Z`).getTime()
+  if (!Number.isFinite(nominal)) return new Date()
+  let candidat = new Date(nominal - 60 * 60000)
+  for (let i = 0; i < 2; i += 1) candidat = new Date(nominal - decalageMinutesParis(candidat) * 60000)
+  return candidat
 }
 
 function bornesJourParis(): { debut: string; fin: string; jour: string } {
   const maintenant = new Date()
   const jour = new Intl.DateTimeFormat('fr-CA', { timeZone: 'Europe/Paris' }).format(maintenant)
-  const mois = Number(jour.slice(5, 7))
-  const decalage = mois >= 4 && mois <= 10 ? '+02:00' : '+01:00'
   return {
-    debut: new Date(`${jour}T00:00:00${decalage}`).toISOString(),
-    fin: new Date(`${jour}T23:59:59${decalage}`).toISOString(),
+    debut: instantParis(jour, '00:00:00').toISOString(),
+    fin: instantParis(jour, '23:59:59').toISOString(),
     jour,
   }
 }
@@ -52,19 +87,22 @@ interface Colis {
 async function suivreColis(pousser: (titre: string, corps: string) => Promise<void>): Promise<number> {
   const cle = process.env.LAPOSTE_API_KEY
   if (!cle) return 0
-  const liste = await sb<Colis[]>(`colis?statut=in.(attendu,en_transit)&select=*`)
+  const aSuivre = liste<Colis>(await sb<unknown>(`colis?statut=in.(attendu,en_transit)&select=*`))
   let maj = 0
-  for (const colis of liste.slice(0, 20)) {
+  for (const colis of aSuivre.slice(0, 20)) {
+    if (typeof colis?.numero !== 'string' || !colis.numero) continue
     try {
       const reponse = await fetch(`https://api.laposte.fr/suivi/v2/idships/${encodeURIComponent(colis.numero)}?lang=fr_FR`, {
         headers: { 'X-Okapi-Key': cle, accept: 'application/json' },
+        signal: AbortSignal.timeout(10000),
       })
       if (!reponse.ok) continue
-      const donnees = (await reponse.json()) as {
-        shipment?: { isFinal?: boolean; event?: { label?: string; date?: string }[] }
-      }
-      const dernier = donnees.shipment?.event?.[0]
-      const livre = donnees.shipment?.isFinal === true
+      const donnees = (await reponse.json().catch(() => null)) as {
+        shipment?: { isFinal?: boolean; event?: unknown } | null
+      } | null
+      const evenements = Array.isArray(donnees?.shipment?.event) ? donnees.shipment.event : []
+      const dernier = evenements[0] as { label?: string; date?: string } | undefined
+      const livre = donnees?.shipment?.isFinal === true
       const nouveauStatut = livre ? 'livre' : 'en_transit'
       if (nouveauStatut !== colis.statut || dernier) {
         await sb(`colis?id=eq.${colis.id}`, {
@@ -118,17 +156,20 @@ function extrairePrix(html: string): number | null {
 }
 
 async function veillerPrix(pousser: (titre: string, corps: string) => Promise<void>): Promise<number> {
-  const idees = await sb<Idee[]>(`idees_cadeaux?offert=eq.false&url=not.is.null&select=*`)
+  const idees = liste<Idee>(await sb<unknown>(`idees_cadeaux?offert=eq.false&url=not.is.null&select=*`))
   let suivis = 0
   const { jour } = bornesJourParis()
   for (const idee of idees.slice(0, 15)) {
+    if (typeof idee?.url !== 'string' || !/^https?:\/\//i.test(idee.url)) continue
     try {
-      const page = await fetch(idee.url ?? '', {
+      const page = await fetch(idee.url, {
         headers: { 'user-agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)' },
+        signal: AbortSignal.timeout(12000),
       })
+      if (!page.ok) continue
       const prix = extrairePrix((await page.text()).slice(0, 400000))
       if (prix === null) continue
-      const historique = idee.historique_prix ?? []
+      const historique = Array.isArray(idee.historique_prix) ? idee.historique_prix : []
       if (historique[historique.length - 1]?.date !== jour) historique.push({ date: jour, prix })
       await sb(`idees_cadeaux?id=eq.${idee.id}`, {
         method: 'PATCH',
@@ -155,28 +196,40 @@ async function veillerPrix(pousser: (titre: string, corps: string) => Promise<vo
 async function heuresDeDepart(
   evenements: { titre: string; debut_a: string; journee_entiere: boolean; lieu?: string | null }[],
 ): Promise<string[]> {
-  const foyers = await sb<{ reglages?: { maison?: { lat?: number; lon?: number } } }[]>('foyers?select=reglages&limit=1')
+  const foyers = liste<{ reglages?: { maison?: { lat?: number; lon?: number } } }>(
+    await sb<unknown>('foyers?select=reglages&limit=1'),
+  )
   const maison = foyers[0]?.reglages?.maison
-  if (!maison?.lat || !maison?.lon) return []
+  if (!Number.isFinite(maison?.lat) || !Number.isFinite(maison?.lon)) return []
   const phrases: string[] = []
   for (const e of evenements.filter((x) => !x.journee_entiere && x.lieu).slice(0, 3)) {
     try {
       const g = await fetch(
         `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(e.lieu ?? '')}&format=jsonv2&limit=1`,
-        { headers: { accept: 'application/json', 'user-agent': 'STG-app-famille/1.0' } },
+        {
+          headers: { accept: 'application/json', 'user-agent': 'STG-app-famille/1.0' },
+          signal: AbortSignal.timeout(10000),
+        },
       )
       if (!g.ok) continue
-      const [cible] = (await g.json()) as { lat: string; lon: string }[]
-      if (!cible) continue
+      const trouves = liste<{ lat?: unknown; lon?: unknown }>(await g.json().catch(() => null))
+      const cible = trouves[0]
+      const cibleLat = Number(cible?.lat)
+      const cibleLon = Number(cible?.lon)
+      if (!Number.isFinite(cibleLat) || !Number.isFinite(cibleLon)) continue
       const o = await fetch(
-        `https://router.project-osrm.org/route/v1/driving/${maison.lon},${maison.lat};${cible.lon},${cible.lat}?overview=false`,
+        `https://router.project-osrm.org/route/v1/driving/${maison?.lon},${maison?.lat};${cibleLon},${cibleLat}?overview=false`,
+        { signal: AbortSignal.timeout(10000) },
       )
       if (!o.ok) continue
-      const route = (await o.json()) as { routes?: { duration?: number }[] }
-      const duree = route.routes?.[0]?.duration
-      if (!duree) continue
+      const route = (await o.json().catch(() => null)) as { routes?: unknown } | null
+      const premiere = liste<{ duration?: unknown }>(route?.routes)[0]
+      const duree = Number(premiere?.duration)
+      if (!Number.isFinite(duree) || duree <= 0) continue
       const minutes = Math.round(duree / 60)
-      const depart = new Date(new Date(e.debut_a).getTime() - (minutes + 10) * 60000)
+      const debut = new Date(e.debut_a).getTime()
+      if (!Number.isFinite(debut)) continue
+      const depart = new Date(debut - (minutes + 10) * 60000)
       const heure = depart.toLocaleTimeString('fr-FR', { timeZone: 'Europe/Paris', hour: '2-digit', minute: '2-digit' })
       phrases.push(`🚗 ${e.titre} : pars vers ${heure} (${minutes} min de route).`)
     } catch {
@@ -191,11 +244,14 @@ async function composerBrief(): Promise<string> {
   interface Evt { titre: string; debut_a: string; journee_entiere: boolean; lieu?: string | null }
   interface Tache { titre: string }
   interface Repas { notes: string | null; recette_id: string | null }
-  const [evenements, taches, repas] = await Promise.all([
-    sb<Evt[]>(`evenements?debut_a=gte.${debut}&debut_a=lte.${fin}&order=debut_a&select=*`),
-    sb<Tache[]>(`taches?statut=eq.a_faire&echeance=lte.${jour}&select=*`),
-    sb<Repas[]>(`repas?date=eq.${jour}&creneau=eq.soir&select=*`),
+  const [bruts, tachesBrutes, repasBruts] = await Promise.all([
+    sb<unknown>(`evenements?debut_a=gte.${debut}&debut_a=lte.${fin}&order=debut_a&select=*`),
+    sb<unknown>(`taches?statut=eq.a_faire&echeance=lte.${jour}&select=*`),
+    sb<unknown>(`repas?date=eq.${jour}&creneau=eq.soir&select=*`),
   ])
+  const evenements = liste<Evt>(bruts)
+  const taches = liste<Tache>(tachesBrutes)
+  const repas = liste<Repas>(repasBruts)
   const morceaux: string[] = []
   const horaires = evenements.filter((e) => !e.journee_entiere)
   if (horaires.length === 0) morceaux.push('Rien au programme aujourd’hui.')
@@ -215,12 +271,16 @@ async function composerBrief(): Promise<string> {
   if (soir?.notes) morceaux.push(`Ce soir : ${soir.notes}.`)
   // 🎉 Férié aujourd'hui ou demain (calendrier officiel) ?
   try {
-    const r = await fetch('https://calendrier.api.gouv.fr/jours-feries/metropole.json')
+    const r = await fetch('https://calendrier.api.gouv.fr/jours-feries/metropole.json', {
+      signal: AbortSignal.timeout(8000),
+    })
     if (r.ok) {
-      const feries = (await r.json()) as Record<string, string>
+      const brut = (await r.json().catch(() => null)) as unknown
+      const feries: Record<string, unknown> =
+        brut && typeof brut === 'object' && !Array.isArray(brut) ? (brut as Record<string, unknown>) : {}
       const demain = new Intl.DateTimeFormat('fr-CA', { timeZone: 'Europe/Paris' }).format(new Date(Date.now() + 86400000))
-      if (feries[jour]) morceaux.push(`🎉 C'est férié aujourd'hui (${feries[jour]}) !`)
-      else if (feries[demain]) morceaux.push(`🎉 Demain c'est férié (${feries[demain]}) !`)
+      if (typeof feries[jour] === 'string') morceaux.push(`🎉 C'est férié aujourd'hui (${String(feries[jour])}) !`)
+      else if (typeof feries[demain] === 'string') morceaux.push(`🎉 Demain c'est férié (${String(feries[demain])}) !`)
     }
   } catch {
     // le calendrier attendra
@@ -236,18 +296,20 @@ async function rappellerAnniversaires(
   pousser: (titre: string, corps: string) => Promise<void>,
   pousserAdultes: (titre: string, corps: string) => Promise<void>,
 ): Promise<number> {
-  const celebrations = await sb<Celebration[]>('celebrations?select=*')
+  const celebrations = liste<Celebration>(await sb<unknown>('celebrations?select=*'))
   const { jour } = bornesJourParis()
   const [annee, moisAuj, jourAuj] = jour.split('-').map(Number)
   const aujourdHui = Date.UTC(annee ?? 2026, (moisAuj ?? 1) - 1, jourAuj ?? 1)
   let envoyes = 0
   for (const c of celebrations) {
+    // `date` peut être nulle en base : on ne chaîne jamais dessus à l'aveugle.
+    if (typeof c?.date !== 'string') continue
     const [, moisAnniv, jourAnniv] = c.date.split('-').map(Number)
     if (!moisAnniv || !jourAnniv) continue
     let prochaine = Date.UTC(annee ?? 2026, moisAnniv - 1, jourAnniv)
     if (prochaine < aujourdHui) prochaine = Date.UTC((annee ?? 2026) + 1, moisAnniv - 1, jourAnniv)
     const dans = Math.round((prochaine - aujourdHui) / 86400000)
-    if (!(c.rappels ?? [21, 7, 1, 0]).includes(dans)) continue
+    if (!(Array.isArray(c.rappels) ? c.rappels : [21, 7, 1, 0]).includes(dans)) continue
     const corps =
       dans === 0
         ? `C’est aujourd’hui : ${c.nom} 🎉`
@@ -265,17 +327,20 @@ interface Abonnement {
   id: string
   membre_id: string
   endpoint: string
-  cles: { p256dh?: string; auth?: string }
+  cles?: { p256dh?: string; auth?: string } | null
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  // La tournée ne doit JAMAIS finir en 500 : un incident isolé ne peut pas
+  // annuler les autres sections, et Vercel doit lire un compte-rendu JSON.
+  try {
   const secret = process.env.CRON_SECRET
   if (secret && req.headers.authorization !== `Bearer ${secret}`) {
-    res.status(401).json({ erreur: 'non autorisé' })
+    res.status(401).json({ erreur: 'non_autorise' })
     return
   }
   if (!URL_SUPABASE || !CLE_SERVICE) {
-    res.status(503).json({ erreur: 'SUPABASE_SERVICE_ROLE manquant dans Vercel' })
+    res.status(503).json({ erreur: 'cle_absente', message: 'SUPABASE_SERVICE_ROLE manquant dans Vercel' })
     return
   }
 
@@ -284,7 +349,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   let abonnements: Abonnement[] = []
   if (clePublique && clePrivee) {
     webpush.setVapidDetails('mailto:stephanepitaud@me.com', clePublique, clePrivee)
-    abonnements = await sb<Abonnement[]>('push_abonnements?select=*')
+    // Une lecture ratée ici ne doit pas annuler toute la tournée quotidienne.
+    abonnements = liste<Abonnement>(await sb<unknown>('push_abonnements?select=*').catch(() => []))
   }
 
   // Verrou Père Noël : certains pushs (colis, prix des cadeaux, surprises)
@@ -292,7 +358,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   let idsAdultes = new Set<string>()
   let tousLesMembres: { id: string; foyer_id: string }[] = []
   try {
-    const membres = await sb<{ id: string; role: string; foyer_id: string }[]>('membres?select=id,role,foyer_id')
+    const membres = liste<{ id: string; role: string; foyer_id: string }>(
+      await sb<unknown>('membres?select=id,role,foyer_id'),
+    ).filter((m) => typeof m?.id === 'string')
     idsAdultes = new Set(membres.filter((m) => m.role === 'adult').map((m) => m.id))
     tousLesMembres = membres
   } catch {
@@ -309,14 +377,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }).catch(() => undefined)
   }
 
-  const envoyer = async (liste: Abonnement[], titre: string, corps: string, url: string) => {
-    for (const abonnement of liste) {
+  const envoyer = async (destinataires: Abonnement[], titre: string, corps: string, url: string) => {
+    for (const abonnement of destinataires) {
+      // `cles` peut être null en base (abonnement enregistré à moitié).
+      const p256dh = abonnement?.cles?.p256dh
+      const auth = abonnement?.cles?.auth
+      if (typeof abonnement?.endpoint !== 'string' || !p256dh || !auth) continue
       try {
         await webpush.sendNotification(
-          {
-            endpoint: abonnement.endpoint,
-            keys: { p256dh: abonnement.cles.p256dh ?? '', auth: abonnement.cles.auth ?? '' },
-          },
+          { endpoint: abonnement.endpoint, keys: { p256dh, auth } },
           JSON.stringify({ titre, corps, url }),
         )
       } catch (erreur) {
@@ -340,8 +409,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // (le contenu, lui, ne se révèle que dans l'app, à l'ouverture).
   const livrerCapsules = async (): Promise<number> => {
     const { jour } = bornesJourParis()
-    const capsules = await sb<{ id: string; titre: string }[]>(
-      `capsules?ouverte=eq.false&ouvrir_le=lte.${jour}&select=id,titre`,
+    const capsules = liste<{ id: string; titre: string }>(
+      await sb<unknown>(`capsules?ouverte=eq.false&ouvrir_le=lte.${jour}&select=id,titre`),
     )
     for (const c of capsules) {
       await pousserAdultes('💌 Une capsule temporelle s’ouvre !', `« ${c.titre} » attend d’être ouverte.`, '/nous/capsules')
@@ -352,8 +421,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // 🩺 Rappels santé du jour (vaccins, renouvellements…).
   const rappelerSante = async (): Promise<number> => {
     const { jour } = bornesJourParis()
-    const rappels = await sb<{ personne: string; libelle: string }[]>(
-      `sante?rappel_le=eq.${jour}&select=personne,libelle`,
+    const rappels = liste<{ personne: string; libelle: string }>(
+      await sb<unknown>(`sante?rappel_le=eq.${jour}&select=personne,libelle`),
     )
     for (const r of rappels) {
       await pousserAdultes('🩺 Rappel santé', `${r.personne} : ${r.libelle}.`, '/nous/sante')
@@ -363,32 +432,30 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   // 🚨 Alertes maison : météo extrême sur la position de la maison (Radar).
   const alerterMeteo = async (): Promise<number> => {
-    const foyers = await sb<{ reglages?: { maison?: { lat?: number; lon?: number; adresse?: string } } }[]>(
-      'foyers?select=reglages&limit=1',
+    const foyers = liste<{ reglages?: { maison?: { lat?: number; lon?: number; adresse?: string } } }>(
+      await sb<unknown>('foyers?select=reglages&limit=1'),
     )
     const maison = foyers[0]?.reglages?.maison
-    if (!maison?.lat || !maison?.lon) return 0
+    if (!Number.isFinite(maison?.lat) || !Number.isFinite(maison?.lon)) return 0
     const r = await fetch(
-      `https://api.open-meteo.com/v1/meteofrance?latitude=${maison.lat}&longitude=${maison.lon}` +
+      `https://api.open-meteo.com/v1/meteofrance?latitude=${maison?.lat}&longitude=${maison?.lon}` +
         `&daily=temperature_2m_min,temperature_2m_max,precipitation_sum,weather_code,wind_gusts_10m_max` +
         `&timezone=Europe%2FParis&forecast_days=1`,
+      { signal: AbortSignal.timeout(10000) },
     )
     if (!r.ok) return 0
-    const d = ((await r.json()) as {
-      daily?: {
-        temperature_2m_min?: number[]
-        temperature_2m_max?: number[]
-        precipitation_sum?: number[]
-        weather_code?: number[]
-        wind_gusts_10m_max?: number[]
-      }
-    }).daily
+    const d = ((await r.json().catch(() => null)) as { daily?: Record<string, unknown> | null } | null)?.daily
     if (!d) return 0
-    const tMin = d.temperature_2m_min?.[0] ?? 15
-    const tMax = d.temperature_2m_max?.[0] ?? 15
-    const pluie = d.precipitation_sum?.[0] ?? 0
-    const code = d.weather_code?.[0] ?? 0
-    const rafales = d.wind_gusts_10m_max?.[0] ?? 0
+    // Chaque série peut manquer, être vide ou contenir null : on ne lit qu'un nombre fini.
+    const nombre = (serie: unknown, defaut: number): number => {
+      const v = Array.isArray(serie) ? Number(serie[0]) : Number.NaN
+      return Number.isFinite(v) ? v : defaut
+    }
+    const tMin = nombre(d['temperature_2m_min'], 15)
+    const tMax = nombre(d['temperature_2m_max'], 15)
+    const pluie = nombre(d['precipitation_sum'], 0)
+    const code = nombre(d['weather_code'], 0)
+    const rafales = nombre(d['wind_gusts_10m_max'], 0)
     const alertes: string[] = []
     if (tMax >= 35) alertes.push(`🥵 Canicule : ${Math.round(tMax)}° prévu — volets fermés la journée, eau pour tout le monde`)
     if (tMin <= -4) alertes.push(`🥶 Grand froid : ${Math.round(tMin)}° cette nuit — gare au verglas et aux canalisations`)
@@ -404,17 +471,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // 🔌 Garanties et papiers qui expirent : rappel aux jours choisis (J-30, J-7…).
   const rappelerGaranties = async (): Promise<number> => {
     const { jour } = bornesJourParis()
-    const documents = await sb<{ titre: string; type: string; expire_le: string | null; rappels: number[] | null }[]>(
-      'documents?expire_le=not.is.null&select=titre,type,expire_le,rappels',
+    const documents = liste<{ titre: string; type: string; expire_le: string | null; rappels: number[] | null }>(
+      await sb<unknown>('documents?expire_le=not.is.null&select=titre,type,expire_le,rappels'),
     )
     const [a, m, j] = jour.split('-').map(Number)
     const aujourdHuiUtc = Date.UTC(a ?? 2026, (m ?? 1) - 1, j ?? 1)
     let envoyes = 0
     for (const doc of documents) {
-      if (!doc.expire_le) continue
+      if (typeof doc?.expire_le !== 'string' || !doc.expire_le) continue
       const [ea, em, ej] = doc.expire_le.split('-').map(Number)
       const dans = Math.round((Date.UTC(ea ?? 2026, (em ?? 1) - 1, ej ?? 1) - aujourdHuiUtc) / 86400000)
-      if (!(doc.rappels ?? [30, 7]).includes(dans) && dans !== 0) continue
+      if (!Number.isFinite(dans)) continue
+      if (!(Array.isArray(doc.rappels) ? doc.rappels : [30, 7]).includes(dans) && dans !== 0) continue
       const corps =
         dans === 0
           ? `« ${doc.titre} » expire AUJOURD'HUI.`
@@ -430,8 +498,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const { jour } = bornesJourParis()
     const [a, m, j] = jour.split('-').map(Number)
     const ilYA1An = `${(a ?? 2026) - 1}-${String(m ?? 1).padStart(2, '0')}-${String(j ?? 1).padStart(2, '0')}`
-    const souvenirs = await sb<{ titre: string | null; lieu: string | null }[]>(
-      `souvenirs?pris_le=gte.${ilYA1An}T00:00:00&pris_le=lte.${ilYA1An}T23:59:59&select=titre,lieu&limit=3`,
+    const souvenirs = liste<{ titre: string | null; lieu: string | null }>(
+      await sb<unknown>(
+        `souvenirs?pris_le=gte.${ilYA1An}T00:00:00&pris_le=lte.${ilYA1An}T23:59:59&select=titre,lieu&limit=3`,
+      ),
     )
     if (souvenirs.length === 0) return 0
     const premier = souvenirs[0]
@@ -447,20 +517,30 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // 📦 Le Stock fantôme : les produits à échéance partent AUX COURSES tout seuls.
   const stockFantome = async (): Promise<number> => {
     const { jour } = bornesJourParis()
-    const foyers = await sb<{ id: string; reglages?: Record<string, unknown> }[]>('foyers?select=id,reglages&limit=1')
+    const foyers = liste<{ id: string; reglages?: Record<string, unknown> }>(
+      await sb<unknown>('foyers?select=id,reglages&limit=1'),
+    )
     const foyer = foyers[0]
     const produits = foyer?.reglages?.['stock_fantome']
-    if (!foyer || !Array.isArray(produits) || produits.length === 0) return 0
-    const listes = await sb<{ id: string }[]>('listes?type=eq.courses&select=id&limit=1')
-    const liste = listes[0]
-    if (!liste) return 0
-    const articles = await sb<{ libelle: string }[]>(`articles?liste_id=eq.${liste.id}&coche=eq.false&select=libelle`)
-    const dejaLa = new Set(articles.map((a) => a.libelle.toLowerCase()))
+    if (!foyer?.id || !Array.isArray(produits) || produits.length === 0) return 0
+    const listesCourses = liste<{ id: string }>(await sb<unknown>('listes?type=eq.courses&select=id&limit=1'))
+    const listeCourses = listesCourses[0]
+    if (!listeCourses?.id) return 0
+    const articles = liste<{ libelle?: unknown }>(
+      await sb<unknown>(`articles?liste_id=eq.${listeCourses.id}&coche=eq.false&select=libelle`),
+    )
+    // `libelle` peut être null en base : sinon toLowerCase() casserait la section.
+    const dejaLa = new Set(
+      articles.map((a) => (typeof a?.libelle === 'string' ? a.libelle.toLowerCase() : '')).filter(Boolean),
+    )
 
     let ajoutes = 0
     const suivants = (produits as { libelle: string; jours: number; dernier: string }[]).map((p) => {
+      // Un réglage abîmé (libellé/date manquants) ne doit pas faire tomber la section.
+      if (typeof p?.libelle !== 'string' || typeof p?.dernier !== 'string' || !Number.isFinite(Number(p?.jours))) return p
       const echeance = new Date(`${p.dernier}T12:00:00`)
-      echeance.setDate(echeance.getDate() + p.jours)
+      if (!Number.isFinite(echeance.getTime())) return p
+      echeance.setDate(echeance.getDate() + Number(p.jours))
       const du = echeance <= new Date(`${jour}T12:00:00`)
       if (!du || dejaLa.has(p.libelle.toLowerCase())) return p
       ajoutes += 1
@@ -476,13 +556,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         await sb('articles', {
           method: 'POST',
           body: JSON.stringify({
-            liste_id: liste.id, libelle: p.libelle, rayon: 'autre', coche: false,
+            liste_id: listeCourses.id, libelle: p.libelle, rayon: 'autre', coche: false,
             position: 999999, ajoute_par: null, quantite: null, unite: null,
           }),
         }).catch(() => undefined)
       }
       // Réglages relus à l'instant T pour ne rien écraser d'autre.
-      const frais = await sb<{ reglages?: Record<string, unknown> }[]>('foyers?select=reglages&limit=1')
+      const frais = liste<{ reglages?: Record<string, unknown> }>(
+        await sb<unknown>('foyers?select=reglages&limit=1').catch(() => []),
+      )
       await sb(`foyers?id=eq.${foyer.id}`, {
         method: 'PATCH',
         body: JSON.stringify({ reglages: { ...(frais[0]?.reglages ?? {}), stock_fantome: suivants } }),
@@ -518,4 +600,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   } catch { /* fin */ }
 
   res.status(200).json(resultat)
+  } catch (erreur) {
+    // Même un incident global rend un compte-rendu JSON lisible dans les logs Vercel.
+    res.status(200).json({
+      ics: 0, colis: 0, prix: 0, anniversaires: 0, capsules: 0, sante: 0, alertes: 0,
+      garanties: 0, souvenirs: 0, stock: 0, brief: '', notifies: 0,
+      erreur: 'serveur',
+      message: String(erreur instanceof Error ? erreur.message : erreur).slice(0, 200),
+    })
+  }
 }

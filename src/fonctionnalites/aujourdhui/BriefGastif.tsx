@@ -1,7 +1,7 @@
 // Le brief du matin. En phase 1 il est calculé localement, sans IA — honnête.
 // En phase 2, Gastif le génère à 6 h et le pousse en notification.
 import type { LigneEvenement, LigneTache } from '@/lib/basedonnees.types'
-import { formatHeure, maintenantLocal } from '@/lib/dates'
+import { dateIsoJour, formatHeure, maintenantLocal } from '@/lib/dates'
 
 interface Props {
   evenements: LigneEvenement[]
@@ -10,24 +10,42 @@ interface Props {
 
 function composer(evenements: LigneEvenement[], taches: LigneTache[]): string {
   const phrases: string[] = []
-  const maintenant = maintenantLocal()
+  const maintenant = Date.now()
 
+  const journeeEntiere = evenements.filter((e) => e.journee_entiere)
   const aVenir = evenements
     .filter((e) => !e.journee_entiere)
-    .filter((e) => new Date(e.debut_a) > new Date())
+    // Une date illisible ne doit pas devenir « prochain rendez-vous » par accident.
+    .filter((e) => {
+      const debut = new Date(e.debut_a).getTime()
+      return Number.isFinite(debut) && debut > maintenant
+    })
+    // L'ordre d'arrivée n'est pas garanti (cache hors ligne) : on trie.
+    .sort((a, b) => a.debut_a.localeCompare(b.debut_a))
   const prochain = aVenir[0]
   if (evenements.length === 0) {
     phrases.push('Rien au programme aujourd’hui.')
   } else if (prochain) {
-    phrases.push(`Prochain rendez-vous : ${prochain.titre} à ${formatHeure(prochain.debut_a)}.`)
+    phrases.push(`Prochain rendez-vous : ${prochain.titre ?? 'sans titre'} à ${formatHeure(prochain.debut_a)}.`)
+  } else if (journeeEntiere.length > 0) {
+    // Une journée qui ne contient QUE des événements « toute la journée » n'est
+    // pas une journée dont tous les rendez-vous sont passés.
+    phrases.push(
+      journeeEntiere.length === 1
+        ? `Aujourd’hui : ${journeeEntiere[0]?.titre ?? 'un événement'} (toute la journée).`
+        : `${journeeEntiere.length} événements toute la journée.`,
+    )
   } else {
     phrases.push('Tous les rendez-vous du jour sont passés.')
   }
 
-  const dues = taches.filter((t) => t.echeance && new Date(t.echeance) <= maintenant)
+  // Comparaison de JOURS, en chaînes AAAA-MM-JJ comme partout ailleurs dans
+  // l'app : `new Date('2026-07-27')` valait minuit UTC et décalait le verdict.
+  const aujourdHui = dateIsoJour(maintenantLocal())
+  const dues = taches.filter((t) => t.echeance !== null && t.echeance <= aujourdHui)
   if (dues.length === 1) {
     const premiere = dues[0]
-    if (premiere) phrases.push(`Une chose à faire : ${premiere.titre.toLowerCase()}.`)
+    if (premiere) phrases.push(`Une chose à faire : ${(premiere.titre ?? '').toLowerCase() || 'une tâche'}.`)
   } else if (dues.length > 1) {
     phrases.push(`${dues.length} choses à faire aujourd’hui.`)
   }

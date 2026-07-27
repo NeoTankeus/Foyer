@@ -40,27 +40,34 @@ export function EcranCourses() {
   const [libelleEdite, setLibelleEdite] = useState('')
   const [confirmeSupprArticle, setConfirmeSupprArticle] = useState(false)
   const [scannerOuvert, setScannerOuvert] = useState(false)
+  const [messageAction, setMessageAction] = useState<string | null>(null)
   const champRef = useRef<HTMLInputElement>(null)
 
   // Plusieurs personnes cochent en même temps : temps réel obligatoire.
   useEffect(() => realtime.demarrer(), []) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    void historiqueLibelles().then(setSuggestions)
+    // Le cache local peut être inaccessible (mode privé, quota) : pas de
+    // promesse non rattrapée, on se contente de zéro suggestion.
+    void historiqueLibelles()
+      .then(setSuggestions)
+      .catch(() => setSuggestions([]))
   }, [courses.data])
 
   const liste = courses.data?.liste ?? null
-  const articles = courses.data?.articles ?? []
+  const articles = Array.isArray(courses.data?.articles) ? courses.data.articles : []
+  // `libelle` / `rayon` viennent de la base : jamais supposés présents.
   const aFaire = articles
     .filter((a) => !a.coche)
-    .sort((a, b) => indexRayon(a.rayon) - indexRayon(b.rayon) || a.libelle.localeCompare(b.libelle))
+    .sort((a, b) => indexRayon(a.rayon) - indexRayon(b.rayon) || (a.libelle ?? '').localeCompare(b.libelle ?? ''))
   const coches = articles.filter((a) => a.coche)
 
   const rafraichir = () => clientRequetes.invalidateQueries({ queryKey: ['courses'] })
 
   // Le bouton général : un visuel internet pour chaque produit sans image, d'un coup.
   const chercherTousLesVisuels = async () => {
-    const sansImage = aFaire.filter((a) => !a.image_url).slice(0, 25)
+    // Un article sans libellé n'a rien à chercher (et ferait planter la recherche).
+    const sansImage = aFaire.filter((a) => !a.image_url && Boolean(a.libelle)).slice(0, 25)
     if (sansImage.length === 0) return
     setVisuelsEnCours(true)
     setErreurVisuels(null)
@@ -84,15 +91,25 @@ export function EcranCourses() {
 
   const ajouter = (libelle: string) => {
     const propre = libelle.trim()
-    if (!propre || !liste || !membre) return
-    void ajouterArticle(liste.id, membre.id, propre, devinerRayon(propre)).then(rafraichir)
+    if (!propre) return
+    if (!liste || !membre) {
+      // Le champ semblait avaler la saisie sans rien faire : on explique.
+      setMessageAction('Liste indisponible pour l’instant — réessaie dans un instant.')
+      return
+    }
+    setMessageAction(null)
+    void ajouterArticle(liste.id, membre.id, propre, devinerRayon(propre))
+      .then(rafraichir)
+      .catch(() => setMessageAction(`« ${propre} » n’a pas pu être ajouté — vérifie le réseau.`))
     setSaisie('')
     champRef.current?.focus()
   }
 
   const basculer = (article: LigneArticle) => {
     if (!membre) return
-    void basculerArticle(article, membre.id).then(rafraichir)
+    void basculerArticle(article, membre.id)
+      .then(rafraichir)
+      .catch(() => setMessageAction('Modification non enregistrée — vérifie le réseau.'))
   }
 
   const dicter = () => {
@@ -114,9 +131,12 @@ export function EcranCourses() {
   const grouperParRayon = (lignes: LigneArticle[]) => {
     const groupes = new Map<string, LigneArticle[]>()
     for (const article of lignes) {
-      const existant = groupes.get(article.rayon) ?? []
+      // Un rayon absent devient « divers » : sans cela la clé valait null et
+      // le titre de section plantait sur `.toUpperCase()`.
+      const rayon = article.rayon || 'divers'
+      const existant = groupes.get(rayon) ?? []
       existant.push(article)
-      groupes.set(article.rayon, existant)
+      groupes.set(rayon, existant)
     }
     return [...groupes.entries()]
   }
@@ -134,9 +154,21 @@ export function EcranCourses() {
                 // Chronodrive V1 : liste triée par rayon dans le presse-papier + le site.
                 // (Le remplissage automatique du panier — V2 — demande un robot serveur, à venir.)
                 const parRayon = grouperParRayon(aFaire)
-                  .map(([rayon, lignes]) => `${rayon.toUpperCase()}\n${lignes.map((l) => `- ${l.libelle}`).join('\n')}`)
+                  .map(
+                    ([rayon, lignes]) =>
+                      `${rayon.toUpperCase()}\n${lignes.map((l) => `- ${l.libelle ?? ''}`).join('\n')}`,
+                  )
                   .join('\n\n')
-                void navigator.clipboard?.writeText(parRayon)
+                // Le presse-papier peut être absent ou refusé (Safari sans
+                // geste, HTTP) : on le dit au lieu de laisser croire que c'est copié.
+                const copie = navigator.clipboard?.writeText(parRayon)
+                if (copie) {
+                  void copie
+                    .then(() => setMessageAction('Liste copiée — colle-la dans Chronodrive.'))
+                    .catch(() => setMessageAction('Copie refusée par le navigateur — recopie la liste à la main.'))
+                } else {
+                  setMessageAction('Copie indisponible sur ce navigateur — recopie la liste à la main.')
+                }
                 window.open('https://www.chronodrive.com', '_blank', 'noopener')
               }}
             >
@@ -184,8 +216,20 @@ export function EcranCourses() {
         )}
       </form>
 
+      {messageAction && <p className="mb-2 px-1 text-legende text-encre-3">{messageAction}</p>}
+
+      {courses.isLoading && (
+        <p className="px-8 py-10 text-center text-corps-2 text-encre-3">Chargement de la liste…</p>
+      )}
       {liste === null && !courses.isLoading && (
-        <EtatVide titre="Pas encore de liste" message="La liste « Courses » arrive avec les données du foyer." />
+        <div>
+          <EtatVide titre="Pas encore de liste" message="La liste « Courses » arrive avec les données du foyer." />
+          <div className="px-8">
+            <Bouton pleineLargeur variante="discret" onClick={() => void rafraichir()}>
+              Réessayer
+            </Bouton>
+          </div>
+        </div>
       )}
       {liste !== null && articles.length === 0 && (
         <EtatVide titre="Liste vide" message="Dis un mot, il est déjà dessus." />
@@ -252,7 +296,11 @@ export function EcranCourses() {
             <h3 className="text-note font-[590] uppercase tracking-wide text-encre-3">Dans le panier</h3>
             <button
               className="min-h-sur-tactile text-note text-encre-3 underline"
-              onClick={() => void supprimerArticlesCoches(coches).then(rafraichir)}
+              onClick={() =>
+                void supprimerArticlesCoches(coches)
+                  .then(rafraichir)
+                  .catch(() => setMessageAction('Le panier n’a pas pu être vidé — vérifie le réseau.'))
+              }
             >
               Vider
             </button>
@@ -296,7 +344,9 @@ export function EcranCourses() {
                 void muter({
                   table: 'articles', type: 'update', cible_id: articleEnEdition.id,
                   charge: { libelle: propre, rayon: devinerRayon(propre) },
-                }).then(rafraichir)
+                })
+                  .then(rafraichir)
+                  .catch(() => setMessageAction('Modification non enregistrée — vérifie le réseau.'))
                 setArticleEnEdition(null)
               }}
             >
@@ -310,7 +360,9 @@ export function EcranCourses() {
                   setConfirmeSupprArticle(true)
                   return
                 }
-                void muter({ table: 'articles', type: 'delete', cible_id: articleEnEdition.id, charge: {} }).then(rafraichir)
+                void muter({ table: 'articles', type: 'delete', cible_id: articleEnEdition.id, charge: {} })
+                  .then(rafraichir)
+                  .catch(() => setMessageAction('Suppression non enregistrée — vérifie le réseau.'))
                 setConfirmeSupprArticle(false)
                 setArticleEnEdition(null)
               }}
@@ -334,7 +386,9 @@ export function EcranCourses() {
           void muter({
             table: 'articles', type: 'update', cible_id: article.id,
             charge: { image_url: image, ...(nom && nom !== article.libelle ? { libelle: nom } : {}) },
-          }).then(rafraichir)
+          })
+            .then(rafraichir)
+            .catch(() => setMessageAction('Visuel non enregistré — vérifie le réseau.'))
         }}
       />
 

@@ -18,8 +18,8 @@ export function EcranHoroscope() {
   const jour = new Date().toISOString().slice(0, 10)
   const [horoscope, setHoroscope] = useState<string | null>(() => {
     try {
-      const memo = JSON.parse(localStorage.getItem(CLE) ?? 'null') as { jour: string; texte: string } | null
-      return memo?.jour === jour ? memo.texte : null
+      const memo = JSON.parse(localStorage.getItem(CLE) ?? 'null') as { jour?: string; texte?: string } | null
+      return memo?.jour === jour && typeof memo.texte === 'string' ? memo.texte : null
     } catch {
       return null
     }
@@ -40,7 +40,7 @@ export function EcranHoroscope() {
       return {
         taches: (taches.data ?? []).map((t) => t.titre).join(' · '),
         dlc: (inventaire.data ?? []).map((i) => `${i.libelle} (${i.dlc})`).join(' · '),
-        evenements: (evenements.data ?? []).map((e) => `${e.titre} le ${e.debut_a.slice(0, 10)}`).join(' · '),
+        evenements: (evenements.data ?? []).map((e) => `${e.titre} le ${String(e.debut_a ?? '').slice(0, 10)}`).join(' · '),
         courses: (courses.data ?? []).map((a) => a.libelle).join(' · '),
       }
     },

@@ -26,7 +26,7 @@ const CATEGORIES: { cle: string; libelle: string; icone: string }[] = [
   { cle: 'autre', libelle: 'Autre', icone: '📦' },
 ]
 const icone = (cle: string | null) => CATEGORIES.find((c) => c.cle === cle)?.icone ?? '📦'
-const euros = (n: number) => `${n.toFixed(2).replace('.', ',')} €`
+const euros = (n: number) => (Number.isFinite(n) ? `${n.toFixed(2).replace('.', ',')} €` : '— €')
 
 function moisIso(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
@@ -86,8 +86,8 @@ export function EcranBudget() {
   }
   const ouvrirEdition = (l: LigneDepense) => {
     setBrouillon({
-      libelle: l.libelle,
-      montant: String(l.montant).replace('.', ','),
+      libelle: String(l.libelle ?? ''),
+      montant: String(l.montant ?? '').replace('.', ','),
       categorie: l.categorie ?? 'autre',
       date: l.date_depense ?? '',
     })
@@ -136,12 +136,15 @@ export function EcranBudget() {
       const donnees = (await reponse.json()) as {
         ticket?: { commercant?: string | null; montant?: number | null; date?: string | null; categorie?: string | null }
       }
-      const t = donnees.ticket
+      // La lecture du ticket est faite par STG : chaque champ peut manquer
+      // ou revenir dans un autre type que celui annoncé.
+      const t = donnees.ticket && typeof donnees.ticket === 'object' ? donnees.ticket : null
+      const categorie = typeof t?.categorie === 'string' ? t.categorie : null
       setBrouillon({
-        libelle: t?.commercant ?? 'Ticket',
+        libelle: String(t?.commercant ?? 'Ticket') || 'Ticket',
         montant: t?.montant != null ? String(t.montant) : '',
-        categorie: t?.categorie && CATEGORIES.some((c) => c.cle === t.categorie) ? t.categorie : 'autre',
-        date: t?.date ?? '',
+        categorie: categorie && CATEGORIES.some((c) => c.cle === categorie) ? categorie : 'autre',
+        date: typeof t?.date === 'string' ? t.date : '',
       })
       setEnEdition('nouvelle')
     } finally {

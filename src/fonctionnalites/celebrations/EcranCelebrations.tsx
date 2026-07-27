@@ -200,6 +200,13 @@ function CoffreAIdees({
     }
   }
 
+  // `historique_prix` est une colonne jsonb libre : un contenu inattendu
+  // (objet, null, entrées incomplètes) ferait planter `.map()` et Math.max.
+  const historiqueSur = (v: unknown): { date: string; prix: number }[] =>
+    (Array.isArray(v) ? v : [])
+      .filter((h): h is { date: string; prix: number } => !!h && typeof h === 'object' && Number.isFinite((h as { prix?: unknown }).prix))
+      .map((h) => ({ date: String(h.date ?? ''), prix: h.prix }))
+
   const rafraichir = () => clientRequetes.invalidateQueries({ queryKey: ['idees', celebration.id] })
 
   /**
@@ -267,7 +274,7 @@ function CoffreAIdees({
     const produit = await analyserLien(i.url)
     if (produit.prix === null) return
     const jour = new Date().toISOString().slice(0, 10)
-    const historique = [...(i.historique_prix ?? [])]
+    const historique = historiqueSur(i.historique_prix)
     const dernier = historique[historique.length - 1]
     if (dernier?.date === jour) {
       historique[historique.length - 1] = { date: jour, prix: produit.prix }
@@ -340,7 +347,7 @@ function CoffreAIdees({
     const enRetard = liste
       .filter((i) => i.url && !i.offert)
       .filter((i) => {
-        const h = i.historique_prix ?? []
+        const h = historiqueSur(i.historique_prix)
         return h[h.length - 1]?.date !== jour
       })
       .slice(0, 8)
@@ -441,7 +448,7 @@ function CoffreAIdees({
       <ul className="flex flex-col gap-2">
         {(idees.data ?? []).map((i) => {
           const site = nomDuSite(i.url)
-          const historique = i.historique_prix ?? []
+          const historique = historiqueSur(i.historique_prix)
           const valeurs = historique.map((h) => h.prix)
           const plusHaut = valeurs.length > 0 ? Math.max(...valeurs) : null
           const baissePct =
@@ -541,7 +548,7 @@ function CoffreAIdees({
                           variante="valider"
                           onClick={() => {
                             const jour = new Date().toISOString().slice(0, 10)
-                            const historique = [...(i.historique_prix ?? [])]
+                            const historique = historiqueSur(i.historique_prix)
                             const dernier = historique[historique.length - 1]
                             if (dernier?.date === jour) historique[historique.length - 1] = { date: jour, prix: valeur }
                             else historique.push({ date: jour, prix: valeur })
@@ -682,6 +689,8 @@ function CoffreAIdees({
 /** Courbe de prix pleine largeur : min, max, premier et dernier relevé, site. */
 function GrandeCourbe({ historique, site }: { historique: { date: string; prix: number }[]; site: string | null }) {
   const valeurs = historique.map((h) => h.prix)
+  // Sans relevé, Math.min/max renvoient ±Infinity : la courbe n'a rien à dire.
+  if (valeurs.length === 0) return null
   const min = Math.min(...valeurs)
   const max = Math.max(...valeurs)
   const plage = max - min || 1
@@ -699,8 +708,10 @@ function GrandeCourbe({ historique, site }: { historique: { date: string; prix: 
   const premier = valeurs[0] ?? 0
   const enBaisse = dernier < premier
   const couleur = enBaisse ? 'var(--fait)' : 'var(--ardoise)'
-  const formatDate = (d: string) =>
-    new Date(d).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })
+  const formatDate = (d: string) => {
+    const date = new Date(d)
+    return Number.isNaN(date.getTime()) ? '' : date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })
+  }
   const premierJour = historique[0]?.date
   const dernierJour = historique[historique.length - 1]?.date
   return (

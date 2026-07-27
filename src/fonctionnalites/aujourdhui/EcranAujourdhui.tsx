@@ -15,6 +15,7 @@ import {
   utiliserTachesOuvertes,
 } from '@/lib/requetes'
 import {
+  addDays,
   bornesJourneeLocale,
   dateIsoJour,
   differenceInCalendarDays,
@@ -79,10 +80,47 @@ const DEFAUT: Record<CleBloc, boolean> = {
 
 const ORDRE_DEFAUT: CleBloc[] = BLOCS.map((b) => b.cle)
 
+/** Une date lisible en français, ou un repli — jamais « Invalid Date » à l'écran. */
+function dateLisible(
+  valeur: string | null | undefined,
+  options: Intl.DateTimeFormatOptions,
+  repli = 'date inconnue',
+): string {
+  if (!valeur) return repli
+  const d = new Date(valeur)
+  return Number.isNaN(d.getTime()) ? repli : d.toLocaleDateString('fr-FR', options)
+}
+
+/**
+ * Le prochain passage d'une date anniversaire (jour/mois), ou null si la date
+ * stockée est illisible — sans quoi l'accueil affichait « J-NaN ».
+ */
+function prochainAnniversaire(iso: string | null | undefined): Date | null {
+  if (!iso) return null
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) return null
+  const maintenant = maintenantLocal()
+  const prochaine = new Date(maintenant.getFullYear(), date.getMonth(), date.getDate())
+  if (prochaine < new Date(maintenant.getFullYear(), maintenant.getMonth(), maintenant.getDate())) {
+    prochaine.setFullYear(prochaine.getFullYear() + 1)
+  }
+  return prochaine
+}
+
 function chargerBlocs(): Record<CleBloc, boolean> {
   try {
     const brut = localStorage.getItem('foyer-blocs')
-    return brut ? { ...DEFAUT, ...(JSON.parse(brut) as Record<CleBloc, boolean>) } : DEFAUT
+    if (!brut) return DEFAUT
+    const stocke = JSON.parse(brut) as unknown
+    if (!stocke || typeof stocke !== 'object' || Array.isArray(stocke)) return DEFAUT
+    // On ne reprend du stockage que des booléens sur des clés connues : une
+    // valeur corrompue ne doit pas décider de l'affichage d'un bloc.
+    const retenus: Partial<Record<CleBloc, boolean>> = {}
+    for (const cle of ORDRE_DEFAUT) {
+      const valeur = (stocke as Record<string, unknown>)[cle]
+      if (typeof valeur === 'boolean') retenus[cle] = valeur
+    }
+    return { ...DEFAUT, ...retenus }
   } catch {
     return DEFAUT
   }
@@ -90,8 +128,9 @@ function chargerBlocs(): Record<CleBloc, boolean> {
 
 function chargerOrdre(): CleBloc[] {
   try {
-    const brut = JSON.parse(localStorage.getItem('foyer-blocs-ordre') ?? '[]') as CleBloc[]
-    const connus = brut.filter((c) => ORDRE_DEFAUT.includes(c))
+    const brut = JSON.parse(localStorage.getItem('foyer-blocs-ordre') ?? '[]') as unknown
+    if (!Array.isArray(brut)) return ORDRE_DEFAUT
+    const connus = (brut as CleBloc[]).filter((c) => ORDRE_DEFAUT.includes(c))
     // les blocs apparus depuis viennent se ranger à la fin, jamais perdus
     return [...connus, ...ORDRE_DEFAUT.filter((c) => !connus.includes(c))]
   } catch {
@@ -125,12 +164,20 @@ export function EcranAujourdhui() {
   const taches = utiliserTachesOuvertes()
   const celebrations = utiliserCelebrationsProches(365)
   const courses = utiliserListeCourses()
-  // Le prochain événement à venir (14 jours), pour qu'une entrée future se voie tout de suite.
-  const finJournee = bornesJourneeLocale().fin
-  const evenementsAVenir = utiliserEvenementsPeriode(
-    finJournee,
-    new Date(maintenantLocal().getTime() + 14 * 24 * 3600 * 1000).toISOString(),
+  const aujourdHui = dateIsoJour(maintenantLocal())
+  // Le prochain événement à venir (14 jours), pour qu'une entrée future se voie
+  // tout de suite. ⚠️ Ces deux bornes servent de queryKey : calculées sur
+  // l'instant courant, elles changeaient à CHAQUE rendu — nouvelle clé, nouvelle
+  // entrée de cache, requête relancée en boucle. On les cale sur des bornes de
+  // journée, stables tant qu'on est le même jour.
+  const { debutAVenir, finAVenir } = useMemo(
+    () => ({
+      debutAVenir: bornesJourneeLocale().fin,
+      finAVenir: bornesJourneeLocale(addDays(maintenantLocal(), 14)).fin,
+    }),
+    [aujourdHui],
   )
+  const evenementsAVenir = utiliserEvenementsPeriode(debutAVenir, finAVenir)
   const [blocs, setBlocs] = useState(chargerBlocs)
   const [ordre, setOrdre] = useState<CleBloc[]>(chargerOrdre)
   const [personnaliser, setPersonnaliser] = useState(false)
@@ -139,12 +186,22 @@ export function EcranAujourdhui() {
 
   const enregistrerOrdre = (suivant: CleBloc[]) => {
     setOrdre(suivant)
-    localStorage.setItem('foyer-blocs-ordre', JSON.stringify(suivant))
+    // Navigation privée / quota plein : le stockage jette. L'ordre reste
+    // appliqué à l'écran, il ne survivra simplement pas au redémarrage.
+    try {
+      localStorage.setItem('foyer-blocs-ordre', JSON.stringify(suivant))
+    } catch {
+      // réglage non mémorisé : sans gravité
+    }
   }
-  const position = (cle: CleBloc) => ordre.indexOf(cle)
+  // Un bloc absent de l'ordre mémorisé partirait en `order: -1`, donc tout en
+  // haut : on le renvoie à sa place par défaut.
+  const position = (cle: CleBloc) => {
+    const index = ordre.indexOf(cle)
+    return index === -1 ? ORDRE_DEFAUT.indexOf(cle) : index
+  }
 
   const estAdulte = membre?.role === 'adult'
-  const aujourdHui = dateIsoJour(maintenantLocal())
 
   // Les calendriers Apple se resynchronisent tout seuls à l'ouverture
   // (au plus toutes les 4 h — la tournée de 7h complète le dispositif).
@@ -158,8 +215,11 @@ export function EcranAujourdhui() {
 
   // 🕰 La capsule météo souvenir : quel temps il faisait il y a un an.
   const dateUnAnAvant = (() => {
-    const [a, m, j] = aujourdHui.split('-')
-    return `${Number(a) - 1}-${m}-${j}`
+    const [a = '', m = '', j = ''] = aujourdHui.split('-')
+    // Le 29 février n'existe pas l'année précédente : on retombe sur le 28,
+    // sinon la requête partait sur une date impossible et ne rendait rien.
+    const jour = m === '02' && j === '29' ? '28' : j
+    return `${Number(a) - 1}-${m}-${jour}`
   })()
   const meteoUnAn = useQuery({
     queryKey: ['meteo-archive', dateUnAnAvant],
@@ -170,11 +230,11 @@ export function EcranAujourdhui() {
 
   // 🕰 Les photos du même jour, l'année dernière.
   const souvenirsUnAn = useQuery({
-    queryKey: ['ilyaunan', aujourdHui],
+    queryKey: ['ilyaunan', dateUnAnAvant],
     staleTime: 3600 * 1000,
     queryFn: async () => {
-      const [a, m, j] = aujourdHui.split('-')
-      const jourPasse = `${Number(a) - 1}-${m}-${j}`
+      // Même date que la capsule météo (29 février compris).
+      const jourPasse = dateUnAnAvant
       const { data } = await supabase
         .from('souvenirs')
         .select('id,titre,image_donnees')
@@ -206,9 +266,12 @@ export function EcranAujourdhui() {
         .from('idees_cadeaux').select('*').eq('offert', false).not('url', 'is', null)
       if (error) return []
       const bonsPlans: { idee: LigneIdeeCadeau; plusHaut: number }[] = []
-      for (const i of data) {
-        const valeurs = (i.historique_prix ?? []).map((h) => h.prix)
-        if (valeurs.length === 0 || i.prix === null) continue
+      for (const i of data ?? []) {
+        // `historique_prix` est une colonne JSON : ni tableau ni nombres garantis.
+        const valeurs = (Array.isArray(i.historique_prix) ? i.historique_prix : [])
+          .map((h) => Number(h?.prix))
+          .filter((p) => Number.isFinite(p) && p > 0)
+        if (valeurs.length === 0 || i.prix === null || !Number.isFinite(i.prix)) continue
         const plusHaut = Math.max(...valeurs)
         if (plusHaut - i.prix > 0.01) bonsPlans.push({ idee: i, plusHaut })
       }
@@ -244,8 +307,14 @@ export function EcranAujourdhui() {
         }
         if (texte) resultats.push({ creneau: ligne.creneau, texte })
       }
+      // Un créneau inconnu renvoyait -1 et passait AVANT le petit-déjeuner :
+      // on l'envoie en fin de liste.
       const ordre = ['matin', 'midi', 'gouter', 'soir']
-      return resultats.sort((a, b) => ordre.indexOf(a.creneau) - ordre.indexOf(b.creneau))
+      const rang = (creneau: string) => {
+        const i = ordre.indexOf(creneau)
+        return i === -1 ? ordre.length : i
+      }
+      return resultats.sort((a, b) => rang(a.creneau) - rang(b.creneau))
     },
   })
 
@@ -282,7 +351,9 @@ export function EcranAujourdhui() {
     },
     enabled: membre !== null,
   })
-  const nonLues = (boite.data ?? []).filter((n) => !n.lu_par.includes(membre?.id ?? ''))
+  // `lu_par` peut arriver nul de la base : `.includes()` faisait tomber l'accueil.
+  const lecteursDe = (n: LigneNotification) => (Array.isArray(n.lu_par) ? n.lu_par : [])
+  const nonLues = (boite.data ?? []).filter((n) => !lecteursDe(n).includes(membre?.id ?? ''))
 
   const ouvrirNotification = async (n: LigneNotification) => {
     if (!membre) return
@@ -290,7 +361,7 @@ export function EcranAujourdhui() {
     // Marquée lue → elle disparaît de la cloche.
     void supabase
       .from('notifications')
-      .update({ lu_par: [...n.lu_par, membre.id] })
+      .update({ lu_par: [...lecteursDe(n), membre.id] })
       .eq('id', n.id)
       .then(() => clientRequetes.invalidateQueries({ queryKey: ['notifications'] }))
     naviguer(n.url || '/')
@@ -298,8 +369,14 @@ export function EcranAujourdhui() {
 
   const toutMarquerLu = async () => {
     if (!membre) return
+    // Une notification qui résiste ne doit pas bloquer les suivantes, et la
+    // liste doit être rafraîchie dans tous les cas.
     for (const n of nonLues) {
-      await supabase.from('notifications').update({ lu_par: [...n.lu_par, membre.id] }).eq('id', n.id)
+      try {
+        await supabase.from('notifications').update({ lu_par: [...lecteursDe(n), membre.id] }).eq('id', n.id)
+      } catch {
+        // on continue : la cloche sera simplement encore là au prochain passage
+      }
     }
     await clientRequetes.invalidateQueries({ queryKey: ['notifications'] })
   }
@@ -307,12 +384,10 @@ export function EcranAujourdhui() {
   const celebrationsTriees = useMemo(
     () =>
       (celebrations.data ?? [])
-        .map((c) => {
-          const date = new Date(c.date)
-          const prochaine = new Date(maintenantLocal().getFullYear(), date.getMonth(), date.getDate())
-          if (prochaine < new Date(maintenantLocal().getFullYear(), maintenantLocal().getMonth(), maintenantLocal().getDate()))
-            prochaine.setFullYear(prochaine.getFullYear() + 1)
-          return { c, dans: differenceInCalendarDays(prochaine, maintenantLocal()) }
+        .flatMap((c) => {
+          const prochaine = prochainAnniversaire(c.date)
+          // Une date illisible est écartée plutôt qu'affichée en « J-NaN ».
+          return prochaine ? [{ c, dans: differenceInCalendarDays(prochaine, maintenantLocal()) }] : []
         })
         .sort((a, b) => a.dans - b.dans),
     [celebrations.data],
@@ -327,18 +402,27 @@ export function EcranAujourdhui() {
     enabled: meteoDetail && ville !== null,
     staleTime: 2 * 3600 * 1000,
     queryFn: async (): Promise<Record<string, number>> => {
-      const r = await fetch(
-        `https://api.open-meteo.com/v1/forecast?latitude=${ville?.latitude}&longitude=${ville?.longitude}` +
-          `&daily=shortwave_radiation_sum&timezone=Europe%2FParis&forecast_days=4`,
-      )
-      if (!r.ok) return {}
-      const d = (await r.json()) as { daily?: { time?: string[]; shortwave_radiation_sum?: number[] } }
-      const carte: Record<string, number> = {}
-      for (const [i, date] of (d.daily?.time ?? []).entries()) carte[date] = d.daily?.shortwave_radiation_sum?.[i] ?? 0
-      return carte
+      // Réseau coupé : on rend une carte vide plutôt que de laisser la requête
+      // en erreur (le verdict séchage restait bloqué sur « … »).
+      try {
+        const r = await fetch(
+          `https://api.open-meteo.com/v1/forecast?latitude=${ville?.latitude}&longitude=${ville?.longitude}` +
+            `&daily=shortwave_radiation_sum&timezone=Europe%2FParis&forecast_days=4`,
+        )
+        if (!r.ok) return {}
+        const d = (await r.json()) as { daily?: { time?: string[]; shortwave_radiation_sum?: number[] } }
+        const carte: Record<string, number> = {}
+        const jours = Array.isArray(d.daily?.time) ? d.daily.time : []
+        for (const [i, date] of jours.entries()) carte[date] = d.daily?.shortwave_radiation_sum?.[i] ?? 0
+        return carte
+      } catch {
+        return {}
+      }
     },
   })
   const [saisieVille, setSaisieVille] = useState('')
+  // null = rien à dire, 'en-cours' = recherche, sinon le message d'échec.
+  const [rechercheVille, setRechercheVille] = useState<string | null>(null)
   // ⛵ Le tableau heure par heure (vent compris), façon Windfinder.
   const [jourDeplie, setJourDeplie] = useState<string | null>(null)
   const heures = useQuery<HeureMeteo[]>({
@@ -398,7 +482,7 @@ export function EcranAujourdhui() {
         id: `dlc-${l.id}`,
         texte: perime
           ? `⚠️ ${l.libelle} est périmé — à sortir du stock.`
-          : `🧊 DLC proche : ${l.libelle} (${new Date(`${l.dlc}T12:00:00`).toLocaleDateString('fr-FR', { weekday: 'long' })}) — mets-le au menu.`,
+          : `🧊 DLC proche : ${l.libelle} (${dateLisible(l.dlc ? `${l.dlc}T12:00:00` : null, { weekday: 'long' }, 'bientôt')}) — mets-le au menu.`,
         vers: '/nous/inventaire',
       })
     }
@@ -434,14 +518,20 @@ export function EcranAujourdhui() {
 
   const enregistrerBlocs = (suivants: Record<CleBloc, boolean>) => {
     setBlocs(suivants)
-    localStorage.setItem('foyer-blocs', JSON.stringify(suivants))
+    try {
+      localStorage.setItem('foyer-blocs', JSON.stringify(suivants))
+    } catch {
+      // réglage non mémorisé : sans gravité
+    }
   }
 
   const completer = (tache: LigneTache) => {
     if (!membre) return
-    void completerTache(tache, membre.id, membres).then(() =>
-      clientRequetes.invalidateQueries({ queryKey: ['taches'] }),
-    )
+    // En cas d'échec on rafraîchit quand même : la coche revient à son vrai
+    // état au lieu de rester cochée à tort.
+    void completerTache(tache, membre.id, membres)
+      .catch(() => undefined)
+      .then(() => clientRequetes.invalidateQueries({ queryKey: ['taches'] }))
   }
 
   // Les relances : tout ce qui est en retard ou imminent, en rouge, une seule fois.
@@ -454,15 +544,15 @@ export function EcranAujourdhui() {
     }
     for (const d of documents.data ?? []) {
       if (!d.expire_le) continue
-      const dans = differenceInCalendarDays(new Date(`${d.expire_le}T12:00:00`), maintenantLocal())
+      const expiration = new Date(`${d.expire_le}T12:00:00`)
+      if (Number.isNaN(expiration.getTime())) continue // date de coffre illisible
+      const dans = differenceInCalendarDays(expiration, maintenantLocal())
       if (dans < 0) liste.push({ id: `d-${d.id}`, texte: `Expiré : ${d.titre}`, vers: '/nous/coffre' })
       else if (dans <= 15) liste.push({ id: `d-${d.id}`, texte: `${d.titre} expire dans ${dans} j`, vers: '/nous/coffre' })
     }
     for (const c of celebrations.data ?? []) {
-      const date = new Date(c.date)
-      const prochaine = new Date(maintenantLocal().getFullYear(), date.getMonth(), date.getDate())
-      if (prochaine < new Date(maintenantLocal().getFullYear(), maintenantLocal().getMonth(), maintenantLocal().getDate()))
-        prochaine.setFullYear(prochaine.getFullYear() + 1)
+      const prochaine = prochainAnniversaire(c.date)
+      if (!prochaine) continue
       const dans = differenceInCalendarDays(prochaine, maintenantLocal())
       if (dans <= 1) liste.push({ id: `c-${c.id}`, texte: dans === 0 ? `Aujourd’hui : ${c.nom} 🎂` : `Demain : ${c.nom} 🎂`, vers: '/nous/celebrations' })
     }
@@ -479,9 +569,15 @@ export function EcranAujourdhui() {
   const articlesRestants = (courses.data?.articles ?? []).filter((a) => !a.coche)
   const articlesCoches = (courses.data?.articles ?? []).filter((a) => a.coche)
 
-  const evenementsDuJour = (evenements.data ?? [])
-    .filter((e) => !e.journee_entiere)
-    .sort((a, b) => a.debut_a.localeCompare(b.debut_a))
+  // Un événement « toute la journée » était purement et simplement absent de
+  // l'accueil : le bloc annonçait « rien au programme » un jour de vacances.
+  // On les met en tête, puis les rendez-vous à l'heure.
+  const evenementsDuJour = [
+    ...(evenements.data ?? []).filter((e) => e.journee_entiere),
+    ...(evenements.data ?? [])
+      .filter((e) => !e.journee_entiere)
+      .sort((a, b) => a.debut_a.localeCompare(b.debut_a)),
+  ]
 
   return (
     <div>
@@ -593,23 +689,50 @@ export function EcranAujourdhui() {
             </div>
             {!ville ? (
               <form
-                className="mt-2 flex gap-2"
+                className="mt-2 flex flex-col gap-2"
                 onSubmit={(e) => {
                   e.preventDefault()
-                  void choisirVille(saisieVille).then((v) => {
-                    if (v) setVille(v)
-                  })
+                  const demande = saisieVille.trim()
+                  if (!demande) return
+                  setRechercheVille('en-cours')
+                  // Sans retour, une ville introuvable ou une coupure réseau ne
+                  // produisait strictement RIEN à l'écran.
+                  void choisirVille(demande)
+                    .then((v) => {
+                      if (v) {
+                        setVille(v)
+                        setRechercheVille(null)
+                      } else {
+                        setRechercheVille(`« ${demande} » introuvable — essaie une autre orthographe.`)
+                      }
+                    })
+                    .catch(() => setRechercheVille('Recherche impossible — vérifie le réseau et réessaie.'))
                 }}
               >
-                <input
-                  value={saisieVille}
-                  onChange={(e) => setSaisieVille(e.target.value)}
-                  placeholder="Ta ville (une fois)"
-                  aria-label="Ville pour la météo"
-                  className="min-h-sur-tactile w-full min-w-0 flex-1 rounded-md border border-trait bg-fond-sourd px-3 text-corps-2"
-                />
-                <Bouton type="submit" variante="valider" desactive={!saisieVille.trim()}>OK</Bouton>
+                <div className="flex gap-2">
+                  <input
+                    value={saisieVille}
+                    onChange={(e) => setSaisieVille(e.target.value)}
+                    placeholder="Ta ville (une fois)"
+                    aria-label="Ville pour la météo"
+                    className="min-h-sur-tactile w-full min-w-0 flex-1 rounded-md border border-trait bg-fond-sourd px-3 text-corps-2"
+                  />
+                  <Bouton type="submit" variante="valider" desactive={!saisieVille.trim()}>OK</Bouton>
+                </div>
+                {rechercheVille === 'en-cours' && <p className="text-legende text-encre-3">Recherche de la ville…</p>}
+                {rechercheVille !== null && rechercheVille !== 'en-cours' && (
+                  <p className="text-legende text-urgent">{rechercheVille}</p>
+                )}
               </form>
+            ) : meteo.isLoading ? (
+              <p className="mt-2 text-corps-2 text-encre-3">Relevé météo en cours…</p>
+            ) : (meteo.data ?? []).length === 0 ? (
+              // Open-Meteo renvoie une liste vide en cas de panne : on le dit et
+              // on offre le seul geste utile, réessayer.
+              <div className="mt-2 flex items-center justify-between gap-2">
+                <p className="text-corps-2 text-encre-3">Météo indisponible pour l’instant.</p>
+                <Bouton variante="discret" onClick={() => void meteo.refetch()}>Réessayer</Bouton>
+              </div>
             ) : (
               <button
                 onClick={() => setMeteoDetail(true)}
@@ -619,7 +742,7 @@ export function EcranAujourdhui() {
                 {(meteo.data ?? []).map((j, idx) => (
                   <div key={j.date} className="flex flex-col items-center gap-0.5">
                     <span className="text-legende capitalize text-encre-3">
-                      {idx === 0 ? 'auj.' : new Date(`${j.date}T12:00:00`).toLocaleDateString('fr-FR', { weekday: 'short' })}
+                      {idx === 0 ? 'auj.' : dateLisible(`${j.date}T12:00:00`, { weekday: 'short' }, '—')}
                     </span>
                     <span className="text-[22px]">{iconeMeteo(j.code)}</span>
                     <span className="chiffres text-note text-encre">
@@ -650,15 +773,20 @@ export function EcranAujourdhui() {
               <span aria-hidden="true">›</span>
             </h2>
             {(vacances.data ?? []).slice(0, 2).map((v) => {
-              const dans = differenceInCalendarDays(new Date(v.debut), maintenantLocal())
+              const debut = new Date(v.debut)
+              // Le calendrier officiel (ou son cache) peut contenir une date
+              // illisible : on n'affiche jamais « J-NaN ».
+              if (Number.isNaN(debut.getTime())) return null
+              const dans = differenceInCalendarDays(debut, maintenantLocal())
               const enCours = dans <= 0
+              const court: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'short' }
               return (
                 <p key={v.debut} className="py-0.5 text-corps-2 text-encre">
                   {v.description}{' '}
                   <span className="chiffres text-encre-3">
                     {enCours
-                      ? `— en cours, jusqu’au ${new Date(v.fin).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}`
-                      : `— J-${dans} (${new Date(v.debut).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })} → ${new Date(v.fin).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })})`}
+                      ? `— en cours, jusqu’au ${dateLisible(v.fin, court, 'la rentrée')}`
+                      : `— J-${dans} (${dateLisible(v.debut, court)} → ${dateLisible(v.fin, court)})`}
                   </span>
                 </p>
               )
@@ -687,6 +815,7 @@ export function EcranAujourdhui() {
                 • {idee.libelle}{' '}
                 <span className="chiffres opacity-90">
                   <s>{plusHaut.toFixed(2)} €</s> → {(idee.prix ?? 0).toFixed(2)} €
+                  {/* plusHaut > 0 est garanti par le filtre : pas de division par zéro. */}
                   {' '}(−{Math.round(((plusHaut - (idee.prix ?? 0)) / plusHaut) * 100)} %)
                 </span>
               </button>
@@ -703,27 +832,35 @@ export function EcranAujourdhui() {
               <h2 className="text-note font-[700] uppercase tracking-wide text-encre-3">📅 La journée</h2>
               <span className="text-encre-3">›</span>
             </button>
-            {evenementsDuJour.length === 0 ? (
+            {evenements.isLoading ? (
+              <p className="text-corps-2 text-encre-3">Chargement de la journée…</p>
+            ) : evenementsDuJour.length === 0 ? (
               <p className="text-corps-2 text-encre-3">Rien au programme aujourd’hui.</p>
             ) : (
-              evenementsDuJour.map((e) => (
-                <button
-                  key={e.id}
-                  onClick={() => naviguer('/agenda')}
-                  className="flex w-full items-center gap-3 border-b border-trait py-1.5 text-left last:border-0 active:bg-fond-sourd"
-                >
-                  <span className="chiffres w-12 text-note font-[590] text-encre-3">{formatHeure(e.debut_a)}</span>
-                  <span className="flex-1 text-corps text-encre">{e.titre}</span>
-                  <span className="flex gap-0.5">
-                    {(e.participants.length === 0
-                      ? membres.filter((m) => m.role !== 'guest')
-                      : membres.filter((m) => e.participants.includes(m.id))
-                    ).map((m) => (
-                      <span key={m.id} className="h-2 w-2 rounded-full" style={{ background: couleurMembre(m.couleur) }} />
-                    ))}
-                  </span>
-                </button>
-              ))
+              evenementsDuJour.map((e) => {
+                // `participants` peut arriver nul de la base.
+                const participants = Array.isArray(e.participants) ? e.participants : []
+                return (
+                  <button
+                    key={e.id}
+                    onClick={() => naviguer('/agenda')}
+                    className="flex w-full items-center gap-3 border-b border-trait py-1.5 text-left last:border-0 active:bg-fond-sourd"
+                  >
+                    <span className="chiffres w-12 text-note font-[590] text-encre-3">
+                      {e.journee_entiere ? 'jour' : formatHeure(e.debut_a)}
+                    </span>
+                    <span className="flex-1 text-corps text-encre">{e.titre}</span>
+                    <span className="flex gap-0.5">
+                      {(participants.length === 0
+                        ? membres.filter((m) => m.role !== 'guest')
+                        : membres.filter((m) => participants.includes(m.id))
+                      ).map((m) => (
+                        <span key={m.id} className="h-2 w-2 rounded-full" style={{ background: couleurMembre(m.couleur) }} />
+                      ))}
+                    </span>
+                  </button>
+                )
+              })
             )}
             {(() => {
               const prochain = evenementsAVenir.data?.[0]
@@ -735,7 +872,7 @@ export function EcranAujourdhui() {
                 >
                   À venir :{' '}
                   <span className="capitalize">
-                    {new Date(prochain.debut_a).toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' })}
+                    {dateLisible(prochain.debut_a, { weekday: 'short', day: 'numeric', month: 'short' }, 'bientôt')}
                   </span>
                   {prochain.journee_entiere ? '' : ` · ${formatHeure(prochain.debut_a)}`} — {prochain.titre}
                 </button>
@@ -802,7 +939,10 @@ export function EcranAujourdhui() {
             )}
             {(documents.data ?? []).map((d) => (
               <button key={d.id} onClick={() => naviguer('/nous/coffre')} className="block w-full py-0.5 text-left text-corps-2 text-encre">
-                🗄️ {d.titre} <span className="chiffres text-encre-3">— expire le {new Date(`${d.expire_le}T12:00:00`).toLocaleDateString('fr-FR')}</span>
+                🗄️ {d.titre}{' '}
+                <span className="chiffres text-encre-3">
+                  — expire le {dateLisible(d.expire_le ? `${d.expire_le}T12:00:00` : null, {}, 'date à compléter')}
+                </span>
               </button>
             ))}
             {(colis.data ?? []).map((c) => (
@@ -826,7 +966,10 @@ export function EcranAujourdhui() {
                 <Coche
                   cochee={false}
                   onBascule={() => {
-                    if (membre) void basculerArticle(a, membre.id).then(() => clientRequetes.invalidateQueries({ queryKey: ['courses'] }))
+                    if (membre)
+                      void basculerArticle(a, membre.id)
+                        .catch(() => undefined)
+                        .then(() => clientRequetes.invalidateQueries({ queryKey: ['courses'] }))
                   }}
                   etiquette={`Cocher ${a.libelle}`}
                 />
@@ -843,7 +986,10 @@ export function EcranAujourdhui() {
                 <Coche
                   cochee
                   onBascule={() => {
-                    if (membre) void basculerArticle(a, membre.id).then(() => clientRequetes.invalidateQueries({ queryKey: ['courses'] }))
+                    if (membre)
+                      void basculerArticle(a, membre.id)
+                        .catch(() => undefined)
+                        .then(() => clientRequetes.invalidateQueries({ queryKey: ['courses'] }))
                   }}
                   etiquette={`Décocher ${a.libelle}`}
                 />
@@ -988,7 +1134,7 @@ export function EcranAujourdhui() {
                 <p className="text-corps text-encre">« {dernierMot.contenu || '📷 Photo'} »</p>
                 <p className="text-legende text-encre-3">
                   {membres.find((m) => m.id === dernierMot.auteur_id)?.prenom ?? 'quelqu’un'} ·{' '}
-                  {new Date(dernierMot.cree_le).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}
+                  {dateLisible(dernierMot.cree_le, { day: 'numeric', month: 'short' }, 'récemment')}
                 </p>
               </button>
             ) : (
@@ -1026,7 +1172,11 @@ export function EcranAujourdhui() {
                         <span className="block text-corps-2 font-[590] text-encre">{n.titre}</span>
                         {n.corps && <span className="block text-corps-2 leading-snug text-encre-2">{n.corps}</span>}
                         <span className="block text-legende text-encre-3">
-                          {new Date(n.cree_le).toLocaleString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                          {dateLisible(
+                            n.cree_le,
+                            { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' },
+                            'à l’instant',
+                          )}
                         </span>
                       </span>
                       <span aria-hidden="true" className="mt-1 text-encre-3">›</span>
@@ -1092,7 +1242,7 @@ export function EcranAujourdhui() {
                 <p className="text-corps-2 font-[590] capitalize text-encre">
                   {idx === 0
                     ? 'Aujourd’hui'
-                    : new Date(`${j.date}T12:00:00`).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}
+                    : dateLisible(`${j.date}T12:00:00`, { weekday: 'long', day: 'numeric', month: 'long' }, 'jour suivant')}
                 </p>
                 <p className="text-legende text-encre-3">
                   {j.pluieMm >= 1
@@ -1115,7 +1265,9 @@ export function EcranAujourdhui() {
                     : j.pluieMm > 0 || j.probaPluie >= 25 || (j.code >= 51 && j.code <= 57)
                       ? '⚠️ risque d’averse — surveille le ciel'
                       : sechage.data?.[j.date] === undefined
-                        ? '…'
+                        ? sechage.isFetching
+                          ? '…'
+                          : '— ensoleillement non mesuré'
                         : (sechage.data[j.date] ?? 0) >= 14
                           ? '👍 soleil au rendez-vous'
                           : (sechage.data[j.date] ?? 0) >= 8
@@ -1134,6 +1286,13 @@ export function EcranAujourdhui() {
             {jourDeplie === j.date && (
               <div className="mt-2">
                 {heures.isLoading && <p className="py-2 text-center text-legende text-encre-3">⛵ Relevé du vent…</p>}
+                {/* Un jour déplié sans donnée restait totalement muet. */}
+                {!heures.isLoading &&
+                  (heures.data ?? []).filter((h) => h.quand.startsWith(j.date)).length === 0 && (
+                    <p className="py-2 text-center text-legende text-encre-3">
+                      Détail heure par heure indisponible pour ce jour.
+                    </p>
+                  )}
                 {(heures.data ?? []).filter((h) => h.quand.startsWith(j.date) && [6, 8, 10, 12, 14, 16, 18, 20, 22].includes(Number(h.quand.slice(11, 13)))).length > 0 && (
                   <div className="overflow-hidden rounded-lg">
                     <div className="grid grid-cols-6 gap-px bg-trait text-center text-legende">
@@ -1241,22 +1400,26 @@ export function EcranAujourdhui() {
                 🎉 Prochain jour férié : {ferie.data.nom}
               </p>
               <p className="text-legende text-encre-3">
-                {new Date(`${ferie.data.date}T12:00:00`).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}
+                {dateLisible(`${ferie.data.date}T12:00:00`, { weekday: 'long', day: 'numeric', month: 'long' })}
                 {' '}— {ferie.data.dans === 0 ? "c'est aujourd'hui !" : ferie.data.dans === 1 ? 'demain !' : `dans ${ferie.data.dans} jours`}
                 {' '}(calendrier officiel)
               </p>
             </div>
           )}
           {(vacances.data ?? []).map((v) => {
-            const dans = differenceInCalendarDays(new Date(v.debut), maintenantLocal())
-            const duree = differenceInCalendarDays(new Date(v.fin), new Date(v.debut))
+            const debut = new Date(v.debut)
+            const fin = new Date(v.fin)
+            if (Number.isNaN(debut.getTime())) return null
+            const dans = differenceInCalendarDays(debut, maintenantLocal())
+            const duree = Number.isNaN(fin.getTime()) ? null : differenceInCalendarDays(fin, debut)
+            const long: Intl.DateTimeFormatOptions = { weekday: 'long', day: 'numeric', month: 'long' }
             return (
               <div key={v.debut} className="rounded-xl bg-fond-sourd px-3 py-2.5">
                 <p className="text-corps-2 font-[590] text-encre">{v.description}</p>
                 <p className="text-legende text-encre-3">
-                  {new Date(v.debut).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })} →{' '}
-                  {new Date(v.fin).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}
-                  {' '}· {duree} jours · {dans <= 0 ? 'EN COURS 🎉' : `dans ${dans} jour${dans > 1 ? 's' : ''}`}
+                  {dateLisible(v.debut, long)} → {dateLisible(v.fin, long)}
+                  {duree !== null ? ` · ${duree} jours` : ''}
+                  {' '}· {dans <= 0 ? 'EN COURS 🎉' : `dans ${dans} jour${dans > 1 ? 's' : ''}`}
                 </p>
               </div>
             )

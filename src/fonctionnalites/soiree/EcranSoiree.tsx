@@ -23,8 +23,11 @@ export function EcranSoiree() {
   const [affiches, setAffiches] = useState<Affiche[]>([])
   const [plateformes, setPlateformes] = useState<string[]>(() => {
     try {
-      const brut = JSON.parse(localStorage.getItem(CLE_PLATEFORMES) ?? 'null') as string[] | null
-      return brut && brut.length > 0 ? brut : PLATEFORMES
+      // Sans Array.isArray, une valeur abîmée (chaîne, objet) arriverait
+      // jusqu'à `.join()` et ferait tomber l'écran.
+      const brut = JSON.parse(localStorage.getItem(CLE_PLATEFORMES) ?? 'null') as unknown
+      const propres = (Array.isArray(brut) ? brut : []).filter((p): p is string => typeof p === 'string' && p !== '')
+      return propres.length > 0 ? propres : PLATEFORMES
     } catch {
       return PLATEFORMES
     }
@@ -74,7 +77,13 @@ export function EcranSoiree() {
       if (titreFilm && titreFilm.length > 1) {
         void fetch(`/api/itunes?terme=${encodeURIComponent(titreFilm)}&media=movie`)
           .then((r) => (r.ok ? r.json() : { resultats: [] }))
-          .then((d: { resultats?: Affiche[] }) => setAffiches((d.resultats ?? []).slice(0, 2)))
+          .then((d: { resultats?: Affiche[] }) =>
+            setAffiches(
+              (Array.isArray(d.resultats) ? d.resultats : [])
+                .filter((a): a is Affiche => !!a && typeof a === 'object')
+                .slice(0, 2),
+            ),
+          )
           .catch(() => undefined)
       }
     } catch (e) {

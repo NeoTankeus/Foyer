@@ -22,10 +22,18 @@ interface ConversationGastif {
   modifie_le: string
 }
 
+// `messages` est une colonne jsonb : elle peut contenir autre chose qu'une
+// liste (ancienne version, écriture ratée). On la lit toujours via ce filtre.
+function messagesDe(c: ConversationGastif | null | undefined): MessageGastif[] {
+  return (Array.isArray(c?.messages) ? c.messages : []).filter(
+    (m): m is MessageGastif => !!m && typeof m === 'object',
+  )
+}
+
 /** Le titre d'une discussion : sa première question. */
 function titreDe(c: ConversationGastif): string {
-  const premiere = c.messages.find((m) => m.role === 'utilisateur')
-  return premiere ? premiere.texte.slice(0, 60) : 'Discussion'
+  const premiere = messagesDe(c).find((m) => m.role === 'utilisateur')
+  return premiere ? String(premiere.texte ?? '').slice(0, 60) || 'Discussion' : 'Discussion'
 }
 
 export function EcranGastif() {

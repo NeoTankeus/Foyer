@@ -51,6 +51,7 @@ export function EcranAgenda() {
   const [filtreMembre, setFiltreMembre] = useState<string | null>(null)
   const [enEdition, setEnEdition] = useState<LigneEvenement | 'nouveau' | null>(null)
   const [evenementOuvert, setEvenementOuvert] = useState<LigneEvenement | null>(null)
+  const [erreurAction, setErreurAction] = useState<string | null>(null)
 
   // La grille couvre du lundi avant le 1er au dimanche après le dernier jour.
   const grille = useMemo(() => {
@@ -69,18 +70,41 @@ export function EcranAgenda() {
   const finPeriode = bornesJourneeLocale(grille[grille.length - 1] ?? mois).fin
   const evenements = utiliserEvenementsPeriode(debutPeriode, finPeriode)
 
-  const filtres = (evenements.data ?? []).filter(
-    (e) => filtreMembre === null || e.participants.length === 0 || e.participants.includes(filtreMembre),
+  // `participants` vient de la base : on ne suppose jamais que c'est un tableau.
+  const participantsDe = (e: LigneEvenement) => (Array.isArray(e.participants) ? e.participants : [])
+
+  const filtres = useMemo(
+    () =>
+      (evenements.data ?? []).filter(
+        (e) =>
+          filtreMembre === null ||
+          participantsDe(e).length === 0 ||
+          participantsDe(e).includes(filtreMembre),
+      ),
+    [evenements.data, filtreMembre],
   )
 
-  const evenementsPour = (jour: Date) => filtres.filter((e) => isSameDay(versLocal(e.debut_a), jour))
-  const duJour = evenementsPour(jourChoisi).sort((a, b) => a.debut_a.localeCompare(b.debut_a))
+  // La grille appelle ce filtre 35 à 42 fois par rendu : on indexe une fois par
+  // jour local plutôt que de reparcourir toute la période à chaque cellule.
+  const parJour = useMemo(() => {
+    const carte = new Map<string, LigneEvenement[]>()
+    for (const e of filtres) {
+      const debut = versLocal(e.debut_a)
+      if (Number.isNaN(debut.getTime())) continue // date illisible : on l'ignore
+      const cle = dateIsoJour(debut)
+      carte.set(cle, [...(carte.get(cle) ?? []), e])
+    }
+    return carte
+  }, [filtres])
+
+  const evenementsPour = (jour: Date) => parJour.get(dateIsoJour(jour)) ?? []
+  const duJour = [...evenementsPour(jourChoisi)].sort((a, b) => a.debut_a.localeCompare(b.debut_a))
   const aujourdHui = maintenantLocal()
 
   const couleursDe = (e: LigneEvenement) =>
-    (e.participants.length === 0
+    (participantsDe(e).length === 0
       ? membres.filter((m) => m.role !== 'guest')
-      : membres.filter((m) => e.participants.includes(m.id))
+      : membres.filter((m) => participantsDe(e).includes(m.id))
     ).map((m) => couleurMembre(m.couleur))
 
   return (
@@ -189,7 +213,11 @@ export function EcranAgenda() {
         <h2 className="mb-2 text-corps font-[700] capitalize text-encre">
           {jourChoisi.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}
         </h2>
-        {duJour.length === 0 ? (
+        {erreurAction && <p className="mb-2 text-legende text-urgent">{erreurAction}</p>}
+        {evenements.isLoading ? (
+          // « Rien ce jour-là » pendant le chargement faisait croire à un agenda vide.
+          <p className="py-6 text-center text-corps-2 text-encre-3">Chargement de l’agenda…</p>
+        ) : duJour.length === 0 ? (
           <p className="py-6 text-center text-corps-2 text-encre-3">Rien ce jour-là.</p>
         ) : (
           <ul className="flex flex-col gap-1">
@@ -258,9 +286,10 @@ export function EcranAgenda() {
                 variante="urgent"
                 pleineLargeur
                 onClick={() => {
-                  void supprimerEvenement(evenementOuvert.id).then(() =>
-                    clientRequetes.invalidateQueries({ queryKey: ['evenements'] }),
-                  )
+                  setErreurAction(null)
+                  void supprimerEvenement(evenementOuvert.id)
+                    .then(() => clientRequetes.invalidateQueries({ queryKey: ['evenements'] }))
+                    .catch(() => setErreurAction('Suppression impossible — vérifie le réseau et réessaie.'))
                   setEvenementOuvert(null)
                 }}
               >
@@ -274,9 +303,15 @@ export function EcranAgenda() {
                 onClick={() => {
                   const serie = serieDe(evenementOuvert)
                   if (!serie) return
-                  void supprimerSerieEvenements(serie).then(() =>
-                    clientRequetes.invalidateQueries({ queryKey: ['evenements'] }),
-                  )
+                  setErreurAction(null)
+                  // La suppression de série exige le réseau : si elle échoue,
+                  // il faut le dire (avant, la feuille se fermait en silence).
+                  void supprimerSerieEvenements(serie)
+                    .then(async (ok) => {
+                      await clientRequetes.invalidateQueries({ queryKey: ['evenements'] })
+                      if (!ok) setErreurAction('La série n’a pas pu être supprimée — reconnecte-toi et réessaie.')
+                    })
+                    .catch(() => setErreurAction('La série n’a pas pu être supprimée — vérifie le réseau.'))
                   setEvenementOuvert(null)
                 }}
               >
@@ -337,18 +372,30 @@ function FeuilleCreation({ ouverte, jourParDefaut, initiale, onFermer, onCreer }
   const [titre, setTitre] = useState(initiale?.titre ?? '')
   const [date, setDate] = useState(initiale ? dateIsoJour(versLocal(initiale.debut_a)) : dateIsoJour(jourParDefaut))
   const [heure, setHeure] = useState(initiale ? formatHeure(initiale.debut_a) : '18:00')
-  const [duree, setDuree] = useState(
-    initiale
-      ? Math.max(1, Math.round((new Date(initiale.fin_a).getTime() - new Date(initiale.debut_a).getTime()) / 60_000))
-      : 60,
-  )
+  const [duree, setDuree] = useState(() => {
+    if (!initiale) return 60
+    // Une fin illisible donnait NaN, puis une date invalide au moment
+    // d'enregistrer (l'écran tombait). On retombe sur 1 h.
+    const ecart = (new Date(initiale.fin_a).getTime() - new Date(initiale.debut_a).getTime()) / 60_000
+    return Number.isFinite(ecart) && ecart >= 1 ? Math.round(ecart) : 60
+  })
   const [lieu, setLieu] = useState(initiale?.lieu ?? '')
-  const [participants, setParticipants] = useState<string[]>(initiale?.participants ?? [])
+  const [participants, setParticipants] = useState<string[]>(
+    Array.isArray(initiale?.participants) ? initiale.participants : [],
+  )
   const [recurrence, setRecurrence] = useState(0)
+  const [erreur, setErreur] = useState<string | null>(null)
 
   const valider = async () => {
     if (!titre.trim()) return
+    // Sur iOS le champ date/heure peut être vidé : `new Date('T:00')` est
+    // invalide et `versUtc()` jetait alors une RangeError (écran blanc).
     const debutLocal = new Date(`${date}T${heure}:00`)
+    if (Number.isNaN(debutLocal.getTime())) {
+      setErreur('Date ou heure incomplète — vérifie les deux champs.')
+      return
+    }
+    setErreur(null)
     const finLocal = new Date(debutLocal.getTime() + duree * 60_000)
     const brouillon = {
       titre: titre.trim(),
@@ -359,26 +406,42 @@ function FeuilleCreation({ ouverte, jourParDefaut, initiale, onFermer, onCreer }
       journee_entiere: initiale?.journee_entiere ?? false,
     }
     const regle = RECURRENCES_EVENEMENT[recurrence]
-    if (regle && (regle.jours || regle.mois)) {
-      // On génère les occurrences à heure de mur constante (18h reste 18h,
-      // même après un changement d'heure été/hiver).
-      const [annee, moisNum, jourNum] = date.split('-').map(Number)
-      const [hh, mm] = heure.split(':').map(Number)
-      const occurrences: { debut_a: string; fin_a: string }[] = []
-      const limite = debutLocal.getTime() + 183 * 24 * 3600 * 1000
-      for (let i = 0; i < regle.cap; i++) {
-        const debutOcc = regle.mois
-          ? new Date((annee ?? 2026), (moisNum ?? 1) - 1 + i * regle.mois, jourNum ?? 1, hh ?? 12, mm ?? 0)
-          : new Date((annee ?? 2026), (moisNum ?? 1) - 1, (jourNum ?? 1) + i * (regle.jours ?? 7), hh ?? 12, mm ?? 0)
-        if (debutOcc.getTime() > limite) break
-        occurrences.push({
-          debut_a: versUtc(debutOcc),
-          fin_a: versUtc(new Date(debutOcc.getTime() + duree * 60_000)),
-        })
+    try {
+      if (regle && (regle.jours || regle.mois)) {
+        // On génère les occurrences à heure de mur constante (18h reste 18h,
+        // même après un changement d'heure été/hiver).
+        const annee = debutLocal.getFullYear()
+        const moisIndex = debutLocal.getMonth()
+        const jourNum = debutLocal.getDate()
+        const hh = debutLocal.getHours()
+        const mm = debutLocal.getMinutes()
+        const occurrences: { debut_a: string; fin_a: string }[] = []
+        const limite = debutLocal.getTime() + 183 * 24 * 3600 * 1000
+        for (let i = 0; i < regle.cap; i++) {
+          let debutOcc: Date
+          if (regle.mois) {
+            // Le 31 d'un mois n'existe pas partout : sans borne, « tous les
+            // mois » à partir du 31 janvier sautait au 3 mars.
+            const cible = new Date(annee, moisIndex + i * regle.mois, 1, hh, mm)
+            const dernierJour = new Date(cible.getFullYear(), cible.getMonth() + 1, 0).getDate()
+            debutOcc = new Date(cible.getFullYear(), cible.getMonth(), Math.min(jourNum, dernierJour), hh, mm)
+          } else {
+            debutOcc = new Date(annee, moisIndex, jourNum + i * (regle.jours ?? 7), hh, mm)
+          }
+          if (Number.isNaN(debutOcc.getTime()) || debutOcc.getTime() > limite) break
+          occurrences.push({
+            debut_a: versUtc(debutOcc),
+            fin_a: versUtc(new Date(debutOcc.getTime() + duree * 60_000)),
+          })
+        }
+        await onCreer(brouillon, { occurrences, libelle: regle.libelle })
+      } else {
+        await onCreer(brouillon)
       }
-      await onCreer(brouillon, { occurrences, libelle: regle.libelle })
-    } else {
-      await onCreer(brouillon)
+    } catch {
+      // Le panneau restait ouvert, muet, sans qu'on sache si c'était enregistré.
+      setErreur('Enregistrement impossible — vérifie le réseau et réessaie.')
+      return
     }
     setTitre('')
     setLieu('')
@@ -451,7 +514,9 @@ function FeuilleCreation({ ouverte, jourParDefaut, initiale, onFermer, onCreer }
               ))}
           </div>
         </div>
-        <Bouton pleineLargeur variante="valider" onClick={() => void valider()}>
+        {erreur && <p className="text-legende text-urgent">{erreur}</p>}
+        {/* Sans titre, le bouton ne faisait rien du tout : il est maintenant inactif. */}
+        <Bouton pleineLargeur variante="valider" desactive={!titre.trim()} onClick={() => void valider()}>
           {initiale ? 'Enregistrer' : 'Ajouter'}
         </Bouton>
       </div>

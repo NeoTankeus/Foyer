@@ -11,28 +11,45 @@ function extraire(html: string, motifs: RegExp[]): string | null {
   return null
 }
 
+/** Toute réponse part en JSON, avec le bon en-tête : le client peut TOUJOURS la lire. */
+const repondre = (corps: unknown, status = 200): Response =>
+  new Response(JSON.stringify(corps), { status, headers: { 'content-type': 'application/json; charset=utf-8' } })
+
+/** Un corps de requête illisible ne doit jamais devenir un 500. */
+async function lireCorps(req: Request): Promise<Record<string, unknown> | null> {
+  try {
+    const brut: unknown = await req.json()
+    return brut && typeof brut === 'object' && !Array.isArray(brut) ? (brut as Record<string, unknown>) : null
+  } catch {
+    return null
+  }
+}
+
 export default async function handler(req: Request): Promise<Response> {
+  try {
   if (req.method !== 'POST') {
-    return new Response(JSON.stringify({ erreur: 'Méthode non autorisée' }), { status: 405 })
+    return repondre({ erreur: 'methode', message: 'POST uniquement' }, 405)
   }
   const urlSupabase = process.env.VITE_SUPABASE_URL
   const cleAnon = process.env.VITE_SUPABASE_ANON_KEY
   const jeton = req.headers.get('authorization')?.replace(/^Bearer\s+/i, '')
   if (!urlSupabase || !cleAnon || !jeton) {
-    return new Response(JSON.stringify({ erreur: 'non_connecte' }), { status: 401 })
+    return repondre({ erreur: 'non_connecte' }, 401)
   }
   const verification = await fetch(`${urlSupabase}/auth/v1/user`, {
     headers: { apikey: cleAnon, authorization: `Bearer ${jeton}` },
-  })
-  if (!verification.ok) return new Response(JSON.stringify({ erreur: 'non_connecte' }), { status: 401 })
+    signal: AbortSignal.timeout(8000),
+  }).catch(() => null)
+  if (!verification?.ok) return repondre({ erreur: 'non_connecte' }, 401)
 
-  const { url } = (await req.json()) as { url: string }
+  const corpsRequete = await lireCorps(req)
+  const url = typeof corpsRequete?.['url'] === 'string' ? (corpsRequete['url'] as string) : ''
   let cible: URL
   try {
     cible = new URL(url)
     if (!/^https?:$/.test(cible.protocol)) throw new Error('protocole')
   } catch {
-    return new Response(JSON.stringify({ erreur: 'url_invalide' }), { status: 400 })
+    return repondre({ erreur: 'url_invalide' }, 400)
   }
 
   let html = ''
@@ -46,13 +63,12 @@ export default async function handler(req: Request): Promise<Response> {
         'accept-language': 'fr-FR,fr;q=0.9',
       },
       redirect: 'follow',
+      signal: AbortSignal.timeout(15000),
     })
     urlFinale = page.url || urlFinale
     html = (await page.text()).slice(0, 500000)
   } catch {
-    return new Response(JSON.stringify({ erreur: 'inaccessible', message: 'Le site refuse la lecture — remplis à la main.' }), {
-      status: 502, headers: { 'content-type': 'application/json' },
-    })
+    return repondre({ erreur: 'inaccessible', message: 'Le site refuse la lecture — remplis à la main.' }, 502)
   }
 
   // Lien court Amazon (amzn.eu/…) : on canonise vers la vraie fiche produit —
@@ -115,6 +131,7 @@ export default async function handler(req: Request): Promise<Response> {
         {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
+          signal: AbortSignal.timeout(15000),
           body: JSON.stringify({
             contents: [{ role: 'user', parts: [{ text: `Prix de vente actuel du produit sur cette page, en euros. Réponds UNIQUEMENT le nombre (ex. 49.99) ou null.\n\n${texte}` }] }],
             generationConfig: { maxOutputTokens: 16, temperature: 0 },
@@ -122,8 +139,10 @@ export default async function handler(req: Request): Promise<Response> {
         },
       )
       if (reponse.ok) {
-        const donnees = (await reponse.json()) as { candidates?: { content?: { parts?: { text?: string }[] } }[] }
-        const brut = donnees.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? ''
+        const donnees = (await reponse.json()) as { candidates?: { content?: { parts?: unknown } }[] } | null
+        const parts = donnees?.candidates?.[0]?.content?.parts
+        const premier = Array.isArray(parts) ? (parts[0] as { text?: unknown } | undefined) : undefined
+        const brut = typeof premier?.text === 'string' ? premier.text.trim() : ''
         if (/^[\d.,]+$/.test(brut)) prixBrut = brut
       }
     } catch { /* le prix restera vide */ }
@@ -143,6 +162,7 @@ export default async function handler(req: Request): Promise<Response> {
           'user-agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15',
           'accept-language': 'fr-FR',
         },
+        signal: AbortSignal.timeout(10000),
       })
       const htmlBing = await bing.text()
       imageFinale =
@@ -155,15 +175,19 @@ export default async function handler(req: Request): Promise<Response> {
     }
   }
 
-  return new Response(
-    JSON.stringify({
-      produit: {
-        titre: titrePropre,
-        image: imageFinale,
-        prix: prix && Number.isFinite(prix) && prix > 0 ? prix : null,
-        url: urlFinale,
-      },
-    }),
-    { headers: { 'content-type': 'application/json' } },
-  )
+  return repondre({
+    produit: {
+      titre: titrePropre,
+      image: imageFinale,
+      prix: prix && Number.isFinite(prix) && prix > 0 ? prix : null,
+      url: urlFinale,
+    },
+  })
+  } catch (erreur) {
+    // Aucun chemin ne doit finir en 500 opaque : le client reçoit toujours du JSON.
+    return repondre(
+      { erreur: 'serveur', message: String(erreur instanceof Error ? erreur.message : erreur).slice(0, 160) },
+      500,
+    )
+  }
 }

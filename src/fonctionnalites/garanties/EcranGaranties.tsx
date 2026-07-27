@@ -108,8 +108,8 @@ export function EcranGaranties() {
       })
       const donnees = (await reponse.json()) as { ticket?: { commercant?: string | null; date?: string | null } }
       setBrouillon({
-        titre: donnees.ticket?.commercant ? `Achat ${donnees.ticket.commercant}` : '',
-        achat: donnees.ticket?.date ?? new Date().toISOString().slice(0, 10),
+        titre: donnees.ticket?.commercant ? `Achat ${String(donnees.ticket.commercant)}` : '',
+        achat: typeof donnees.ticket?.date === 'string' ? donnees.ticket.date : new Date().toISOString().slice(0, 10),
         mois: 24,
       })
       setEnEdition('nouvelle')
@@ -118,8 +118,12 @@ export function EcranGaranties() {
     }
   }
 
-  const joursRestants = (expireLe: string | null) =>
-    expireLe === null ? null : Math.round((new Date(`${expireLe}T12:00:00`).getTime() - Date.now()) / 86400000)
+  // Une date d'expiration illisible donnerait « J-NaN » : on préfère « — ».
+  const joursRestants = (expireLe: string | null) => {
+    if (expireLe === null) return null
+    const jours = Math.round((new Date(`${expireLe}T12:00:00`).getTime() - Date.now()) / 86400000)
+    return Number.isFinite(jours) ? jours : null
+  }
 
   return (
     <div className="pb-4">

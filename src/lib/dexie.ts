@@ -76,6 +76,8 @@ export interface MutationEnAttente {
   cible_id: string
   charge: Record<string, unknown>
   cree_le: number
+  /** Tentatives de rejeu déjà faites (champ non indexé : pas de version à changer). */
+  essais?: number
 }
 
 class BaseFoyer extends Dexie {
@@ -172,3 +174,12 @@ class BaseFoyer extends Dexie {
 }
 
 export const baseLocale = new BaseFoyer()
+
+// Ouverture anticipée : si IndexedDB est indisponible (Safari en navigation
+// privée, quota épuisé, base bloquée par un autre onglet), on le sait tout de
+// suite dans la console au lieu d'une promesse rejetée sans propriétaire.
+// L'app reste utilisable : les lectures repassent par le réseau et les
+// écritures partent directement au serveur (cf. muter()).
+baseLocale.open().catch((erreur: unknown) => {
+  console.warn('Base locale indisponible — mode réseau seul', erreur)
+})

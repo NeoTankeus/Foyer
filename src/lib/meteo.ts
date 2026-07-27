@@ -45,7 +45,14 @@ const CLE_CACHE = 'gastif-meteo-cache-v3'
 export function villeMeteo(): VilleMeteo | null {
   try {
     const brut = localStorage.getItem(CLE_VILLE)
-    return brut ? (JSON.parse(brut) as VilleMeteo) : null
+    if (!brut) return null
+    // Le contenu du stockage local peut être corrompu ou d'une ancienne
+    // version : on ne le croit que s'il a bien la forme attendue.
+    const v = JSON.parse(brut) as unknown
+    if (!v || typeof v !== 'object') return null
+    const { nom, latitude, longitude } = v as Partial<VilleMeteo>
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null
+    return { nom: String(nom ?? ''), latitude: latitude as number, longitude: longitude as number }
   } catch {
     return null
   }
@@ -59,9 +66,9 @@ export async function choisirVille(nom: string): Promise<VilleMeteo | null> {
   const donnees = (await reponse.json()) as {
     results?: { name: string; latitude: number; longitude: number }[]
   }
-  const premier = donnees.results?.[0]
-  if (!premier) return null
-  const ville = { nom: premier.name, latitude: premier.latitude, longitude: premier.longitude }
+  const premier = Array.isArray(donnees.results) ? donnees.results[0] : undefined
+  if (!premier || !Number.isFinite(premier.latitude) || !Number.isFinite(premier.longitude)) return null
+  const ville = { nom: String(premier.name ?? nom), latitude: premier.latitude, longitude: premier.longitude }
   localStorage.setItem(CLE_VILLE, JSON.stringify(ville))
   localStorage.removeItem(CLE_CACHE)
   return ville
@@ -77,8 +84,8 @@ export async function previsions(): Promise<JourMeteo[]> {
   const ville = villeMeteo()
   if (!ville) return []
   try {
-    const cache = JSON.parse(localStorage.getItem(CLE_CACHE) ?? 'null') as { a: number; jours: JourMeteo[] } | null
-    if (cache && Date.now() - cache.a < 2 * 3600 * 1000) return cache.jours
+    const cache = JSON.parse(localStorage.getItem(CLE_CACHE) ?? 'null') as { a?: number; jours?: JourMeteo[] } | null
+    if (cache && Array.isArray(cache.jours) && Date.now() - Number(cache.a ?? 0) < 2 * 3600 * 1000) return cache.jours
   } catch {
     // cache illisible
   }
@@ -156,8 +163,8 @@ export async function previsionsHoraires(): Promise<HeureMeteo[]> {
   const ville = villeMeteo()
   if (!ville) return []
   try {
-    const cache = JSON.parse(localStorage.getItem(CLE_CACHE_HEURES) ?? 'null') as { a: number; heures: HeureMeteo[] } | null
-    if (cache && Date.now() - cache.a < 2 * 3600 * 1000) return cache.heures
+    const cache = JSON.parse(localStorage.getItem(CLE_CACHE_HEURES) ?? 'null') as { a?: number; heures?: HeureMeteo[] } | null
+    if (cache && Array.isArray(cache.heures) && Date.now() - Number(cache.a ?? 0) < 2 * 3600 * 1000) return cache.heures
   } catch {
     // cache illisible
   }
@@ -169,25 +176,28 @@ export async function previsionsHoraires(): Promise<HeureMeteo[]> {
   if (!reponse.ok) return []
   const donnees = (await reponse.json()) as {
     hourly?: {
-      time: string[]
-      temperature_2m: (number | null)[]
-      precipitation: (number | null)[]
-      weather_code: (number | null)[]
-      wind_speed_10m: (number | null)[]
-      wind_gusts_10m: (number | null)[]
-      wind_direction_10m: (number | null)[]
+      time?: string[]
+      temperature_2m?: (number | null)[]
+      precipitation?: (number | null)[]
+      weather_code?: (number | null)[]
+      wind_speed_10m?: (number | null)[]
+      wind_gusts_10m?: (number | null)[]
+      wind_direction_10m?: (number | null)[]
     }
   }
   const h = donnees.hourly
-  if (!h) return []
+  if (!h || !Array.isArray(h.time)) return []
+  // Chaque série peut manquer si le modèle n'a pas la variable : on lit dans
+  // un tableau vide plutôt que de planter sur `undefined[i]`.
+  const serieH = (v: (number | null)[] | undefined): (number | null)[] => (Array.isArray(v) ? v : [])
   const heures = h.time.map((quand, i) => ({
-    quand,
-    t: Math.round(h.temperature_2m[i] ?? 0),
-    pluie: h.precipitation[i] ?? 0,
-    code: h.weather_code[i] ?? 0,
-    vent: Math.round(h.wind_speed_10m[i] ?? 0),
-    rafales: Math.round(h.wind_gusts_10m[i] ?? 0),
-    direction: h.wind_direction_10m[i] ?? 0,
+    quand: String(quand ?? ''),
+    t: Math.round(serieH(h.temperature_2m)[i] ?? 0),
+    pluie: serieH(h.precipitation)[i] ?? 0,
+    code: serieH(h.weather_code)[i] ?? 0,
+    vent: Math.round(serieH(h.wind_speed_10m)[i] ?? 0),
+    rafales: Math.round(serieH(h.wind_gusts_10m)[i] ?? 0),
+    direction: serieH(h.wind_direction_10m)[i] ?? 0,
   }))
   try {
     localStorage.setItem(CLE_CACHE_HEURES, JSON.stringify({ a: Date.now(), heures }))
@@ -208,7 +218,8 @@ export async function meteoDuJourPasse(date: string): Promise<{ tMax: number; co
   if (!ville || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return null
   let cache: Record<string, { tMax: number; code: number }> = {}
   try {
-    cache = JSON.parse(localStorage.getItem(CLE_CACHE_ARCHIVE) ?? '{}') as typeof cache
+    const brut = JSON.parse(localStorage.getItem(CLE_CACHE_ARCHIVE) ?? '{}') as unknown
+    if (brut && typeof brut === 'object' && !Array.isArray(brut)) cache = brut as typeof cache
     const connu = cache[date]
     if (connu) return connu
   } catch {
@@ -248,8 +259,8 @@ export async function previsionsMarines(): Promise<MerHeure[]> {
   const ville = villeMeteo()
   if (!ville) return []
   try {
-    const cache = JSON.parse(localStorage.getItem(CLE_CACHE_MER) ?? 'null') as { a: number; mer: MerHeure[] } | null
-    if (cache && Date.now() - cache.a < 2 * 3600 * 1000) return cache.mer
+    const cache = JSON.parse(localStorage.getItem(CLE_CACHE_MER) ?? 'null') as { a?: number; mer?: MerHeure[] } | null
+    if (cache && Array.isArray(cache.mer) && Date.now() - Number(cache.a ?? 0) < 2 * 3600 * 1000) return cache.mer
   } catch {
     // cache illisible
   }
@@ -261,19 +272,20 @@ export async function previsionsMarines(): Promise<MerHeure[]> {
     if (!reponse.ok) return []
     const donnees = (await reponse.json()) as {
       hourly?: {
-        time: string[]
-        wave_height: (number | null)[]
-        wave_period: (number | null)[]
-        sea_surface_temperature: (number | null)[]
+        time?: string[]
+        wave_height?: (number | null)[]
+        wave_period?: (number | null)[]
+        sea_surface_temperature?: (number | null)[]
       }
     }
     const h = donnees.hourly
-    if (!h) return []
+    if (!h || !Array.isArray(h.time)) return []
+    const serieM = (v: (number | null)[] | undefined): (number | null)[] => (Array.isArray(v) ? v : [])
     const mer = h.time.map((quand, i) => ({
-      quand,
-      vagues: h.wave_height[i] ?? null,
-      periode: h.wave_period[i] ?? null,
-      eau: h.sea_surface_temperature[i] ?? null,
+      quand: String(quand ?? ''),
+      vagues: serieM(h.wave_height)[i] ?? null,
+      periode: serieM(h.wave_period)[i] ?? null,
+      eau: serieM(h.sea_surface_temperature)[i] ?? null,
     }))
     try {
       localStorage.setItem(CLE_CACHE_MER, JSON.stringify({ a: Date.now(), mer }))

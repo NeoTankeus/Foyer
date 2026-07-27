@@ -46,8 +46,10 @@ const DICTIONNAIRE: Record<string, Rayon> = {
   couches: 'bébé & enfant',
 }
 
-function normaliser(texte: string): string {
-  return texte
+function normaliser(texte: string | null | undefined): string {
+  // Un libellé nul venu de la base ne doit jamais faire tomber l'écran
+  // (`.toLowerCase()` sur null = page blanche).
+  return String(texte ?? '')
     .toLowerCase()
     .normalize('NFD')
     .replace(/[̀-ͯ]/g, '')
@@ -56,22 +58,24 @@ function normaliser(texte: string): string {
 }
 
 /** Devine le rayon d'un libellé ; « divers » si le dictionnaire ne sait pas. */
-export function devinerRayon(libelle: string): Rayon {
+export function devinerRayon(libelle: string | null | undefined): Rayon {
   const cle = normaliser(libelle)
+  if (!cle) return 'divers'
   const direct = DICTIONNAIRE[cle]
   if (direct) return direct
-  for (const mot of cle.split('_')) {
-    const parMot = DICTIONNAIRE[mot]
-    if (parMot) return parMot
-  }
-  // singulier naïf
+  // Singulier naïf sur la clé ENTIÈRE avant de découper : « pommes de terre »
+  // (→ pommes_de_terre) ne trouvait rien et finissait en « divers ».
   const singulier = DICTIONNAIRE[cle.replace(/s$/, '')]
   if (singulier) return singulier
+  for (const mot of cle.split('_')) {
+    const parMot = DICTIONNAIRE[mot] ?? DICTIONNAIRE[mot.replace(/s$/, '')]
+    if (parMot) return parMot
+  }
   return 'divers'
 }
 
 /** Trie des articles dans l'ordre de parcours du magasin. */
-export function indexRayon(rayon: string): number {
-  const index = (RAYONS as readonly string[]).indexOf(rayon)
+export function indexRayon(rayon: string | null | undefined): number {
+  const index = (RAYONS as readonly string[]).indexOf(rayon ?? '')
   return index === -1 ? RAYONS.length : index
 }

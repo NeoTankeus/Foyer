@@ -59,7 +59,11 @@ export async function planifierRepas(
     charge: { id, foyer_id: foyerId, date, creneau, ...choix },
   })
   if (choix.notes) {
-    const quand = new Date(`${date}T12:00:00`).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })
+    // Une date bancale ne doit pas envoyer « Invalid Date » en notification.
+    const jour = new Date(`${date}T12:00:00`)
+    const quand = Number.isNaN(jour.getTime())
+      ? 'Bientôt'
+      : jour.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })
     const creneaux: Record<string, string> = { matin: 'matin', midi: 'midi', gouter: 'goûter', soir: 'soir' }
     notifierLesAutres('🍽️ Menu posé', `${quand} ${creneaux[creneau] ?? creneau} : ${choix.notes}.`, '/maison')
   }
@@ -107,16 +111,18 @@ export async function genererCoursesDepuisMenus(
   listeId: string,
   membreId: string,
 ): Promise<number> {
+  // `libelle` et `ingredients` viennent de la base (colonne JSON pour les
+  // ingrédients) : on ne suppose ni la chaîne ni le tableau.
   const dejaLa = new Set(
-    articlesExistants.filter((a) => !a.coche).map((a) => a.libelle.trim().toLowerCase()),
+    articlesExistants.filter((a) => !a.coche).map((a) => (a.libelle ?? '').trim().toLowerCase()),
   )
   let ajoutes = 0
   for (const r of repas) {
     const recette = recettes.find((rec) => rec.id === r.recette_id)
     if (!recette) continue
-    for (const ingredient of recette.ingredients) {
-      const cle = ingredient.libelle.trim().toLowerCase()
-      if (dejaLa.has(cle)) continue
+    for (const ingredient of Array.isArray(recette.ingredients) ? recette.ingredients : []) {
+      const cle = (ingredient?.libelle ?? '').trim().toLowerCase()
+      if (!cle || dejaLa.has(cle)) continue
       dejaLa.add(cle)
       const id = crypto.randomUUID()
       await muter({
@@ -124,7 +130,9 @@ export async function genererCoursesDepuisMenus(
         type: 'insert',
         cible_id: id,
         charge: {
-          id, liste_id: listeId, libelle: ingredient.libelle, rayon: ingredient.rayon,
+          id, liste_id: listeId, libelle: ingredient.libelle,
+          // Une vieille recette peut ne pas porter de rayon : on le redevine.
+          rayon: ingredient.rayon || devinerRayon(ingredient.libelle),
           coche: false, position: Date.now() % 1000000, ajoute_par: membreId,
           quantite: null, unite: null,
         },

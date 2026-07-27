@@ -61,11 +61,14 @@ export function BoutonSas() {
       })
       const donnees = (await reponse.json()) as { proposition?: Omit<NonNullable<typeof proposition>, 'photo'>; message?: string }
       if (donnees.proposition) {
+        // La lecture de photo est faite par STG : les rubriques peuvent
+        // manquer ou ne pas être des listes — on les remet d'aplomb.
+        const p = donnees.proposition
         setProposition({
-          resume: donnees.proposition.resume ?? '',
-          evenement: donnees.proposition.evenement ?? null,
-          taches: donnees.proposition.taches ?? [],
-          articles: donnees.proposition.articles ?? [],
+          resume: String(p.resume ?? ''),
+          evenement: p.evenement && typeof p.evenement === 'object' ? p.evenement : null,
+          taches: (Array.isArray(p.taches) ? p.taches : []).filter((t) => !!t && typeof t === 'object'),
+          articles: (Array.isArray(p.articles) ? p.articles : []).filter((a): a is string => typeof a === 'string'),
           photo: image,
         })
       } else {

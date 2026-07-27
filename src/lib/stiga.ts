@@ -4,20 +4,29 @@ import { supabase } from './supabase'
 
 export async function demanderAStiga(question: string): Promise<string> {
   const { data: session } = await supabase.auth.getSession()
+  const jeton = session.session?.access_token
+  if (!jeton) throw new Error('Reconnecte-toi pour parler à STG.')
   const reponse = await fetch('/api/gastif', {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
-      authorization: `Bearer ${session.session?.access_token ?? ''}`,
+      authorization: `Bearer ${jeton}`,
     },
     body: JSON.stringify({
       messages: [{ role: 'utilisateur', texte: question }],
       contexte: '',
       role_membre: 'adult',
     }),
-  })
-  const donnees = (await reponse.json()) as { reponse?: string; message?: string; erreur?: string }
-  if (!reponse.ok || !donnees.reponse) {
+    signal: AbortSignal.timeout(30000),
+  }).catch(() => null)
+  if (!reponse) throw new Error('STG ne répond pas — vérifie ta connexion.')
+  // Une passerelle Vercel en timeout renvoie du HTML : .json() lèverait ici.
+  const donnees = ((await reponse.json().catch(() => null)) ?? {}) as {
+    reponse?: string
+    message?: string
+    erreur?: string
+  }
+  if (!reponse.ok || typeof donnees.reponse !== 'string' || !donnees.reponse.trim()) {
     throw new Error(donnees.message ?? donnees.erreur ?? 'STG n’a pas répondu')
   }
   return donnees.reponse

@@ -104,9 +104,10 @@ export function EcranConcerts() {
         const image = await compresserImage(fichier)
         const [decode, infos] = await Promise.all([decoderBillet(fichier), lireInfos(image)])
         const evenement = infos?.evenement
-        const dateEvenement = evenement?.date
-          ? new Date(`${evenement.date}T${evenement.heure ?? '20:00'}:00`).toISOString()
-          : null
+        // La date lue sur le billet peut être fantaisiste : `.toISOString()`
+        // LÈVE une exception sur une date invalide et l'import échouerait.
+        const dateLue = evenement?.date ? new Date(`${evenement.date}T${evenement.heure ?? '20:00'}:00`) : null
+        const dateEvenement = dateLue && !Number.isNaN(dateLue.getTime()) ? dateLue.toISOString() : null
         const id = crypto.randomUUID()
         const nouveau: Record<string, unknown> = {
           id, foyer_id: foyer.id, titre: evenement?.titre ?? 'Nouveau billet',
@@ -210,7 +211,7 @@ export function EcranConcerts() {
                       <p className="break-words text-corps font-[590] text-encre">{c.titre}</p>
                       <p className="text-note text-encre-3">
                         {c.lieu ?? ''}
-                        {c.date_evenement
+                        {c.date_evenement && !Number.isNaN(new Date(c.date_evenement).getTime())
                           ? `${c.lieu ? ' · ' : ''}${new Date(c.date_evenement).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}`
                           : ''}
                       </p>
@@ -298,7 +299,7 @@ export function EcranConcerts() {
                 <p className="text-note uppercase tracking-widest opacity-80">Billet</p>
                 <p className="text-titre-3 font-[700]">{ouvert.titre}</p>
                 <p className="chiffres text-corps-2 opacity-90">
-                  {ouvert.date_evenement
+                  {ouvert.date_evenement && !Number.isNaN(new Date(ouvert.date_evenement).getTime())
                     ? new Date(ouvert.date_evenement).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })
                     : 'date à préciser'}
                 </p>
@@ -432,10 +433,11 @@ function FormConcert({
         variante="valider"
         onClick={() => {
           if (!titre.trim()) return
+          const saisie = quand ? new Date(quand) : null
           void surEnregistrement({
             titre: titre.trim(),
             lieu: lieu.trim() || null,
-            date_evenement: quand ? new Date(quand).toISOString() : null,
+            date_evenement: saisie && !Number.isNaN(saisie.getTime()) ? saisie.toISOString() : null,
           })
         }}
       >

@@ -8,25 +8,32 @@ async function parDuckDuckGo(requete: string): Promise<string | null> {
   const q = encodeURIComponent(requete)
   const page = await fetch(`https://duckduckgo.com/?q=${q}&iax=images&ia=images`, {
     headers: { 'user-agent': UA },
+    signal: AbortSignal.timeout(10000),
   })
+  if (!page.ok) return null
   const html = await page.text()
   const vqd = /vqd=["']?([\d-]+)["']?/.exec(html)?.[1]
   if (!vqd) return null
   const reponse = await fetch(
     `https://duckduckgo.com/i.js?l=fr-fr&o=json&q=${q}&vqd=${vqd}&p=1`,
-    { headers: { 'user-agent': UA, referer: 'https://duckduckgo.com/' } },
+    { headers: { 'user-agent': UA, referer: 'https://duckduckgo.com/' }, signal: AbortSignal.timeout(10000) },
   )
   if (!reponse.ok) return null
-  const donnees = (await reponse.json()) as { results?: { thumbnail?: string; image?: string }[] }
-  const premier = donnees.results?.[0]
-  return premier?.thumbnail ?? premier?.image ?? null
+  const donnees = (await reponse.json().catch(() => null)) as { results?: unknown } | null
+  const premier = (Array.isArray(donnees?.results) ? donnees.results[0] : null) as
+    | { thumbnail?: unknown; image?: unknown }
+    | null
+  const url = typeof premier?.thumbnail === 'string' ? premier.thumbnail : premier?.image
+  return typeof url === 'string' && url ? url : null
 }
 
 async function parBing(requete: string): Promise<string | null> {
   const q = encodeURIComponent(requete)
   const page = await fetch(`https://www.bing.com/images/search?q=${q}&count=10&setlang=fr`, {
     headers: { 'user-agent': UA, 'accept-language': 'fr-FR' },
+    signal: AbortSignal.timeout(10000),
   })
+  if (!page.ok) return null
   const html = await page.text()
   const turl =
     /turl&quot;:&quot;(https:\/\/[^&"]+?)&quot;/.exec(html)?.[1] ??
@@ -39,18 +46,23 @@ async function plusieursParDuckDuckGo(requete: string, max: number): Promise<str
   const q = encodeURIComponent(requete)
   const page = await fetch(`https://duckduckgo.com/?q=${q}&iax=images&ia=images`, {
     headers: { 'user-agent': UA },
+    signal: AbortSignal.timeout(10000),
   })
+  if (!page.ok) return []
   const vqd = /vqd=["']?([\d-]+)["']?/.exec(await page.text())?.[1]
   if (!vqd) return []
   const reponse = await fetch(
     `https://duckduckgo.com/i.js?l=fr-fr&o=json&q=${q}&vqd=${vqd}&p=1`,
-    { headers: { 'user-agent': UA, referer: 'https://duckduckgo.com/' } },
+    { headers: { 'user-agent': UA, referer: 'https://duckduckgo.com/' }, signal: AbortSignal.timeout(10000) },
   )
   if (!reponse.ok) return []
-  const donnees = (await reponse.json()) as { results?: { thumbnail?: string; image?: string }[] }
-  return (donnees.results ?? [])
-    .map((r) => r.thumbnail ?? r.image)
-    .filter((u): u is string => Boolean(u))
+  const donnees = (await reponse.json().catch(() => null)) as { results?: unknown } | null
+  return (Array.isArray(donnees?.results) ? donnees.results : [])
+    .map((r) => {
+      const o = r as { thumbnail?: unknown; image?: unknown } | null
+      return typeof o?.thumbnail === 'string' ? o.thumbnail : o?.image
+    })
+    .filter((u): u is string => typeof u === 'string' && u !== '')
     .slice(0, max)
 }
 
@@ -77,7 +89,9 @@ export async function chercherImages(requete: string, max = 8): Promise<string[]
     const q = encodeURIComponent(requete)
     const page = await fetch(`https://www.bing.com/images/search?q=${q}&count=${max * 2}&setlang=fr`, {
       headers: { 'user-agent': UA, 'accept-language': 'fr-FR' },
+      signal: AbortSignal.timeout(10000),
     })
+    if (!page.ok) return []
     return plusieursParBingHtml(await page.text(), max)
   } catch {
     return []

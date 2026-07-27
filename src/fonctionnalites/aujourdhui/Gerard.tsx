@@ -8,7 +8,10 @@ interface Props {
   courses: number
 }
 
-const varier = <T,>(liste: T[]): T => liste[new Date().getDate() % liste.length] as T
+// Une phrase au hasard du jour. Le repli '' garantit qu'une liste vide (ou un
+// index hors bornes) ne renvoie jamais `undefined` dans le rendu.
+const varier = (liste: string[]): string =>
+  liste.length === 0 ? '' : (liste[new Date().getDate() % liste.length] ?? liste[0] ?? '')
 
 export function Gerard({ retards, aFaire, nonLus, courses }: Props) {
   let tete = '🐸'

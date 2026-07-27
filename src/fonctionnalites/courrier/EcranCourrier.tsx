@@ -38,7 +38,12 @@ const CLE_HISTORIQUE = 'stg-courrier-historique'
 
 function lireHistorique(): EntreeHistorique[] {
   try {
-    return (JSON.parse(localStorage.getItem(CLE_HISTORIQUE) ?? '[]') as EntreeHistorique[]).slice(0, 30)
+    // Un stockage abîmé (chaîne, objet) ne doit jamais remonter jusqu'au
+    // rendu : on n'accepte qu'une vraie liste d'entrées.
+    const brut = JSON.parse(localStorage.getItem(CLE_HISTORIQUE) ?? '[]') as unknown
+    return (Array.isArray(brut) ? brut : [])
+      .filter((e): e is EntreeHistorique => !!e && typeof e === 'object')
+      .slice(0, 30)
   } catch {
     return []
   }
@@ -64,6 +69,17 @@ interface Tri {
 }
 
 const TRANSPORTEURS = ['laposte', 'colissimo', 'chronopost', 'mondial_relay', 'ups'] as const
+
+// Le tri est produit par STG : chaque rubrique peut manquer ou ne pas être
+// une liste. Sans cette garde, `for … of` planterait sur « non itérable ».
+const listeSure = <T,>(v: T[] | undefined): T[] =>
+  (Array.isArray(v) ? v : []).filter((x): x is T => x !== null && x !== undefined)
+
+/** Une date devinée par STG, affichée seulement si elle tient debout. */
+const dateLisible = (iso: string | null | undefined): string => {
+  const d = new Date(`${iso ?? ''}T12:00:00`)
+  return Number.isNaN(d.getTime()) ? 'date à préciser' : d.toLocaleDateString('fr-FR')
+}
 
 export function EcranCourrier() {
   const { membre, foyer } = utiliserSession()
@@ -116,7 +132,11 @@ export function EcranCourrier() {
   // QR décodé sur l'original (régénérable à l'entrée), infos reprises du tri.
   const rangerPieces = async (): Promise<number> => {
     if (!foyer) return 0
-    const evenement = tri?.evenements?.[0]
+    const evenement = listeSure(tri?.evenements)[0]
+    // `.toISOString()` LÈVE une exception sur une date invalide : la date
+    // devinée par STG doit être vérifiée avant d'être stockée.
+    const dateLue = evenement?.date ? new Date(`${evenement.date}T${evenement.heure ?? '20:00'}:00`) : null
+    const dateEvenement = dateLue && !Number.isNaN(dateLue.getTime()) ? dateLue.toISOString() : null
     for (const [rang, piece] of pieces.entries()) {
       const decode = await decoderBillet(piece.fichier).catch(() => null)
       const id = crypto.randomUUID()
@@ -126,9 +146,7 @@ export function EcranCourrier() {
           id, foyer_id: foyer.id,
           titre: `${evenement?.titre ?? tri?.resume ?? 'Billet'}${pieces.length > 1 ? ` (${rang + 1}/${pieces.length})` : ''}`,
           lieu: evenement?.lieu ?? null,
-          date_evenement: evenement?.date
-            ? new Date(`${evenement.date}T${evenement.heure ?? '20:00'}:00`).toISOString()
-            : null,
+          date_evenement: dateEvenement,
           codes_acces: decode?.texte ?? null, format: decode?.format ?? null,
           image_donnees: piece.apercu, notes: tri?.resume ?? null,
         },
@@ -171,7 +189,7 @@ export function EcranCourrier() {
     let n = 0
     const nbBillets = pieces.length
     n += await rangerPieces()
-    for (const c of tri.colis ?? []) {
+    for (const c of listeSure(tri.colis)) {
       if (!c.numero) continue
       const id = crypto.randomUUID()
       const transporteur = TRANSPORTEURS.find((t) => (c.transporteur ?? '').toLowerCase().includes(t.split('_')[0] ?? t)) ?? 'autre'
@@ -185,7 +203,7 @@ export function EcranCourrier() {
       })
       n += 1
     }
-    for (const e of tri.evenements ?? []) {
+    for (const e of listeSure(tri.evenements)) {
       if (!e.date) continue
       const debut = new Date(`${e.date}T${e.heure ?? '09:00'}:00`)
       await creerEvenement(foyer.id, membre.id, {
@@ -194,7 +212,7 @@ export function EcranCourrier() {
       })
       n += 1
     }
-    for (const d of tri.documents ?? []) {
+    for (const d of listeSure(tri.documents)) {
       const id = crypto.randomUUID()
       await muter({
         table: 'documents', type: 'insert', cible_id: id,
@@ -208,12 +226,12 @@ export function EcranCourrier() {
       n += 1
     }
     if (courses.data?.liste) {
-      for (const a of tri.articles ?? []) {
+      for (const a of listeSure(tri.articles)) {
         await ajouterArticle(courses.data.liste.id, membre.id, a, devinerRayon(a))
         n += 1
       }
     }
-    for (const note of tri.notes ?? []) {
+    for (const note of listeSure(tri.notes)) {
       const id = crypto.randomUUID()
       await muter({
         table: 'mur', type: 'insert', cible_id: id,
@@ -326,19 +344,19 @@ export function EcranCourrier() {
           <Carte>
             {tri.resume && <p className="mb-2 text-corps-2 text-encre-2">📄 « {tri.resume} »</p>}
             <div className="flex flex-col gap-1 text-corps-2 text-encre">
-              {(tri.colis ?? []).map((c, i) => (
+              {listeSure(tri.colis).map((c, i) => (
                 <p key={`c${i}`}>📦 Colis {c.libelle || c.numero} — suivi {c.numero}</p>
               ))}
-              {(tri.evenements ?? []).map((e, i) => (
-                <p key={`e${i}`}>📅 {e.titre} — {new Date(`${e.date}T12:00:00`).toLocaleDateString('fr-FR')}{e.heure ? ` à ${e.heure}` : ''}</p>
+              {listeSure(tri.evenements).map((e, i) => (
+                <p key={`e${i}`}>📅 {e.titre} — {dateLisible(e.date)}{e.heure ? ` à ${e.heure}` : ''}</p>
               ))}
-              {(tri.documents ?? []).map((d, i) => (
-                <p key={`d${i}`}>🗄️ {d.titre} ({d.type}){d.expire_le ? ` — expire le ${new Date(`${d.expire_le}T12:00:00`).toLocaleDateString('fr-FR')}` : ''}</p>
+              {listeSure(tri.documents).map((d, i) => (
+                <p key={`d${i}`}>🗄️ {d.titre} ({d.type}){d.expire_le ? ` — expire le ${dateLisible(d.expire_le)}` : ''}</p>
               ))}
-              {(tri.articles ?? []).map((a, i) => (
+              {listeSure(tri.articles).map((a, i) => (
                 <p key={`a${i}`}>🛒 {a}</p>
               ))}
-              {(tri.notes ?? []).map((note, i) => (
+              {listeSure(tri.notes).map((note, i) => (
                 <p key={`n${i}`}>🧲 {note}</p>
               ))}
               {pieces.length > 0 && (

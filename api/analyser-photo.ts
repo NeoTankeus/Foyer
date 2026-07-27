@@ -13,56 +13,96 @@ Nous sommes en ${new Date().getFullYear()}. Réponds UNIQUEMENT en JSON :
 }
 N'invente rien : ce qui n'est pas écrit n'existe pas.`
 
-export default async function handler(req: Request): Promise<Response> {
-  if (req.method !== 'POST') return new Response(JSON.stringify({ erreur: 'Méthode non autorisée' }), { status: 405 })
-  const cleGemini = process.env.GEMINI_API_KEY
-  const urlSupabase = process.env.VITE_SUPABASE_URL
-  const cleAnon = process.env.VITE_SUPABASE_ANON_KEY
-  const jeton = req.headers.get('authorization')?.replace(/^Bearer\s+/i, '')
-  if (!cleGemini) return new Response(JSON.stringify({ erreur: 'cle_absente' }), { status: 503 })
-  if (!urlSupabase || !cleAnon || !jeton) return new Response(JSON.stringify({ erreur: 'non_connecte' }), { status: 401 })
-  const verification = await fetch(`${urlSupabase}/auth/v1/user`, {
-    headers: { apikey: cleAnon, authorization: `Bearer ${jeton}` },
-  })
-  if (!verification.ok) return new Response(JSON.stringify({ erreur: 'non_connecte' }), { status: 401 })
+/** Toute réponse part en JSON, avec le bon en-tête : le client peut TOUJOURS la lire. */
+const repondre = (corps: unknown, status = 200): Response =>
+  new Response(JSON.stringify(corps), { status, headers: { 'content-type': 'application/json; charset=utf-8' } })
 
-  const { image } = (await req.json()) as { image: string }
-  const base64 = image.replace(/^data:image\/\w+;base64,/, '')
-
-  const MODELES = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.0-flash']
-  for (const modele of MODELES) {
-    const reponse = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${modele}:generateContent?key=${cleGemini}`,
-      {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          contents: [
-            { role: 'user', parts: [{ inline_data: { mime_type: 'image/jpeg', data: base64 } }, { text: CONSIGNE }] },
-          ],
-          generationConfig: { maxOutputTokens: 1024, temperature: 0.1, responseMimeType: 'application/json' },
-        }),
-      },
-    )
-    if (reponse.status === 429 || reponse.status === 404) continue
-    if (!reponse.ok) {
-      return new Response(JSON.stringify({ erreur: 'analyse', message: `Gemini ${reponse.status}` }), {
-        status: 502, headers: { 'content-type': 'application/json' },
-      })
-    }
-    const donnees = (await reponse.json()) as { candidates?: { content?: { parts?: { text?: string }[] } }[] }
-    const brut = donnees.candidates?.[0]?.content?.parts?.map((p) => p.text ?? '').join('') ?? '{}'
-    try {
-      return new Response(JSON.stringify({ proposition: JSON.parse(brut) as unknown }), {
-        headers: { 'content-type': 'application/json' },
-      })
-    } catch {
-      return new Response(JSON.stringify({ erreur: 'analyse', message: 'Réponse illisible' }), {
-        status: 502, headers: { 'content-type': 'application/json' },
-      })
-    }
+/** Un corps de requête illisible ne doit jamais devenir un 500. */
+async function lireCorps(req: Request): Promise<Record<string, unknown> | null> {
+  try {
+    const brut: unknown = await req.json()
+    return brut && typeof brut === 'object' && !Array.isArray(brut) ? (brut as Record<string, unknown>) : null
+  } catch {
+    return null
   }
-  return new Response(JSON.stringify({ erreur: 'quota', message: 'Quota IA atteint — réessaie dans une minute.' }), {
-    status: 429, headers: { 'content-type': 'application/json' },
-  })
+}
+
+/** JSON d'une réponse tierce : null plutôt qu'une exception. */
+async function jsonDe(reponse: Response): Promise<unknown> {
+  try {
+    return await reponse.json()
+  } catch {
+    return null
+  }
+}
+
+/** Le texte d'une réponse Gemini, sans jamais supposer la forme de l'objet. */
+function texteGemini(donnees: unknown): string | null {
+  const parts = (donnees as { candidates?: { content?: { parts?: unknown } }[] } | null)?.candidates?.[0]?.content
+    ?.parts
+  if (!Array.isArray(parts)) return null
+  const texte = parts.map((p) => (typeof (p as { text?: unknown })?.text === 'string' ? (p as { text: string }).text : '')).join('')
+  return texte.trim() ? texte : null
+}
+
+export default async function handler(req: Request): Promise<Response> {
+  try {
+    if (req.method !== 'POST') return repondre({ erreur: 'methode', message: 'POST uniquement' }, 405)
+
+    const cleGemini = process.env.GEMINI_API_KEY
+    const urlSupabase = process.env.VITE_SUPABASE_URL
+    const cleAnon = process.env.VITE_SUPABASE_ANON_KEY
+    const jeton = req.headers.get('authorization')?.replace(/^Bearer\s+/i, '')
+    if (!cleGemini) return repondre({ erreur: 'cle_absente', message: 'GEMINI_API_KEY absente de Vercel.' }, 503)
+    if (!urlSupabase || !cleAnon || !jeton) return repondre({ erreur: 'non_connecte' }, 401)
+    const verification = await fetch(`${urlSupabase}/auth/v1/user`, {
+      headers: { apikey: cleAnon, authorization: `Bearer ${jeton}` },
+      signal: AbortSignal.timeout(8000),
+    }).catch(() => null)
+    if (!verification?.ok) return repondre({ erreur: 'non_connecte' }, 401)
+
+    const corps = await lireCorps(req)
+    const image = typeof corps?.['image'] === 'string' ? (corps['image'] as string) : ''
+    if (!image) return repondre({ erreur: 'vide', message: 'Aucune photo reçue.' }, 400)
+    const base64 = image.replace(/^data:image\/\w+;base64,/, '')
+
+    const MODELES = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.0-flash']
+    let derniereRaison = ''
+    for (const modele of MODELES) {
+      const reponse = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${modele}:generateContent?key=${cleGemini}`,
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          signal: AbortSignal.timeout(20000),
+          body: JSON.stringify({
+            contents: [
+              { role: 'user', parts: [{ inline_data: { mime_type: 'image/jpeg', data: base64 } }, { text: CONSIGNE }] },
+            ],
+            generationConfig: { maxOutputTokens: 1024, temperature: 0.1, responseMimeType: 'application/json' },
+          }),
+        },
+      ).catch((e: unknown) => {
+        derniereRaison = String(e instanceof Error ? e.message : e).slice(0, 80)
+        return null
+      })
+      if (!reponse) continue // réseau coupé ou trop lent : modèle suivant
+      if (reponse.status === 429 || reponse.status === 404) continue
+      if (!reponse.ok) return repondre({ erreur: 'analyse', message: `Gemini ${reponse.status}` }, 502)
+
+      const brut = texteGemini(await jsonDe(reponse))
+      if (!brut) return repondre({ erreur: 'analyse', message: 'Réponse vide de l’IA' }, 502)
+      try {
+        return repondre({ proposition: JSON.parse(brut) as unknown })
+      } catch {
+        return repondre({ erreur: 'analyse', message: 'Réponse illisible' }, 502)
+      }
+    }
+    return repondre(
+      { erreur: 'quota', message: `Quota IA atteint — réessaie dans une minute.${derniereRaison ? ` (${derniereRaison})` : ''}` },
+      429,
+    )
+  } catch (erreur) {
+    return repondre({ erreur: 'serveur', message: String(erreur instanceof Error ? erreur.message : erreur).slice(0, 160) }, 500)
+  }
 }

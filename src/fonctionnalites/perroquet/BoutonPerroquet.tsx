@@ -73,8 +73,20 @@ export function BoutonPerroquet() {
         }),
       })
       const donnees = (await reponse.json()) as { proposition?: Proposition; message?: string }
-      if (donnees.proposition) setProposition(donnees.proposition)
-      else setErreur(donnees.message ?? 'Le Perroquet n’a pas compris — reformule.')
+      const p = donnees.proposition
+      if (p && typeof p === 'object') {
+        // Chaque rubrique vient de STG : elle peut manquer ou ne pas être
+        // une liste. Sans ce filtrage, `.map()` ferait tomber l'écran.
+        const liste = <T,>(v: T[] | undefined): T[] =>
+          (Array.isArray(v) ? v : []).filter((x): x is T => x !== null && x !== undefined)
+        setProposition({
+          resume: p.resume != null ? String(p.resume) : undefined,
+          evenements: liste(p.evenements),
+          taches: liste(p.taches),
+          articles: liste(p.articles).filter((a): a is string => typeof a === 'string'),
+          mur: liste(p.mur).filter((m): m is string => typeof m === 'string'),
+        })
+      } else setErreur(donnees.message ?? 'Le Perroquet n’a pas compris — reformule.')
     } catch {
       setErreur('Pas de réseau — réessaie.')
     } finally {

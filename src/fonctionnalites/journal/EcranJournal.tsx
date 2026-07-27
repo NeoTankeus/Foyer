@@ -254,7 +254,7 @@ export function EcranJournal() {
                 <p className="mb-1 text-note font-[590] uppercase tracking-wide text-encre-3">💶 Dépenses du jour</p>
                 {j.depenses.map((d) => (
                   <p key={d.id} className="py-1 text-corps-2 text-encre">
-                    {d.libelle} — {d.montant.toFixed(2).replace('.', ',')} €
+                    {d.libelle} — {Number.isFinite(Number(d.montant)) ? Number(d.montant).toFixed(2).replace('.', ',') : '—'} €
                   </p>
                 ))}
               </Carte>

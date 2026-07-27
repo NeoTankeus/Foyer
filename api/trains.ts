@@ -29,10 +29,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         res.status(200).json({ gares: [], erreur: `navitia ${r.status}` })
         return
       }
-      const donnees = (await r.json()) as { places?: { id: string; name: string }[] }
-      res.status(200).json({
-        gares: (donnees.places ?? []).map((p) => ({ id: p.id, nom: p.name })),
-      })
+      const donnees = (await r.json().catch(() => null)) as { places?: unknown } | null
+      // Une gare sans identifiant est inutilisable côté client : on l'écarte.
+      const gares = (Array.isArray(donnees?.places) ? donnees.places : [])
+        .map((p) => p as { id?: unknown; name?: unknown })
+        .filter((p) => typeof p?.id === 'string' && p.id !== '')
+        .map((p) => ({ id: String(p.id), nom: typeof p.name === 'string' ? p.name : String(p.id) }))
+      res.status(200).json({ gares })
       return
     }
 
@@ -50,16 +53,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         res.status(200).json({ departs: [], erreur: `navitia ${r.status}` })
         return
       }
-      const donnees = (await r.json()) as {
+      const donnees = (await r.json().catch(() => null)) as {
         departures?: {
-          display_informations?: { direction?: string; commercial_mode?: string; headsign?: string }
-          stop_date_time?: { departure_date_time?: string; base_departure_date_time?: string }
+          display_informations?: { direction?: string; commercial_mode?: string; headsign?: string } | null
+          stop_date_time?: { departure_date_time?: string; base_departure_date_time?: string } | null
         }[]
-      }
-      const versHeure = (brut?: string) =>
-        brut && brut.length >= 13 ? `${brut.slice(9, 11)}:${brut.slice(11, 13)}` : null
+      } | null
+      const versHeure = (brut?: unknown) =>
+        typeof brut === 'string' && brut.length >= 13 ? `${brut.slice(9, 11)}:${brut.slice(11, 13)}` : null
       res.status(200).json({
-        departs: (donnees.departures ?? []).map((d) => {
+        departs: (Array.isArray(donnees?.departures) ? donnees.departures : []).map((d) => {
           const heure = versHeure(d.stop_date_time?.departure_date_time)
           const heurePrevue = versHeure(d.stop_date_time?.base_departure_date_time)
           return {

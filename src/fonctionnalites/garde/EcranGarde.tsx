@@ -63,10 +63,16 @@ export function EcranGarde() {
     staleTime: 15 * 1000,
     queryFn: async (): Promise<{ plan: PlanningGarde; gardiens: string[] }> => {
       const { data } = await supabase.from('foyers').select('reglages').eq('id', foyer?.id ?? '').single()
-      const reglages = (data?.reglages as Record<string, unknown> | null) ?? {}
+      const brut = data?.reglages as unknown
+      const reglages = (brut && typeof brut === 'object' && !Array.isArray(brut) ? brut : {}) as Record<string, unknown>
+      const garde = reglages['garde']
       return {
-        plan: (reglages['garde'] ?? {}) as PlanningGarde,
-        gardiens: Array.isArray(reglages['garde_gardiens']) ? (reglages['garde_gardiens'] as string[]) : [],
+        // Les réglages sont du JSON libre : on n'accepte que les formes
+        // attendues, sinon un contenu abîmé ferait tomber tout l'écran.
+        plan: (garde && typeof garde === 'object' && !Array.isArray(garde) ? garde : {}) as PlanningGarde,
+        gardiens: (Array.isArray(reglages['garde_gardiens']) ? reglages['garde_gardiens'] : []).filter(
+          (g): g is string => typeof g === 'string' && g.trim() !== '',
+        ),
       }
     },
   })
@@ -123,7 +129,9 @@ export function EcranGarde() {
     if (!foyer || !propre) return
     const { data: frais } = await supabase.from('foyers').select('reglages').eq('id', foyer.id).single()
     const base = (frais?.reglages ?? foyer.reglages) as Record<string, unknown>
-    const actuels = Array.isArray(base['garde_gardiens']) ? (base['garde_gardiens'] as string[]) : []
+    const actuels = (Array.isArray(base['garde_gardiens']) ? base['garde_gardiens'] : []).filter(
+      (g): g is string => typeof g === 'string',
+    )
     if (actuels.some((g) => g.toLowerCase() === propre.toLowerCase())) return
     await supabase.from('foyers').update({ reglages: { ...base, garde_gardiens: [...actuels, propre] } }).eq('id', foyer.id)
     await clientRequetes.invalidateQueries({ queryKey: ['garde'] })
@@ -140,8 +148,8 @@ export function EcranGarde() {
 
   // Qui est-ce ? (membre du foyer ou personne ajoutée « perso:Nom »)
   const afficherQui = (qui: string | null | undefined): { nom: string; membre?: (typeof adultes)[number] } | null => {
-    if (!qui) return null
-    if (qui.startsWith('perso:')) return { nom: qui.slice(6) }
+    if (!qui || typeof qui !== 'string') return null
+    if (qui.startsWith('perso:')) return { nom: qui.slice(6) || 'Quelqu’un' }
     const membre = adultes.find((a) => a.id === qui)
     return membre ? { nom: membre.prenom, membre } : null
   }

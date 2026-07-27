@@ -42,8 +42,9 @@ async function chercherStations(lat: number, lon: number, carburant: string): Pr
   const donnees = (await reponse.json()) as {
     results?: Record<string, unknown>[]
   }
-  return (donnees.results ?? [])
+  return (Array.isArray(donnees.results) ? donnees.results : [])
     .map((r): Station | null => {
+      if (!r || typeof r !== 'object') return null
       const geom = r['geom'] as { lat?: number; lon?: number } | null
       const prix = Number(r[carburant])
       if (!geom?.lat || !geom.lon || !Number.isFinite(prix) || prix <= 0) return null
@@ -299,7 +300,7 @@ export function EcranCarburant() {
                 </div>
               ))}
             </div>
-            {ouverte.majLe && (
+            {ouverte.majLe && !Number.isNaN(new Date(ouverte.majLe).getTime()) && (
               <p className="text-legende text-encre-3">
                 Prix {libelleDe(carburant)} relevé le {new Date(ouverte.majLe).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })} à {new Date(ouverte.majLe).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}.
               </p>

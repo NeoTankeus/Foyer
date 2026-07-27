@@ -31,6 +31,27 @@ const exigerMesures = (stations: StationCrue[]): StationCrue[] => {
   return stations
 }
 
+// Le relais et Hub'Eau renvoient parfois des hauteurs sous forme de chaîne,
+// ou pas de hauteur du tout : on ne garde qu'un nombre fini, sinon « — ».
+const nombreOuNull = (v: unknown): number | null => {
+  const n = typeof v === 'number' ? v : typeof v === 'string' && v.trim() !== '' ? Number(v) : NaN
+  return Number.isFinite(n) ? n : null
+}
+
+// Une station de la réponse serveur, remise en forme sûre pour l'affichage.
+const stationSure = (s: unknown, i: number): StationCrue | null => {
+  if (!s || typeof s !== 'object') return null
+  const b = s as Partial<StationCrue>
+  return {
+    code: String(b.code ?? `station-${i}`),
+    nom: String(b.nom ?? 'Station'),
+    cours: b.cours != null ? String(b.cours) : null,
+    hauteurM: nombreOuNull(b.hauteurM),
+    variation24hCm: nombreOuNull(b.variation24hCm),
+    mesureA: b.mesureA != null ? String(b.mesureA) : null,
+  }
+}
+
 export function EcranCrues() {
   const { foyer } = utiliserSession()
   const maison = (foyer?.reglages['maison'] ?? null) as { lat?: number; lon?: number; adresse?: string } | null
@@ -51,7 +72,9 @@ export function EcranCrues() {
     if (!r.ok) throw new Error(`relais ${r.status}`)
     const donnees = (await r.json()) as { stations?: StationCrue[]; erreur?: string }
     if (donnees.erreur) throw new Error(donnees.erreur)
-    return donnees.stations ?? []
+    return (Array.isArray(donnees.stations) ? donnees.stations : [])
+      .map(stationSure)
+      .filter((s): s is StationCrue => s !== null)
   }
 
   const viaDirect = async (): Promise<StationCrue[]> => {
@@ -63,7 +86,9 @@ export function EcranCrues() {
     const donnees = (await r.json()) as {
       data?: { code_station: string; libelle_station: string; libelle_cours_eau?: string | null; en_service?: boolean }[]
     }
-    const actives = (donnees.data ?? []).filter((s) => s.en_service !== false).slice(0, 5)
+    const actives = (Array.isArray(donnees.data) ? donnees.data : [])
+      .filter((s) => !!s && s.en_service !== false)
+      .slice(0, 5)
     return Promise.all(
       actives.map(async (s): Promise<StationCrue> => {
         try {
@@ -78,17 +103,24 @@ export function EcranCrues() {
               { signal: AbortSignal.timeout(12000) },
             )
           }
-          const mesures = obs.ok
-            ? (((await obs.json()) as { data?: { resultat_obs: number; date_obs: string }[] }).data ?? [])
+          const brutes = obs.ok
+            ? ((await obs.json()) as { data?: { resultat_obs?: number | null; date_obs?: string | null }[] }).data
             : []
+          // On n'exploite que les relevés chiffrés : une valeur absente ou
+          // texte donnerait « NaN m » à l'écran.
+          const mesures = (Array.isArray(brutes) ? brutes : []).filter(
+            (m): m is { resultat_obs: number; date_obs?: string | null } => !!m && Number.isFinite(m.resultat_obs),
+          )
           const derniere = mesures[0]
           const cible = Date.now() - 24 * 3600 * 1000
-          const ancienne = [...mesures].sort(
-            (a, b) => Math.abs(new Date(a.date_obs).getTime() - cible) - Math.abs(new Date(b.date_obs).getTime() - cible),
-          )[0]
+          const ecart = (d: string | null | undefined) => {
+            const t = new Date(d ?? NaN).getTime()
+            return Number.isNaN(t) ? Number.POSITIVE_INFINITY : Math.abs(t - cible)
+          }
+          const ancienne = [...mesures].sort((a, b) => ecart(a.date_obs) - ecart(b.date_obs))[0]
           return {
-            code: s.code_station,
-            nom: s.libelle_station,
+            code: String(s.code_station ?? ''),
+            nom: String(s.libelle_station ?? 'Station'),
             cours: s.libelle_cours_eau ?? null,
             hauteurM: derniere ? derniere.resultat_obs / 1000 : null,
             variation24hCm:
@@ -98,7 +130,7 @@ export function EcranCrues() {
             mesureA: derniere?.date_obs ?? null,
           }
         } catch {
-          return { code: s.code_station, nom: s.libelle_station, cours: s.libelle_cours_eau ?? null, hauteurM: null, variation24hCm: null, mesureA: null }
+          return { code: String(s.code_station ?? ''), nom: String(s.libelle_station ?? 'Station'), cours: s.libelle_cours_eau ?? null, hauteurM: null, variation24hCm: null, mesureA: null }
         }
       }),
     )
@@ -154,8 +186,8 @@ export function EcranCrues() {
           <EtatVide titre="Aucune station à moins de 25 km" message="Bonne nouvelle : pas de rivière instrumentée tout près = risque de crue limité chez vous." />
         )}
 
-        {(stations.data ?? []).map((s) => (
-          <Carte key={s.code}>
+        {(stations.data ?? []).map((s, i) => (
+          <Carte key={`${s.code}-${i}`}>
             <p className="break-words text-corps-2 font-[590] text-encre">{s.cours ?? 'Cours d’eau'} — {s.nom}</p>
             {s.hauteurM !== null ? (
               <p className="chiffres mt-1 text-titre-3 text-encre">
@@ -174,7 +206,7 @@ export function EcranCrues() {
                 ⚠️ Montée rapide — consulte la vigilance officielle ci-dessous.
               </p>
             )}
-            {s.mesureA && (
+            {s.mesureA && !Number.isNaN(new Date(s.mesureA).getTime()) && (
               <p className="text-legende text-encre-3">
                 relevé {new Date(s.mesureA).toLocaleString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
               </p>

@@ -1,7 +1,7 @@
 // La chronologie du jour : une ligne verticale douce, l'heure à gauche,
 // les rendez-vous en cartes — passé estompé, « en ce moment » qui respire.
 import type { LigneEvenement, LigneMembre } from '@/lib/basedonnees.types'
-import { formatHeure, maintenantLocal } from '@/lib/dates'
+import { formatHeure } from '@/lib/dates'
 import { couleurMembre } from '@/lib/couleurs'
 
 interface Props {
@@ -10,16 +10,22 @@ interface Props {
 }
 
 export function ChronologieJour({ evenements, membres }: Props) {
-  const maintenant = maintenantLocal().getTime()
+  // Comparaison d'INSTANTS : on utilise l'horloge réelle (Date.now()), pas
+  // l'heure « murale » de Paris — maintenantLocal() décale la valeur brute du
+  // fuseau et faussait « passé » / « en ce moment » hors de France.
+  const maintenant = Date.now()
   const horaires = evenements
     .filter((e) => !e.journee_entiere)
     .sort((a, b) => a.debut_a.localeCompare(b.debut_a))
   const journeeEntiere = evenements.filter((e) => e.journee_entiere)
 
-  const membresDe = (e: LigneEvenement) =>
-    e.participants.length === 0
+  // `participants` vient de la base : on ne le suppose jamais tableau.
+  const membresDe = (e: LigneEvenement) => {
+    const participants = Array.isArray(e.participants) ? e.participants : []
+    return participants.length === 0
       ? membres.filter((m) => m.role !== 'guest')
-      : membres.filter((m) => e.participants.includes(m.id))
+      : membres.filter((m) => participants.includes(m.id))
+  }
 
   if (horaires.length === 0 && journeeEntiere.length === 0) {
     return (

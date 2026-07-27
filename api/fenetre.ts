@@ -8,16 +8,20 @@ export const config = { maxDuration: 30 }
 const URL_SUPABASE = process.env.VITE_SUPABASE_URL ?? ''
 const CLE_SERVICE = process.env.SUPABASE_SERVICE_ROLE ?? ''
 
-async function sb<T>(chemin: string): Promise<T> {
+async function sb<T>(chemin: string): Promise<T[]> {
   const reponse = await fetch(`${URL_SUPABASE}/rest/v1/${chemin}`, {
     headers: { apikey: CLE_SERVICE, authorization: `Bearer ${CLE_SERVICE}` },
+    signal: AbortSignal.timeout(10000),
   })
   if (!reponse.ok) throw new Error(`${chemin} → ${reponse.status}`)
-  return (await reponse.json()) as T
+  const donnees: unknown = await reponse.json()
+  // Toujours un tableau : une réponse inattendue ne doit pas faire tomber la page.
+  return Array.isArray(donnees) ? (donnees as T[]) : []
 }
 
-const proteger = (s: string) =>
-  s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+/** Échappement HTML — accepte aussi null/undefined venus de la base. */
+const proteger = (s: unknown) =>
+  String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
@@ -30,11 +34,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       res.status(403).send('Lien invalide')
       return
     }
-    const foyers = await sb<{ id: string; nom: string; reglages?: { fenetre_jeton?: string } }[]>(
+    const foyers = await sb<{ id: string; nom: string; reglages?: { fenetre_jeton?: string } | null }>(
       'foyers?select=id,nom,reglages&limit=1',
     )
     const foyer = foyers[0]
-    if (!foyer || foyer.reglages?.fenetre_jeton !== jeton) {
+    // Comparaison stricte sur une chaîne : un `reglages` nul ou un jeton non
+    // configuré ne doit jamais ouvrir la porte.
+    const jetonAttendu = foyer?.reglages?.fenetre_jeton
+    if (!foyer || typeof jetonAttendu !== 'string' || jetonAttendu.length < 20 || jetonAttendu !== jeton) {
       res.status(403).send('Lien invalide ou révoqué')
       return
     }
@@ -42,30 +49,40 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const dans7j = new Date(Date.now() + 7 * 86400000).toISOString()
     const maintenant = new Date().toISOString()
     const [souvenirs, evenements, celebrations] = await Promise.all([
-      sb<{ titre: string | null; image_donnees: string; pris_le: string }[]>(
+      sb<{ titre: string | null; image_donnees: string | null; pris_le: string | null }>(
         'souvenirs?select=titre,image_donnees,pris_le&order=pris_le.desc&limit=6',
-      ),
-      sb<{ titre: string; debut_a: string; journee_entiere: boolean }[]>(
+      ).catch(() => []),
+      sb<{ titre: string | null; debut_a: string | null; journee_entiere: boolean }>(
         `evenements?debut_a=gte.${maintenant}&debut_a=lte.${dans7j}&order=debut_a&select=titre,debut_a,journee_entiere&limit=8`,
-      ),
-      sb<{ nom: string; date: string; magie: boolean }[]>('celebrations?select=nom,date,magie'),
+      ).catch(() => []),
+      sb<{ nom: string | null; date: string | null; magie: boolean }>('celebrations?select=nom,date,magie').catch(() => []),
     ])
+
+    // Une photo sans données d'image ferait planter le rendu : on les écarte.
+    const photos = souvenirs.filter((s) => typeof s?.image_donnees === 'string' && s.image_donnees !== '')
+    // Un événement sans date lisible n'est pas affichable.
+    const rendezVous = evenements.filter(
+      (e) => typeof e?.debut_a === 'string' && Number.isFinite(new Date(e.debut_a).getTime()),
+    )
 
     // Les anniversaires des 30 prochains jours (jamais les surprises « magie »).
     const aujourdHui = new Date()
     const fetes = celebrations
-      .filter((c) => !c.magie)
+      .filter((c) => !c?.magie && typeof c?.date === 'string')
       .map((c) => {
-        const [, m, j] = c.date.split('-').map(Number)
-        let prochaine = new Date(aujourdHui.getFullYear(), (m ?? 1) - 1, j ?? 1)
+        const [, m, j] = String(c.date).split('-').map(Number)
+        if (!m || !j) return null
+        let prochaine = new Date(aujourdHui.getFullYear(), m - 1, j)
         if (prochaine < new Date(aujourdHui.getFullYear(), aujourdHui.getMonth(), aujourdHui.getDate()))
-          prochaine = new Date(aujourdHui.getFullYear() + 1, (m ?? 1) - 1, j ?? 1)
+          prochaine = new Date(aujourdHui.getFullYear() + 1, m - 1, j)
         return { nom: c.nom, quand: prochaine }
       })
+      .filter((f): f is { nom: string | null; quand: Date } => f !== null && Number.isFinite(f.quand.getTime()))
       .filter((f) => f.quand.getTime() - aujourdHui.getTime() < 30 * 86400000)
       .sort((a, b) => a.quand.getTime() - b.quand.getTime())
 
-    const dateLongue = (d: Date) => d.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })
+    const dateLongue = (d: Date) =>
+      Number.isFinite(d.getTime()) ? d.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' }) : ''
 
     const html = `<!doctype html>
 <html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
@@ -84,10 +101,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 <p class="sous">${proteger(dateLongue(aujourdHui))} — cette page se met à jour toute seule, ajoutez-la à vos favoris.</p>
 
 <h2>📷 Les dernières photos</h2>
-${souvenirs.length === 0 ? '<p class="ligne">Pas encore de photos partagées.</p>' : `<div class="photos">${souvenirs.map((s) => `<img src="${s.image_donnees.startsWith('data:') ? s.image_donnees : proteger(s.image_donnees)}" alt="${proteger(s.titre ?? 'Photo de famille')}">`).join('')}</div>`}
+${photos.length === 0 ? '<p class="ligne">Pas encore de photos partagées.</p>' : `<div class="photos">${photos.map((s) => `<img src="${String(s.image_donnees).startsWith('data:') ? String(s.image_donnees) : proteger(s.image_donnees)}" alt="${proteger(s.titre ?? 'Photo de famille')}">`).join('')}</div>`}
 
 <h2>📅 La semaine de la famille</h2>
-${evenements.length === 0 ? '<p class="ligne">Une semaine tranquille !</p>' : evenements.map((e) => `<p class="ligne">• <strong>${proteger(e.titre)}</strong> <span class="quand">— ${proteger(dateLongue(new Date(e.debut_a)))}${e.journee_entiere ? '' : ` à ${new Date(e.debut_a).toLocaleTimeString('fr-FR', { timeZone: 'Europe/Paris', hour: '2-digit', minute: '2-digit' })}`}</span></p>`).join('')}
+${rendezVous.length === 0 ? '<p class="ligne">Une semaine tranquille !</p>' : rendezVous.map((e) => `<p class="ligne">• <strong>${proteger(e.titre ?? 'Sans titre')}</strong> <span class="quand">— ${proteger(dateLongue(new Date(String(e.debut_a))))}${e.journee_entiere ? '' : ` à ${new Date(String(e.debut_a)).toLocaleTimeString('fr-FR', { timeZone: 'Europe/Paris', hour: '2-digit', minute: '2-digit' })}`}</span></p>`).join('')}
 
 <h2>🎂 À ne pas oublier</h2>
 ${fetes.length === 0 ? '<p class="ligne">Aucun anniversaire dans le mois.</p>' : fetes.map((f) => `<p class="ligne">• <strong>${proteger(f.nom)}</strong> <span class="quand">— ${proteger(dateLongue(f.quand))}</span></p>`).join('')}

@@ -11,9 +11,18 @@ const CLE_GARE = 'stg-gare'
 interface Gare { id: string; nom: string }
 interface Depart { direction: string; type: string; numero: string; heure: string | null; retard: string | null }
 
+// La gare mémorisée peut venir d'une ancienne version ou d'un stockage abîmé :
+// on n'y touche que si elle a vraiment la forme attendue.
+const gareValide = (v: unknown): Gare | null => {
+  if (!v || typeof v !== 'object') return null
+  const g = v as Partial<Gare>
+  if (typeof g.id !== 'string' || !g.id) return null
+  return { id: g.id, nom: String(g.nom ?? 'Gare') }
+}
+
 export function EcranTrains() {
   const [gare, setGare] = useState<Gare | null>(() => {
-    try { return JSON.parse(localStorage.getItem(CLE_GARE) ?? 'null') as Gare | null } catch { return null }
+    try { return gareValide(JSON.parse(localStorage.getItem(CLE_GARE) ?? 'null')) } catch { return null }
   })
   const [q, setQ] = useState('')
   const [suggestions, setSuggestions] = useState<Gare[]>([])
@@ -30,7 +39,11 @@ export function EcranTrains() {
         setEtat('sans-cle')
         return
       }
-      setSuggestions(d.gares ?? [])
+      // Le relais peut renvoyer autre chose qu'une liste : on ne garde que
+      // les gares réellement exploitables plutôt que de planter au rendu.
+      setSuggestions(
+        (Array.isArray(d.gares) ? d.gares : []).map(gareValide).filter((g): g is Gare => g !== null),
+      )
       setEtat('repos')
     } catch {
       setEtat('erreur')
@@ -51,7 +64,9 @@ export function EcranTrains() {
         setEtat('sans-cle')
         return
       }
-      setDeparts(d.departs ?? [])
+      setDeparts(
+        (Array.isArray(d.departs) ? d.departs : []).filter((x): x is Depart => !!x && typeof x === 'object'),
+      )
       setEtat('repos')
     } catch {
       setEtat('erreur')

@@ -14,6 +14,8 @@ async function pageHtml(url: string): Promise<string> {
   const reponse = await fetch(url, {
     headers: { 'user-agent': UA, accept: 'text/html', 'accept-language': 'fr-FR' },
     redirect: 'follow',
+    // Un site qui ne répond jamais mangerait sinon les 60 s de la fonction.
+    signal: AbortSignal.timeout(12000),
   })
   if (!reponse.ok) throw new Error(`page ${reponse.status}`)
   return (await reponse.text()).slice(0, 600000)
@@ -110,8 +112,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
     const verification = await fetch(`${base}/auth/v1/user`, {
       headers: { apikey: anon, authorization: `Bearer ${jeton}` },
-    })
-    if (!verification.ok) {
+      signal: AbortSignal.timeout(8000),
+    }).catch(() => null)
+    if (!verification?.ok) {
       res.status(401).json({ erreur: 'non_connecte' })
       return
     }
@@ -167,10 +170,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           return
         }
       }
-      const donnees = (await r.json()) as {
-        data?: { code_station: string; libelle_station: string; libelle_cours_eau?: string | null; en_service?: boolean }[]
-      }
-      const actives = (donnees.data ?? []).filter((s) => s.en_service !== false).slice(0, 5)
+      const donnees = (await r.json().catch(() => null)) as {
+        data?: unknown
+      } | null
+      const actives = (Array.isArray(donnees?.data) ? donnees.data : ([] as unknown[]))
+        .map((s) => s as { code_station?: unknown; libelle_station?: unknown; libelle_cours_eau?: unknown; en_service?: unknown })
+        .filter((s) => typeof s?.code_station === 'string' && s.en_service !== false)
+        .map((s) => ({
+          code_station: String(s.code_station),
+          libelle_station: typeof s.libelle_station === 'string' ? s.libelle_station : String(s.code_station),
+          libelle_cours_eau: typeof s.libelle_cours_eau === 'string' ? s.libelle_cours_eau : null,
+        }))
+        .slice(0, 5)
       const stations = await Promise.all(
         actives.map(async (s) => {
           try {
@@ -185,9 +196,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 { headers: entetesHubeau, signal: AbortSignal.timeout(12000) },
               )
             }
-            const mesures = obs.ok
-              ? (((await obs.json()) as { data?: { resultat_obs: number; date_obs: string }[] }).data ?? [])
+            // `resultat_obs` peut être null ou absent : on ne garde que du chiffré.
+            const brutes = obs.ok
+              ? (((await obs.json().catch(() => null)) as { data?: unknown } | null)?.data ?? [])
               : []
+            const mesures = (Array.isArray(brutes) ? brutes : [])
+              .map((m) => m as { resultat_obs?: unknown; date_obs?: unknown })
+              .filter((m) => Number.isFinite(Number(m?.resultat_obs)) && typeof m?.date_obs === 'string')
+              .map((m) => ({ resultat_obs: Number(m.resultat_obs), date_obs: String(m.date_obs) }))
             const derniere = mesures[0]
             const cible = Date.now() - 24 * 3600 * 1000
             const ancienne = [...mesures].sort(
@@ -196,7 +212,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             return {
               code: s.code_station,
               nom: s.libelle_station,
-              cours: s.libelle_cours_eau ?? null,
+              cours: s.libelle_cours_eau,
               hauteurM: derniere ? derniere.resultat_obs / 1000 : null,
               variation24hCm:
                 derniere && ancienne && ancienne !== derniere
@@ -205,7 +221,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               mesureA: derniere?.date_obs ?? null,
             }
           } catch {
-            return { code: s.code_station, nom: s.libelle_station, cours: s.libelle_cours_eau ?? null, hauteurM: null, variation24hCm: null, mesureA: null }
+            return { code: s.code_station, nom: s.libelle_station, cours: s.libelle_cours_eau, hauteurM: null, variation24hCm: null, mesureA: null }
           }
         }),
       )
@@ -243,7 +259,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           signal: AbortSignal.timeout(12000),
         })
         if (!r.ok) throw new Error(`overpass ${r.status}`)
-        return (await r.json()) as { elements?: unknown[] }
+        const brut = (await r.json()) as { elements?: unknown }
+        return { elements: Array.isArray(brut?.elements) ? brut.elements : [] }
       })
       const viaNominatim = (async () => {
         const dLat = ra / 111320
@@ -257,17 +274,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           },
         )
         if (!r.ok) throw new Error(`nominatim ${r.status}`)
-        const liste = (await r.json()) as {
-          place_id: number
-          lat: string
-          lon: string
-          display_name: string
+        const brut: unknown = await r.json()
+        const liste = (Array.isArray(brut) ? brut : []) as {
+          place_id?: number
+          lat?: string
+          lon?: string
+          display_name?: string
           name?: string
-          extratags?: Record<string, string>
+          extratags?: Record<string, string> | null
         }[]
         const elements = liste
           .map((x) => {
-            const nomLieu = x.name || x.display_name.split(',')[0] || ''
+            // `display_name` peut manquer : sinon .split() ferait tomber la source.
+            const nomLieu = x.name || (typeof x.display_name === 'string' ? x.display_name.split(',')[0] : '') || ''
             const cuisine = x.extratags?.['cuisine']
             const phone = x.extratags?.['phone'] ?? x.extratags?.['contact:phone']
             const website = x.extratags?.['website'] ?? x.extratags?.['contact:website']
@@ -319,7 +338,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           res.status(200).json({ ventes: [], erreur: `dvf ${r.status}` })
           return
         }
-        const donnees = (await r.json()) as {
+        const donnees = (await r.json().catch(() => null)) as {
           resultats?: {
             date_mutation?: string
             valeur_fonciere?: number
@@ -330,8 +349,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             voie?: string | null
             commune?: string | null
           }[]
-        }
-        const ventes = (donnees.resultats ?? [])
+        } | null
+        const ventes = (Array.isArray(donnees?.resultats) ? donnees.resultats : [])
           .filter((v) => Number(v.valeur_fonciere) > 1000)
           .map((v) => {
             const prix = Math.round(Number(v.valeur_fonciere))
@@ -373,9 +392,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           signal: AbortSignal.timeout(12000),
         })
         if (rGeo.ok) {
-          const liste = (await rGeo.json()) as { nom?: string; codeDepartement?: string }[]
-          commune = liste[0]?.nom ?? null
-          dept = liste[0]?.codeDepartement ?? null
+          const brutGeo: unknown = await rGeo.json()
+          const communes = (Array.isArray(brutGeo) ? brutGeo : []) as { nom?: string; codeDepartement?: string }[]
+          commune = typeof communes[0]?.nom === 'string' ? communes[0].nom : null
+          dept = typeof communes[0]?.codeDepartement === 'string' ? communes[0].codeDepartement : null
         }
       } catch {
         // la commune restera inconnue, ce n'est pas bloquant
@@ -442,10 +462,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           res.status(200).json({ erreur: `tomtom ${r.status}` })
           return
         }
-        const donnees = (await r.json()) as {
+        const donnees = (await r.json().catch(() => null)) as {
           routes?: { summary?: { travelTimeInSeconds?: number; noTrafficTravelTimeInSeconds?: number; lengthInMeters?: number } }[]
-        }
-        const resume = donnees.routes?.[0]?.summary
+        } | null
+        const resume = (Array.isArray(donnees?.routes) ? donnees.routes : [])[0]?.summary
         const avec = Number(resume?.travelTimeInSeconds)
         const sans = Number(resume?.noTrafficTravelTimeInSeconds)
         if (!Number.isFinite(avec) || !Number.isFinite(sans)) {
@@ -499,15 +519,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           res.status(200).json({ evenements: [], erreur: `openagenda ${r.status}` })
           return
         }
-        const donnees = (await r.json()) as {
+        const donnees = (await r.json().catch(() => null)) as {
           events?: {
             title?: { fr?: string } | string
             location?: { name?: string; city?: string }
             nextTiming?: { begin?: string }
             canonicalUrl?: string
           }[]
-        }
-        const evenements = (donnees.events ?? [])
+        } | null
+        const evenements = (Array.isArray(donnees?.events) ? donnees.events : [])
           .map((e) => ({
             titre: typeof e.title === 'string' ? e.title : (e.title?.fr ?? Object.values(e.title ?? {})[0] ?? ''),
             lieu: [e.location?.name, e.location?.city].filter(Boolean).join(', '),
@@ -546,7 +566,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           res.status(200).json({ webcams: [], erreur: `windy ${r.status}` })
           return
         }
-        const donnees = (await r.json()) as {
+        const donnees = (await r.json().catch(() => null)) as {
           webcams?: {
             title?: string
             webcamId?: number
@@ -555,8 +575,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             player?: { day?: string; lifetime?: string }
             urls?: { detail?: string }
           }[]
-        }
-        const webcams = (donnees.webcams ?? [])
+        } | null
+        const webcams = (Array.isArray(donnees?.webcams) ? donnees.webcams : [])
           .map((w) => ({
             titre: w.title ?? '',
             ville: w.location?.city ?? '',
@@ -603,6 +623,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     res.status(400).json({ erreur: 'mode inconnu' })
   } catch (erreur) {
-    res.status(200).json({ url: null, pageMenu: null, images: [], erreur: String(erreur instanceof Error ? erreur.message : erreur).slice(0, 120) })
+    // Filet global : toutes les formes attendues par le client sont présentes,
+    // quel que soit le mode qui a échoué — jamais un champ manquant.
+    res.status(200).json({
+      url: null, pageMenu: null, images: [], stations: [], elements: [], ventes: [],
+      sites: [], commune: null, evenements: [], webcams: [],
+      erreur: String(erreur instanceof Error ? erreur.message : erreur).slice(0, 120),
+    })
   }
 }

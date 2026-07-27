@@ -8,10 +8,14 @@ export function majBadgeIcone(n: number): void {
       setAppBadge?: (n?: number) => Promise<void>
       clearAppBadge?: () => Promise<void>
     }
-    if (n > 0) void nav.setAppBadge?.(n)
-    else void nav.clearAppBadge?.()
+    // `void` n'attrape PAS un rejet : sans .catch(), un refus de l'API badge
+    // remontait en « unhandled rejection » malgré le try/catch autour.
+    const pastille = n > 0 ? nav.setAppBadge?.(n) : nav.clearAppBadge?.()
+    void pastille?.catch(() => undefined)
     // On aligne aussi le compteur du service worker (pushs app fermée).
-    void navigator.serviceWorker?.ready.then((r) => r.active?.postMessage({ type: 'badge', n }))
+    void navigator.serviceWorker?.ready
+      .then((r) => r.active?.postMessage({ type: 'badge', n }))
+      .catch(() => undefined)
   } catch {
     // pas supporté : tant pis, les notifications restent
   }
