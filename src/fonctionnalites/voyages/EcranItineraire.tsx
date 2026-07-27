@@ -491,12 +491,21 @@ export function EcranItineraire() {
               <p className="text-center text-legende text-encre-3">🔎 Recherche des arrêts sur la route…</p>
             )}
             {arrets.isError && (
-              <p className="text-center text-legende text-encre-3">
-                Les arrêts n’ont pas pu être cherchés — l’itinéraire, lui, reste bon.
-              </p>
+              <div className="flex flex-col items-center gap-2">
+                <p className="text-center text-legende text-encre-3">
+                  Les arrêts n’ont pas pu être cherchés — l’itinéraire, lui, reste bon.
+                </p>
+                <Bouton variante="discret" onClick={() => void arrets.refetch()}>🔄 Réessayer</Bouton>
+              </div>
             )}
             {!arrets.isLoading && !arrets.isError && lieux.length === 0 && (
-              <p className="text-center text-legende text-encre-3">Aucun arrêt repéré le long de ce trajet.</p>
+              <div className="flex flex-col items-center gap-2">
+                <p className="text-center text-legende text-encre-3">
+                  Aucun arrêt repéré pour l’instant — la carte des routes (OpenStreetMap) répond parfois lentement
+                  sur les longs trajets.
+                </p>
+                <Bouton variante="discret" onClick={() => void arrets.refetch()}>🔄 Chercher à nouveau</Bouton>
+              </div>
             )}
 
             <ul className="flex flex-col gap-2">

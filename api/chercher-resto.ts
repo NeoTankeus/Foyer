@@ -761,41 +761,58 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         res.status(200).json({ lieux: [], erreur: 'trace invalide' })
         return
       }
-      // Overpass accepte une polyligne entière dans `around` : une seule
-      // requête au lieu d'une par point.
-      const coords = echantillon.map((p) => `${p.lat},${p.lon}`).join(',')
-      const requeteOsm =
-        `[out:json][timeout:20];(` +
-        `node(around:2000,${coords})[highway~"^(rest_area|services)$"];` +
-        `node(around:2000,${coords})[amenity="fuel"];` +
-        `node(around:2000,${coords})[amenity="compressed_air"];` +
-        `node(around:3000,${coords})[tourism~"^(attraction|viewpoint|picnic_site|zoo|theme_park)$"];` +
-        `node(around:2000,${coords})[amenity="drinking_water"];` +
-        `);out center 120;`
+      // Une SEULE requête couvrant 700 km expire à tous les coups : on
+      // découpe le trajet en tronçons courts, interrogés EN PARALLÈLE.
+      const TAILLE_TRONCON = 4
+      const troncons: { lat: number; lon: number }[][] = []
+      for (let i = 0; i < echantillon.length; i += TAILLE_TRONCON) {
+        // Un point de recouvrement pour ne rien perdre entre deux tronçons.
+        const morceau = echantillon.slice(i, i + TAILLE_TRONCON + 1)
+        if (morceau.length > 0) troncons.push(morceau)
+      }
       const miroirs = [
         'https://overpass.kumi.systems/api/interpreter',
         'https://overpass.private.coffee/api/interpreter',
         'https://overpass-api.de/api/interpreter',
       ]
-      // Tous les miroirs en même temps : le premier qui répond gagne.
-      const tentatives = miroirs.map(async (miroir) => {
+      const interroger = async (points: { lat: number; lon: number }[], miroir: string) => {
+        const coords = points.map((p) => `${p.lat},${p.lon}`).join(',')
+        const requeteOsm =
+          `[out:json][timeout:25];(` +
+          `node(around:2500,${coords})[highway~"^(rest_area|services)$"];` +
+          `node(around:2500,${coords})[amenity="fuel"];` +
+          `node(around:2500,${coords})[amenity="compressed_air"];` +
+          `node(around:3000,${coords})[tourism~"^(attraction|viewpoint|picnic_site|zoo|theme_park)$"];` +
+          `node(around:2500,${coords})[amenity="drinking_water"];` +
+          `);out center 60;`
         const r = await fetch(miroir, {
           method: 'POST',
           body: `data=${encodeURIComponent(requeteOsm)}`,
           headers: { 'content-type': 'application/x-www-form-urlencoded', 'user-agent': UA },
-          signal: AbortSignal.timeout(20000),
+          signal: AbortSignal.timeout(25000),
         })
         if (!r.ok) throw new Error(`overpass ${r.status}`)
         const brut = (await r.json()) as { elements?: unknown }
         return Array.isArray(brut?.elements) ? brut.elements : []
-      })
+      }
       try {
-        const elements = (await Promise.any(tentatives)) as {
+        // Chaque tronçon court après tous les miroirs ; un tronçon en échec
+        // ne prive pas le voyage des autres.
+        const parTroncon = await Promise.all(
+          troncons.map((points) =>
+            Promise.any(miroirs.map((miroir) => interroger(points, miroir))).catch(() => [] as unknown[]),
+          ),
+        )
+        const elements = parTroncon.flat() as {
           lat?: unknown
           lon?: unknown
           center?: { lat?: unknown; lon?: unknown }
           tags?: Record<string, unknown> | null
         }[]
+        if (elements.length === 0) {
+          res.status(200).json({ lieux: [], erreur: 'overpass indisponible' })
+          return
+        }
         const lieux: { nom: string; type: GenrePoi; lat: number; lon: number }[] = []
         for (const element of elements) {
           const tags = (element?.tags ?? {}) as Record<string, unknown>
@@ -813,7 +830,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             lat: pLa,
             lon: pLo,
           })
-          if (lieux.length >= 60) break
+          if (lieux.length >= 150) break
         }
         res.status(200).json({ lieux })
       } catch {
