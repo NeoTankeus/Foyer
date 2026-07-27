@@ -159,7 +159,9 @@ export function EcranVoyage() {
       ...etapes.map((e) => `${e.lat},${e.lon}`),
       `${arrivee[0]},${arrivee[1]}`,
     ].join(';')
-    return `/nous/voyages/${id}/itineraire?points=${encodeURIComponent(points)}`
+    // Les noms garnissent les bulles de la carte (« La maison », « Valence »…).
+    const noms = ['La maison', ...etapes.map((e) => e.nom), voyagePourRoute?.destination ?? 'Arrivée'].join(';')
+    return `/nous/voyages/${id}/itineraire?points=${encodeURIComponent(points)}&noms=${encodeURIComponent(noms)}`
   })()
 
   const depenses = useQuery({
