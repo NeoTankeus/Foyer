@@ -56,7 +56,7 @@ export function EcranStock() {
     setSauvegarde('en-cours')
     // On relit les réglages au moment d'écrire pour ne JAMAIS écraser le reste.
     const { data: frais } = await supabase.from('foyers').select('reglages').eq('id', foyer.id).single()
-    const base = (frais?.reglages ?? foyer.reglages) as Record<string, unknown>
+    const base = (frais?.reglages ?? foyer.reglages ?? {}) as Record<string, unknown>
     const { error } = await supabase
       .from('foyers')
       .update({ reglages: { ...base, stock_fantome: suivants } })

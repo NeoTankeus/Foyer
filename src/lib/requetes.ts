@@ -267,7 +267,7 @@ export async function completerTache(
 
   let prochainAssignee = tache.assignee_id
   if (tache.groupe_rotation && adultes.length > 1) {
-    const ordre = [...adultes].sort((a, b) => a.prenom.localeCompare(b.prenom))
+    const ordre = [...adultes].sort((a, b) => (a.prenom ?? '').localeCompare(b.prenom ?? ''))
     const indexActuel = ordre.findIndex((m) => m.id === tache.assignee_id)
     prochainAssignee = ordre[(indexActuel + 1) % ordre.length]?.id ?? tache.assignee_id
   }
@@ -396,7 +396,7 @@ export async function historiqueLibelles(): Promise<string[]> {
     const libelle = typeof article?.libelle === 'string' ? article.libelle.trim() : ''
     if (libelle) vus.add(libelle)
   }
-  return [...vus].sort((a, b) => a.localeCompare(b))
+  return [...vus].sort((a, b) => String(a ?? '').localeCompare(String(b ?? '')))
 }
 
 // ---------------------------------------------------------------------------

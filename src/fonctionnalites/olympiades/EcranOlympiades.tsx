@@ -31,7 +31,7 @@ export function EcranOlympiades() {
     if (!foyer) return
     setScores(suivants)
     const { data: frais } = await supabase.from('foyers').select('reglages').eq('id', foyer.id).single()
-    const base = (frais?.reglages ?? foyer.reglages) as Record<string, unknown>
+    const base = (frais?.reglages ?? foyer.reglages ?? {}) as Record<string, unknown>
     await supabase.from('foyers').update({ reglages: { ...base, olympiades: suivants } }).eq('id', foyer.id)
   }
 

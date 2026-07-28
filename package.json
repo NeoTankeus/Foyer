@@ -10,7 +10,10 @@
     "apercu": "vite preview",
     "typecheck": "tsc --noEmit",
     "generer:icones": "node scripts/generer-icones.mjs",
-    "generer:types": "supabase gen types typescript --local > src/lib/basedonnees.types.ts"
+    "generer:types": "supabase gen types typescript --local > src/lib/basedonnees.types.ts",
+    "verifier": "node scripts/verifier-ecrans.mjs",
+    "verifier:hostile": "node scripts/verifier-ecrans.mjs --hostile",
+    "construire:essai": "VITE_SUPABASE_URL=https://essai.supabase.co VITE_SUPABASE_ANON_KEY=cle-essai-anon vite build --outDir dist-essai"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0",

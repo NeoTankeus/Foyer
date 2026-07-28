@@ -884,6 +884,152 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return
     }
 
+    // 🚦 Les incidents de circulation EN DIRECT le long d'un trajet (TomTom
+    // Traffic Incidents) : bouchons, accidents, travaux, routes coupées — avec
+    // leur tracé exact, pour les peindre par-dessus la route comme sur Waze.
+    //
+    // Cette recherche est TOTALEMENT indépendante du calcul d'itinéraire :
+    // quoi qu'il arrive ici, la route et les arrêts restent affichés.
+    if (mode === 'incidents') {
+      const cleTrafic = process.env.TOMTOM_KEY
+      const brutTrace = (Array.isArray(trace) ? trace : [])
+        .map((p) => (Array.isArray(p) ? p : []) as unknown[])
+        .map((p) => ({ lat: Number(p[0]), lon: Number(p[1]) }))
+        .filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lon))
+      if (!cleTrafic) {
+        res.status(200).json({ incidents: [], erreur: 'cle_absente' })
+        return
+      }
+      if (brutTrace.length < 2) {
+        res.status(200).json({ incidents: [], erreur: 'trace invalide' })
+        return
+      }
+      // Le trajet est découpé en tronçons : une seule grande boîte couvrirait
+      // des centaines de kilomètres hors route et remonterait des bouchons qui
+      // ne nous concernent pas.
+      const reperes = alleger(brutTrace, 24)
+      const tronçons: { lat: number; lon: number }[][] = []
+      const parPaquet = Math.max(2, Math.ceil(reperes.length / 4))
+      for (let i = 0; i < reperes.length; i += parPaquet - 1) {
+        const morceau = reperes.slice(i, i + parPaquet)
+        if (morceau.length >= 2) tronçons.push(morceau)
+      }
+      const champs =
+        '{incidents{type,geometry{type,coordinates},properties{iconCategory,magnitudeOfDelay,' +
+        'events{description,code,iconCategory},startTime,endTime,from,to,length,delay,roadNumbers}}}'
+
+      interface IncidentBrut {
+        geometry?: { type?: unknown; coordinates?: unknown }
+        properties?: {
+          iconCategory?: unknown
+          magnitudeOfDelay?: unknown
+          events?: { description?: unknown }[]
+          from?: unknown
+          to?: unknown
+          length?: unknown
+          delay?: unknown
+          roadNumbers?: unknown
+        }
+      }
+
+      try {
+        const paquets = await Promise.all(
+          tronçons.slice(0, 4).map(async (morceau) => {
+            const lats = morceau.map((p) => p.lat)
+            const lons = morceau.map((p) => p.lon)
+            // Une marge de ~0,05° (5 km) autour du tronçon : assez pour
+            // attraper l'incident, trop peu pour ramasser l'autoroute d'à côté.
+            const boite = [
+              Math.min(...lons) - 0.05,
+              Math.min(...lats) - 0.05,
+              Math.max(...lons) + 0.05,
+              Math.max(...lats) + 0.05,
+            ].join(',')
+            const url =
+              `https://api.tomtom.com/traffic/services/5/incidentDetails?key=${cleTrafic}` +
+              `&bbox=${boite}&fields=${encodeURIComponent(champs)}&language=fr-FR&timeValidityFilter=present`
+            const r = await fetch(url, {
+              headers: { accept: 'application/json', 'user-agent': UA },
+              signal: AbortSignal.timeout(12000),
+            })
+            if (!r.ok) throw new Error(`tomtom ${r.status}`)
+            const d = (await r.json().catch(() => null)) as { incidents?: unknown } | null
+            return (Array.isArray(d?.incidents) ? d.incidents : []) as IncidentBrut[]
+          }),
+        )
+
+        /** Un point est-il vraiment SUR notre route (moins d'1,5 km) ? */
+        const surNotreRoute = (la: number, lo: number): boolean =>
+          reperes.some((p) => metresEntre(p.lat, p.lon, la, lo) < 1500)
+
+        const incidents: {
+          categorie: number
+          gravite: number
+          retardMin: number
+          description: string
+          de: string
+          vers: string
+          route: string
+          km: number
+          ligne: [number, number][]
+        }[] = []
+        const vus = new Set<string>()
+        for (const brut of paquets.flat()) {
+          const coords = brut?.geometry?.coordinates
+          // TomTom donne du GeoJSON : [lon, lat] pour un point, un tableau de
+          // paires pour une ligne. On accepte les deux.
+          const paires: [number, number][] = []
+          if (Array.isArray(coords)) {
+            if (typeof coords[0] === 'number' && typeof coords[1] === 'number') {
+              paires.push([Number(coords[1]), Number(coords[0])])
+            } else {
+              for (const c of coords as unknown[]) {
+                if (!Array.isArray(c)) continue
+                const lo = Number(c[0])
+                const la = Number(c[1])
+                if (Number.isFinite(la) && Number.isFinite(lo)) paires.push([la, lo])
+              }
+            }
+          }
+          if (paires.length === 0) continue
+          const tete = paires[0]
+          if (!tete || !paires.some(([la, lo]) => surNotreRoute(la, lo))) continue
+          const cleUnique = `${tete[0].toFixed(4)},${tete[1].toFixed(4)}`
+          if (vus.has(cleUnique)) continue
+          vus.add(cleUnique)
+
+          const props = brut?.properties ?? {}
+          const evenements = Array.isArray(props.events) ? props.events : []
+          const description = evenements
+            .map((e) => (typeof e?.description === 'string' ? e.description : ''))
+            .filter(Boolean)
+            .join(' · ')
+          const routes = Array.isArray(props.roadNumbers) ? props.roadNumbers.filter((x) => typeof x === 'string') : []
+          incidents.push({
+            categorie: Number(props.iconCategory) || 0,
+            gravite: Number(props.magnitudeOfDelay) || 0,
+            retardMin: Math.round((Number(props.delay) || 0) / 60),
+            description: description || 'Perturbation',
+            de: typeof props.from === 'string' ? props.from : '',
+            vers: typeof props.to === 'string' ? props.to : '',
+            route: routes.join(', '),
+            km: Math.round(((Number(props.length) || 0) / 1000) * 10) / 10,
+            ligne: alleger(paires, 60),
+          })
+          if (incidents.length >= 80) break
+        }
+        // Les plus gênants d'abord : c'est ce qu'on lit en premier.
+        incidents.sort((a, b) => b.retardMin - a.retardMin || b.gravite - a.gravite)
+        res.status(200).json({ incidents })
+      } catch (e) {
+        res.status(200).json({
+          incidents: [],
+          erreur: `trafic ${String(e instanceof Error ? e.message : e).slice(0, 60)}`,
+        })
+      }
+      return
+    }
+
     // ⛽ Points d'intérêt le long d'une route : aires, stations, gonflage,
     // curiosités et points d'eau, semés le long de la polyligne du trajet.
     //

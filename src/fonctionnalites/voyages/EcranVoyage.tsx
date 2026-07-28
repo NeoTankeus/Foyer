@@ -126,7 +126,7 @@ export function EcranVoyage() {
     if (!foyer) return
     // Relecture fraîche : on n'écrase jamais le reste des réglages du foyer.
     const { data: frais } = await supabase.from('foyers').select('reglages').eq('id', foyer.id).single()
-    const base = (frais?.reglages ?? foyer.reglages) as Record<string, unknown>
+    const base = (frais?.reglages ?? foyer.reglages ?? {}) as Record<string, unknown>
     await supabase.from('foyers').update({ reglages: patch(base) }).eq('id', foyer.id)
     // Les réglages du foyer vivent dans la session : on recharge pour repartir
     // sur des données parfaitement à jour (étapes, véhicule, itinéraire).
@@ -360,6 +360,10 @@ export function EcranVoyage() {
   }
 
   const voyage = voyages.data?.find((v) => v.id === id)
+  // `checklist_maison` est une colonne jsonb : elle peut être NULLE en base
+  // (voyage créé avant la fonctionnalité, import…). On ne lit jamais dedans
+  // sans ce filet, sinon l'écran entier tombe.
+  const checklistMaison = Array.isArray(voyage?.checklist_maison) ? voyage.checklist_maison : []
 
   useEffect(() => {
     if (voyage?.destination && voyage.debut && voyage.fin) {
@@ -400,7 +404,7 @@ export function EcranVoyage() {
     if (!libelle || !voyage) return
     await muter({
       table: 'voyages', type: 'update', cible_id: voyage.id,
-      charge: { checklist_maison: [...voyage.checklist_maison, { libelle, coche: false }] },
+      charge: { checklist_maison: [...checklistMaison, { libelle, coche: false }] },
     })
     setNouvelleTacheMaison('')
     await clientRequetes.invalidateQueries({ queryKey: ['voyages'] })
@@ -463,14 +467,14 @@ export function EcranVoyage() {
           `${voyage.debut ? ` le ${voyage.debut}` : ''}${voyage.fin ? ` jusqu'au ${voyage.fin}` : ''}. ` +
           `Fais la checklist avant de quitter la maison (fermer l'eau, frigo à vider — pense anti-gaspi la semaine d'avant —, ` +
           `poubelles, courrier, plantes, chauffage, clés…). ` +
-          `Déjà listé : ${voyage.checklist_maison.map((c) => c.libelle).join(', ') || 'rien'}. ` +
+          `Déjà listé : ${checklistMaison.map((c) => c.libelle).join(', ') || 'rien'}. ` +
           `Donne UNIQUEMENT les éléments à ajouter, un par ligne, sans commentaires, 12 max.`,
       )
-      const nouveaux = lignesDeListe(reponse, voyage.checklist_maison.map((c) => c.libelle))
+      const nouveaux = lignesDeListe(reponse, checklistMaison.map((c) => c.libelle))
       if (nouveaux.length > 0) {
         await muter({
           table: 'voyages', type: 'update', cible_id: voyage.id,
-          charge: { checklist_maison: [...voyage.checklist_maison, ...nouveaux.map((libelle) => ({ libelle, coche: false }))] },
+          charge: { checklist_maison: [...checklistMaison, ...nouveaux.map((libelle) => ({ libelle, coche: false }))] },
         })
         await clientRequetes.invalidateQueries({ queryKey: ['voyages'] })
       }
@@ -494,7 +498,7 @@ export function EcranVoyage() {
   }
 
   const basculerMaison = async (index: number) => {
-    const liste = voyage.checklist_maison.map((c, i) => (i === index ? { ...c, coche: !c.coche } : c))
+    const liste = checklistMaison.map((c, i) => (i === index ? { ...c, coche: !c.coche } : c))
     await muter({ table: 'voyages', type: 'update', cible_id: voyage.id, charge: { checklist_maison: liste } })
     await clientRequetes.invalidateQueries({ queryKey: ['voyages'] })
   }
@@ -979,7 +983,7 @@ export function EcranVoyage() {
       <section className="mb-6 mt-5">
         <h3 className="text-titre-3 text-encre">Avant de partir</h3>
         <ul className="mt-2 flex flex-col gap-1">
-          {voyage.checklist_maison.map((c, index) => (
+          {checklistMaison.map((c, index) => (
             <li key={c.libelle} className="flex items-center rounded-md bg-fond-eleve px-2 shadow-carte">
               <Coche cochee={c.coche} onBascule={() => void basculerMaison(index)} etiquette={c.libelle} />
               <span className={`flex-1 py-2 text-corps-2 ${c.coche ? 'text-encre-3 line-through' : 'text-encre'}`}>

@@ -65,7 +65,10 @@ export function EcranRoue() {
   // ajoutes et retires ce que tu veux, c'est mémorisé.
   useEffect(() => {
     if (mode !== 'plats' || plats.length > 0 || recettes.isLoading) return
-    const recettesMaison = (recettes.data ?? []).map((r) => r.titre).slice(0, 8)
+    const recettesMaison = (recettes.data ?? [])
+      .map((r) => String(r.titre ?? '').trim())
+      .filter(Boolean)
+      .slice(0, 8)
     const graine = recettesMaison.length >= 2 ? recettesMaison : PLATS_SECOURS
     setPlats(graine)
     localStorage.setItem(CLE_PLATS, JSON.stringify(graine))
@@ -74,7 +77,9 @@ export function EcranRoue() {
   const options: Option[] = useMemo(() => {
     if (mode === 'restos') {
       const liste = (restaurants.data ?? [])
-        .map((r) => ({ libelle: r.nom, poids: r.favori ? 2 : (r.note ?? 0) >= 4 ? 1.5 : 1 }))
+        // Un restaurant sans nom ferait tourner une roue vide : on l'écarte.
+        .map((r) => ({ libelle: String(r.nom ?? '').trim(), poids: r.favori ? 2 : (r.note ?? 0) >= 4 ? 1.5 : 1 }))
+        .filter((o) => o.libelle !== '')
         .slice(0, 8)
       return liste.length >= 2 ? liste : []
     }

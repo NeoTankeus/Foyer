@@ -34,6 +34,45 @@ interface Itineraire {
   geometrie: [number, number][]
 }
 
+/** Un incident de circulation en direct, tel que le relais nous le donne. */
+interface IncidentTrafic {
+  categorie: number
+  gravite: number
+  retardMin: number
+  description: string
+  de: string
+  vers: string
+  route: string
+  km: number
+  ligne: [number, number][]
+}
+
+// Les pictogrammes TomTom, traduits en emoji parlant.
+const EMOJI_INCIDENT: Record<number, string> = {
+  0: '\u26a0\ufe0f',
+  1: '\ud83d\udca5',
+  2: '\ud83c\udf2b\ufe0f',
+  3: '\u26a0\ufe0f',
+  4: '\ud83c\udf27\ufe0f',
+  5: '\ud83e\uddca',
+  6: '\ud83d\ude97',
+  7: '\ud83d\udea7',
+  8: '\u26d4',
+  9: '\ud83d\udea7',
+  10: '\ud83d\udca8',
+  11: '\ud83c\udf0a',
+  14: '\ud83d\udd27',
+}
+
+/** La couleur du tronçon perturbé : plus c'est rouge, plus ça coûte cher. */
+const COULEUR_GRAVITE: Record<number, string> = {
+  0: '#9aa0a6',
+  1: '#eab308',
+  2: '#f97316',
+  3: '#dc2626',
+  4: '#111827',
+}
+
 type TypeLieu = 'aire' | 'essence' | 'gonflage' | 'curiosite' | 'eau'
 
 interface LieuRoute {
@@ -139,6 +178,30 @@ const lieuSur = (brut: unknown): LieuRoute | null => {
     type: (TYPES_LIEU.some((t) => t.cle === type) ? type : 'aire') as TypeLieu,
     lat: p.lat,
     lon: p.lon,
+  }
+}
+
+/** Un incident n'est retenu que s'il a un tracé posable sur la carte. */
+const incidentSur = (brut: unknown): IncidentTrafic | null => {
+  if (!brut || typeof brut !== 'object') return null
+  const i = brut as Record<string, unknown>
+  const ligne: [number, number][] = []
+  for (const paire of Array.isArray(i['ligne']) ? (i['ligne'] as unknown[]) : []) {
+    if (!Array.isArray(paire)) continue
+    const p = pointSur(paire[0], paire[1])
+    if (p) ligne.push([p.lat, p.lon])
+  }
+  if (ligne.length === 0) return null
+  return {
+    categorie: nombreOuZero(i['categorie']),
+    gravite: nombreOuZero(i['gravite']),
+    retardMin: nombreOuZero(i['retardMin']),
+    description: String(i['description'] ?? 'Perturbation'),
+    de: String(i['de'] ?? ''),
+    vers: String(i['vers'] ?? ''),
+    route: String(i['route'] ?? ''),
+    km: nombreOuZero(i['km']),
+    ligne,
   }
 }
 
@@ -254,6 +317,27 @@ export function EcranItineraire() {
     },
   })
 
+  // ——— 2 bis. Les bouchons EN DIRECT sur ce tracé ———
+  // Requête entièrement séparée : si le trafic tombe en panne, la route et
+  // les arrêts restent affichés exactement comme avant.
+  const [trafficAffiche, setTraficAffiche] = useState(true)
+  const trafic = useQuery({
+    queryKey: ['itineraire-trafic', cleTrace],
+    enabled: cleTrace !== '',
+    staleTime: 3 * 60 * 1000, // un bouchon bouge vite : 3 minutes
+    refetchInterval: 5 * 60 * 1000,
+    queryFn: async (): Promise<IncidentTrafic[]> => {
+      const donnees = await appelerRelais({ mode: 'incidents', trace: echantillonner(trace, 24) })
+      if (donnees['erreur']) throw new Error(String(donnees['erreur']))
+      return (Array.isArray(donnees['incidents']) ? (donnees['incidents'] as unknown[]) : [])
+        .map(incidentSur)
+        .filter((i): i is IncidentTrafic => i !== null)
+    },
+  })
+  const incidents = useMemo(() => trafic.data ?? [], [trafic.data])
+  const incidentsVisibles = useMemo(() => (trafficAffiche ? incidents : []), [trafficAffiche, incidents])
+  const retardTotal = useMemo(() => incidents.reduce((t, i) => t + i.retardMin, 0), [incidents])
+
   const lieux = useMemo(() => arrets.data?.liste ?? [], [arrets.data])
   // La raison exacte quand aucun arrêt ne remonte — précieux pour corriger.
   const diagnosticArrets = arrets.error instanceof Error ? arrets.error.message : (arrets.data?.journal ?? '')
@@ -265,6 +349,7 @@ export function EcranItineraire() {
   const refCarte = useRef<CarteLeaflet | null>(null)
   const refTrace = useRef<LayerGroup | null>(null)
   const refArrets = useRef<LayerGroup | null>(null)
+  const refTrafic = useRef<LayerGroup | null>(null)
   const refMarqueurs = useRef<Map<string, Marker>>(new Map())
   const [cartePrete, setCartePrete] = useState(false)
 
@@ -285,6 +370,8 @@ export function EcranItineraire() {
       refCarte.current = carte
       refTrace.current = L.layerGroup().addTo(carte)
       refArrets.current = L.layerGroup().addTo(carte)
+      // Le trafic se pose PAR-DESSUS la route, mais SOUS les pictogrammes.
+      refTrafic.current = L.layerGroup().addTo(carte)
       setCartePrete(true)
     })()
     // Démontage : la carte Leaflet est démolie proprement, sinon elle
@@ -294,6 +381,7 @@ export function EcranItineraire() {
       refMarqueurs.current.clear()
       refTrace.current = null
       refArrets.current = null
+      refTrafic.current = null
       refCarte.current = null
       refL.current = null
       setCartePrete(false)
@@ -339,6 +427,53 @@ export function EcranItineraire() {
 
     carte.fitBounds(choisi.geometrie, { padding: [36, 36] })
   }, [cartePrete, choisi, points, noms])
+
+  // Les bouchons : un calque à part, redessiné seul. Toute la peinture est
+  // protégée — un incident malformé ne doit jamais faire tomber la carte.
+  useEffect(() => {
+    const L = refL.current
+    const calque = refTrafic.current
+    if (!cartePrete || !L || !calque) return
+    calque.clearLayers()
+    for (const incident of incidentsVisibles) {
+      try {
+        const couleur = COULEUR_GRAVITE[incident.gravite] ?? COULEUR_GRAVITE[0] ?? '#9aa0a6'
+        const bulle =
+          `<strong>${EMOJI_INCIDENT[incident.categorie] ?? '⚠️'} ${echapper(incident.description)}</strong>` +
+          (incident.route ? `<br>${echapper(incident.route)}` : '') +
+          (incident.de || incident.vers
+            ? `<br>${echapper(incident.de)}${incident.vers ? ` → ${echapper(incident.vers)}` : ''}`
+            : '') +
+          (incident.retardMin > 0 ? `<br>⏱ +${incident.retardMin} min` : '') +
+          (incident.km > 0 ? `<br>📏 ${String(incident.km).replace('.', ',')} km` : '')
+
+        if (incident.ligne.length >= 2) {
+          L.polyline(incident.ligne, { color: couleur, weight: 9, opacity: 0.95, lineCap: 'round' })
+            .addTo(calque)
+            .bindPopup(bulle)
+        }
+        // Un pictogramme au milieu du tronçon : repérable même très dézoomé.
+        const milieu = incident.ligne[Math.floor(incident.ligne.length / 2)] ?? incident.ligne[0]
+        if (milieu) {
+          L.marker(milieu, {
+            icon: L.divIcon({
+              className: '',
+              html:
+                `<div style="font-size:15px;line-height:20px;width:22px;height:22px;text-align:center;` +
+                `border-radius:11px;background:${couleur};box-shadow:0 1px 3px rgb(0 0 0/.45)">` +
+                `${EMOJI_INCIDENT[incident.categorie] ?? '⚠️'}</div>`,
+              iconSize: [22, 22],
+              iconAnchor: [11, 11],
+            }),
+          })
+            .addTo(calque)
+            .bindPopup(bulle)
+        }
+      } catch {
+        // Un incident illisible est simplement ignoré : la carte continue.
+      }
+    }
+  }, [cartePrete, incidentsVisibles])
 
   // Les arrêts : recalqués seuls quand on touche aux filtres — la vue de la
   // carte ne bouge pas, on ne perd pas son zoom.
@@ -470,6 +605,54 @@ export function EcranItineraire() {
             on les voit sans avoir à faire défiler la page. */}
         {choisi && (
           <>
+            {/* 🚦 Les bouchons en direct : un interrupteur, un compteur, et
+                rien d'autre — la carte reste lisible. */}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => {
+                  navigator.vibrate?.(4)
+                  setTraficAffiche((v) => !v)
+                }}
+                aria-pressed={trafficAffiche}
+                className={`min-h-sur-tactile shrink-0 rounded-full px-3 text-note font-[590]
+                  ${trafficAffiche ? 'bg-encre text-fond' : 'bg-fond-sourd text-encre-3'}`}
+              >
+                🚦 Bouchons{incidents.length > 0 ? ` (${incidents.length})` : ''}
+              </button>
+              <p className="min-w-0 flex-1 text-legende text-encre-3">
+                {trafic.isPending
+                  ? 'Relevé du trafic en direct…'
+                  : trafic.isError
+                    ? 'Trafic indisponible — la route reste juste.'
+                    : incidents.length === 0
+                      ? 'Aucune perturbation signalée sur ce trajet.'
+                      : `${incidents.length} perturbation${incidents.length > 1 ? 's' : ''}${retardTotal > 0 ? ` · +${retardTotal} min au total` : ''}`}
+              </p>
+            </div>
+
+            {/* Les trois pires bouchons, en clair, sans avoir à toucher la carte. */}
+            {trafficAffiche && incidents.length > 0 && (
+              <ul className="flex flex-col gap-1">
+                {incidents.slice(0, 3).map((i, n) => (
+                  <li
+                    key={`${i.description}-${n}`}
+                    className="flex items-start gap-2 rounded-lg bg-fond-sourd p-2 text-legende text-encre-2"
+                  >
+                    <span aria-hidden="true">{EMOJI_INCIDENT[i.categorie] ?? '⚠️'}</span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block font-[590] text-encre">{i.description}</span>
+                      {(i.route || i.de) && (
+                        <span className="block">
+                          {[i.route, i.de && i.vers ? `${i.de} → ${i.vers}` : i.de].filter(Boolean).join(' · ')}
+                        </span>
+                      )}
+                    </span>
+                    {i.retardMin > 0 && <span className="chiffres shrink-0 font-[590] text-urgent">+{i.retardMin} min</span>}
+                  </li>
+                ))}
+              </ul>
+            )}
+
             <div className="flex gap-2 overflow-x-auto pb-1">
               {TYPES_LIEU.map((t) => {
                 const nombre = lieux.filter((l) => l.type === t.cle).length

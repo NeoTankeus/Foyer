@@ -27,9 +27,21 @@ interface ProfilCache {
   foyer: LigneFoyer | null
 }
 
+/**
+ * Le foyer, garanti utilisable. `reglages` est une colonne jsonb : elle peut
+ * être NULLE en base (foyer tout neuf, migration, import). Toute l'app lit
+ * dedans (`reglages['maison']`…) — sans ce filet, un seul null faisait planter
+ * une quinzaine d'écrans d'un coup. On répare ICI, une fois pour toutes.
+ */
+function foyerSain(brut: LigneFoyer | null | undefined): LigneFoyer | null {
+  if (!brut) return null
+  return brut.reglages && typeof brut.reglages === 'object' ? brut : { ...brut, reglages: {} }
+}
+
 function lireProfil(): ProfilCache | null {
   try {
-    return JSON.parse(localStorage.getItem(CLE_PROFIL) ?? 'null') as ProfilCache | null
+    const brut = JSON.parse(localStorage.getItem(CLE_PROFIL) ?? 'null') as ProfilCache | null
+    return brut ? { ...brut, foyer: foyerSain(brut.foyer) } : null
   } catch {
     return null
   }
@@ -60,7 +72,7 @@ async function chargerFoyer(): Promise<ProfilCache> {
 
     await baseLocale.membres.bulkPut(membres)
     const membre = membres.find((m) => m.auth_user_id === authId) ?? null
-    const profil = { membre, membres, foyer: foyers?.[0] ?? null }
+    const profil = { membre, membres, foyer: foyerSain(foyers?.[0]) }
     // Mémorisé pour que la PROCHAINE ouverture soit instantanée.
     try {
       localStorage.setItem(CLE_PROFIL, JSON.stringify(profil))

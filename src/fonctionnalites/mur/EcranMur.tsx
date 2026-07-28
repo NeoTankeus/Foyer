@@ -37,7 +37,7 @@ export function EcranMur() {
       const maintenant = new Date().toISOString()
       return lignes
         .filter((l) => l.epingle || l.expire_le > maintenant)
-        .sort((a, b) => Number(b.epingle) - Number(a.epingle) || b.cree_le.localeCompare(a.cree_le))
+        .sort((a, b) => Number(b.epingle) - Number(a.epingle) || (b.cree_le ?? '').localeCompare(a.cree_le ?? ''))
     },
   })
 

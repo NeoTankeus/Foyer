@@ -103,7 +103,7 @@ export function EcranAssiette() {
     if (!foyer) return
     // Relecture fraîche : on n'écrase jamais le reste des réglages.
     const { data: frais } = await supabase.from('foyers').select('reglages').eq('id', foyer.id).single()
-    const base = (frais?.reglages ?? foyer.reglages) as Record<string, unknown>
+    const base = (frais?.reglages ?? foyer.reglages ?? {}) as Record<string, unknown>
     await supabase.from('foyers').update({ reglages: patch(base) }).eq('id', foyer.id)
     await clientRequetes.invalidateQueries({ queryKey: ['assiette'] })
   }

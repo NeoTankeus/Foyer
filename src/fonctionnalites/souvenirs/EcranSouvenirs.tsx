@@ -40,7 +40,7 @@ export function EcranSouvenirs() {
   const dossiers = useMemo(() => {
     const noms = new Set<string>()
     for (const s of souvenirs.data ?? []) if (s.dossier) noms.add(s.dossier)
-    return [...noms].sort((a, b) => a.localeCompare(b))
+    return [...noms].sort((a, b) => String(a ?? '').localeCompare(String(b ?? '')))
   }, [souvenirs.data])
 
   const importer = async (fichiers: FileList | null) => {

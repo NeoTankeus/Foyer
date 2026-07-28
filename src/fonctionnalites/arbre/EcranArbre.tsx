@@ -38,12 +38,16 @@ export function EcranArbre() {
     },
   })
 
-  const anniversaireDe = (prenom: string): string | null => {
+  const anniversaireDe = (prenomBrut: string | null): string | null => {
+    // Le prénom lui-même peut manquer : sans nom, pas de rapprochement.
+    const prenom = String(prenomBrut ?? '').trim()
+    if (!prenom) return null
     const fete = (celebrations.data ?? []).find(
-      (c) => !c.magie && c.nom.toLowerCase().includes(prenom.toLowerCase()),
+      // Une célébration sans nom ne doit pas faire tomber tout l'arbre.
+      (c) => !c.magie && String(c.nom ?? '').toLowerCase().includes(prenom.toLowerCase()),
     )
     if (!fete) return null
-    const [, m, j] = fete.date.split('-').map(Number)
+    const [, m, j] = String(fete.date ?? '').split('-').map(Number)
     return new Date(2000, (m ?? 1) - 1, j ?? 1).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })
   }
 
@@ -67,7 +71,7 @@ export function EcranArbre() {
           aria-hidden="true"
           className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-fond-sourd text-[18px] font-[700] text-encre-2"
         >
-          {p.prenom.slice(0, 1).toUpperCase()}
+          {String(p.prenom ?? '?').slice(0, 1).toUpperCase()}
         </span>
         <div className="min-w-0 flex-1">
           <p className="break-words text-corps-2 font-[590] text-encre">

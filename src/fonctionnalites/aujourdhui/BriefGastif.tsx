@@ -21,7 +21,7 @@ function composer(evenements: LigneEvenement[], taches: LigneTache[]): string {
       return Number.isFinite(debut) && debut > maintenant
     })
     // L'ordre d'arrivée n'est pas garanti (cache hors ligne) : on trie.
-    .sort((a, b) => a.debut_a.localeCompare(b.debut_a))
+    .sort((a, b) => (a.debut_a ?? '').localeCompare(b.debut_a ?? ''))
   const prochain = aVenir[0]
   if (evenements.length === 0) {
     phrases.push('Rien au programme aujourd’hui.')

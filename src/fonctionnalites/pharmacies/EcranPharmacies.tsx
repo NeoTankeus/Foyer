@@ -97,13 +97,39 @@ export function EcranPharmacies() {
         },
         body: JSON.stringify({ image }),
       })
-      if (!r.ok) throw new Error(`serveur ${r.status}`)
-      const d = (await r.json()) as { proposition?: FicheMedicament; message?: string }
-      const propre = ficheSure(d.proposition)
-      if (propre) setFiche(propre)
-      else setErreurFiche(d.message ?? 'La boîte n’a pas pu être lue.')
+      // ⚠️ On lit le corps de la réponse MÊME en cas d'erreur : le serveur y
+      // met la vraie raison. Un simple « serveur 429 » ferait croire à une
+      // mauvaise photo alors que c'est l'IA qui est saturée.
+      const d = (await r.json().catch(() => null)) as {
+        proposition?: FicheMedicament
+        message?: string
+        erreur?: string
+      } | null
+      const propre = ficheSure(d?.proposition)
+      if (propre) {
+        setFiche(propre)
+        return
+      }
+      if (d?.message) {
+        setErreurFiche(d.message)
+        return
+      }
+      setErreurFiche(
+        r.status === 429
+          ? 'Les IA sont saturées à l’instant — réessaie dans une minute, ta photo est très bien.'
+          : r.status === 401
+            ? 'Ta session a expiré — rouvre l’app et réessaie.'
+            : r.status === 503
+              ? 'Le service de lecture n’est pas configuré (clé IA absente).'
+              : r.ok
+                ? 'La boîte n’a pas pu être lue — retente avec une photo nette du recto.'
+                : `Le serveur n’a pas répondu correctement (${r.status}).`,
+      )
     } catch (e) {
-      setErreurFiche(String(e instanceof Error ? e.message : e))
+      // Ici, c'est le réseau : le téléphone n'a pas pu joindre le serveur.
+      setErreurFiche(
+        `Connexion impossible — vérifie ton réseau et réessaie. (${String(e instanceof Error ? e.message : e).slice(0, 60)})`,
+      )
     } finally {
       setAnalyseEnCours(false)
     }
@@ -321,7 +347,12 @@ export function EcranPharmacies() {
             📷 Photographier une boîte de médicament
           </BoutonEnvoi>
           {erreurFiche && (
-            <p className="text-corps-2 text-urgent">{erreurFiche} Tu peux réessayer avec une photo nette du recto.</p>
+            <div className="flex flex-col items-start gap-2">
+              <p className="text-corps-2 text-urgent">{erreurFiche}</p>
+              <Bouton variante="discret" onClick={() => champPhoto.current?.click()}>
+                🔄 Réessayer
+              </Bouton>
+            </div>
           )}
           {fiche && (
             <Carte>

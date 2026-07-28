@@ -99,7 +99,7 @@ export function EcranInventaire() {
   const bientot = new Date(Date.now() + 3 * 86400000).toISOString().slice(0, 10)
   const lignes = (inventaire.data ?? [])
     .filter((l) => l.zone === zone)
-    .sort((a, b) => (a.dlc ?? '9999').localeCompare(b.dlc ?? '9999') || a.libelle.localeCompare(b.libelle))
+    .sort((a, b) => (a.dlc ?? '9999').localeCompare(b.dlc ?? '9999') || (a.libelle ?? '').localeCompare(b.libelle ?? ''))
 
   return (
     <div className="px-5 pb-6 pt-3">

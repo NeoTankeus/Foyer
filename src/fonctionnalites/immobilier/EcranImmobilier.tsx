@@ -92,7 +92,7 @@ export function EcranImmobilier() {
   const derniere = dates[dates.length - 1]
 
   // Les plus récentes d'abord ; on s'arrête à 40, au-delà personne ne lit.
-  const affichees = [...liste].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 40)
+  const affichees = [...liste].sort((a, b) => (b.date ?? '').localeCompare(a.date ?? '')).slice(0, 40)
 
   return (
     <div className="pb-4">

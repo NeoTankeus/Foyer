@@ -111,7 +111,7 @@ export function EcranGarde() {
     if (!foyer) return
     // Relecture fraîche : on n'écrase JAMAIS ce que l'autre vient de cocher.
     const { data: frais } = await supabase.from('foyers').select('reglages').eq('id', foyer.id).single()
-    const base = (frais?.reglages ?? foyer.reglages) as Record<string, unknown>
+    const base = (frais?.reglages ?? foyer.reglages ?? {}) as Record<string, unknown>
     const suivant: PlanningGarde = { ...((base['garde'] ?? {}) as PlanningGarde) }
     const jour: JourGarde = { ...(suivant[date] ?? {}) }
     if (creneau) jour[moment] = creneau
@@ -128,7 +128,7 @@ export function EcranGarde() {
     const propre = nom.trim()
     if (!foyer || !propre) return
     const { data: frais } = await supabase.from('foyers').select('reglages').eq('id', foyer.id).single()
-    const base = (frais?.reglages ?? foyer.reglages) as Record<string, unknown>
+    const base = (frais?.reglages ?? foyer.reglages ?? {}) as Record<string, unknown>
     const actuels = (Array.isArray(base['garde_gardiens']) ? base['garde_gardiens'] : []).filter(
       (g): g is string => typeof g === 'string',
     )
@@ -140,7 +140,7 @@ export function EcranGarde() {
   const retirerGardien = async (nom: string) => {
     if (!foyer) return
     const { data: frais } = await supabase.from('foyers').select('reglages').eq('id', foyer.id).single()
-    const base = (frais?.reglages ?? foyer.reglages) as Record<string, unknown>
+    const base = (frais?.reglages ?? foyer.reglages ?? {}) as Record<string, unknown>
     const actuels = Array.isArray(base['garde_gardiens']) ? (base['garde_gardiens'] as string[]) : []
     await supabase.from('foyers').update({ reglages: { ...base, garde_gardiens: actuels.filter((g) => g !== nom) } }).eq('id', foyer.id)
     await clientRequetes.invalidateQueries({ queryKey: ['garde'] })

@@ -1,6 +1,10 @@
 // Les nouveautés de la version en cours — affichées UNE fois dans le pop-up
 // « Quoi de neuf », signé ILY. Mises à jour à chaque déploiement.
 export const NOTES_VERSION: string[] = [
+  '\ud83d\udea6 BOUCHONS EN DIRECT SUR LA CARTE, comme sur Waze : accidents, ralentissements, travaux et routes coupées sont peints sur le trajet (jaune → orange → rouge → noir), avec le retard de chacun. Un interrupteur « Bouchons » pour les masquer, et les trois pires listés en clair.',
+  '\ud83e\uddea NOUVEAU : un banc d’essai automatique ouvre les 58 écrans de l’app dans un vrai navigateur et appuie sur leurs boutons avant chaque mise à jour — d’abord avec des données normales, puis avec des données volontairement abîmées et des serveurs en panne. Plus rien ne part sans être passé par là.',
+  '\ud83d\udee1\ufe0f 16 plantages trouvés et corrigés par ce banc d’essai — dont un gros : si les réglages du foyer étaient vides, QUINZE écrans tombaient d’un coup (Voyages, Plages, Pharmacies, Carburant, Cours d’eau, Radar…). Réparé à la source.',
+  '\ud83d\udc8a Fiche médicament : le message d’erreur disait « photo floue » alors que c’était l’IA qui était saturée. L’app affiche désormais la VRAIE raison, avec un bouton « Réessayer ».',
   '🧭 Étapes réparées à la racine : les coordonnées sont maintenant envoyées TELLES QUELLES à TomTom (qui sait déjà les accrocher à la route). Le « recalage » automatique que j’avais ajouté pouvait déplacer une étape parfaitement correcte — il ne sert plus qu’en secours, et refuse tout déplacement de plus de 5 km.',
   '🧭 Étape introuvable sur la route : l’app repère MAINTENANT laquelle bloque, calcule le trajet sans elle, et te le dit en clair (« Corrige l’étape dans Étapes et coûts ») au lieu d’afficher une erreur.',
   '🔎 Les étapes sont géocodées en privilégiant la France, et leur nom affiche la région (ou le pays s’il est étranger) : on voit tout de suite si c’est la bonne commune et non une homonyme à l’autre bout du monde.',

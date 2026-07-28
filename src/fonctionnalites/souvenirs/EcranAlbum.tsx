@@ -40,7 +40,7 @@ export function EcranAlbum() {
   }
   const photos = (souvenirs.data ?? [])
     .filter((s) => s.voyage_id === voyageId)
-    .sort((a, b) => Number(b.favori) - Number(a.favori) || a.pris_le.localeCompare(b.pris_le))
+    .sort((a, b) => Number(b.favori) - Number(a.favori) || (a.pris_le ?? '').localeCompare(b.pris_le ?? ''))
 
   return (
     <div className="px-5 pt-3">

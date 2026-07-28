@@ -561,7 +561,7 @@ function CarteFenetreGrandsParents() {
     if (!foyer) return
     setEtat('en-cours')
     const { data: frais } = await supabase.from('foyers').select('reglages').eq('id', foyer.id).single()
-    const base = (frais?.reglages ?? foyer.reglages) as Record<string, unknown>
+    const base = (frais?.reglages ?? foyer.reglages ?? {}) as Record<string, unknown>
     const suivants = { ...base } as Record<string, unknown>
     if (valeur) suivants['fenetre_jeton'] = valeur
     else delete suivants['fenetre_jeton']

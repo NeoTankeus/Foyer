@@ -53,7 +53,7 @@ export function EcranEcole() {
     if (!foyer) return
     setFournitures(suivantes)
     const { data: frais } = await supabase.from('foyers').select('reglages').eq('id', foyer.id).single()
-    const base = (frais?.reglages ?? foyer.reglages) as Record<string, unknown>
+    const base = (frais?.reglages ?? foyer.reglages ?? {}) as Record<string, unknown>
     await supabase.from('foyers').update({ reglages: { ...base, ecole_fournitures: suivantes } }).eq('id', foyer.id)
   }
 

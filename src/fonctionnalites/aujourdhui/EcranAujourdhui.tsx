@@ -576,7 +576,7 @@ export function EcranAujourdhui() {
     ...(evenements.data ?? []).filter((e) => e.journee_entiere),
     ...(evenements.data ?? [])
       .filter((e) => !e.journee_entiere)
-      .sort((a, b) => a.debut_a.localeCompare(b.debut_a)),
+      .sort((a, b) => (a.debut_a ?? '').localeCompare(b.debut_a ?? '')),
   ]
 
   return (

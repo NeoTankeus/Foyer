@@ -229,7 +229,7 @@ export function EcranRestaurants() {
   const visibles = (restaurants.data ?? [])
     .filter((r) => !favorisSeuls || r.favori)
     .filter((r) => `${r.nom} ${r.ville ?? ''} ${r.cuisine ?? ''}`.toLowerCase().includes(filtre.toLowerCase()))
-    .sort((a, b) => Number(b.favori) - Number(a.favori) || (b.note ?? 0) - (a.note ?? 0) || a.nom.localeCompare(b.nom))
+    .sort((a, b) => Number(b.favori) - Number(a.favori) || (b.note ?? 0) - (a.note ?? 0) || (a.nom ?? '').localeCompare(b.nom ?? ''))
 
   // La fiche ouverte suit les données fraîches.
   const ouvertFrais = ouvert ? (restaurants.data ?? []).find((r) => r.id === ouvert.id) ?? ouvert : null

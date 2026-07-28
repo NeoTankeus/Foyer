@@ -98,7 +98,7 @@ export function EcranAgenda() {
   }, [filtres])
 
   const evenementsPour = (jour: Date) => parJour.get(dateIsoJour(jour)) ?? []
-  const duJour = [...evenementsPour(jourChoisi)].sort((a, b) => a.debut_a.localeCompare(b.debut_a))
+  const duJour = [...evenementsPour(jourChoisi)].sort((a, b) => (a.debut_a ?? '').localeCompare(b.debut_a ?? ''))
   const aujourdHui = maintenantLocal()
 
   const couleursDe = (e: LigneEvenement) =>

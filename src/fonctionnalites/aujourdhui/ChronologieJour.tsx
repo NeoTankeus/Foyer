@@ -16,7 +16,7 @@ export function ChronologieJour({ evenements, membres }: Props) {
   const maintenant = Date.now()
   const horaires = evenements
     .filter((e) => !e.journee_entiere)
-    .sort((a, b) => a.debut_a.localeCompare(b.debut_a))
+    .sort((a, b) => (a.debut_a ?? '').localeCompare(b.debut_a ?? ''))
   const journeeEntiere = evenements.filter((e) => e.journee_entiere)
 
   // `participants` vient de la base : on ne le suppose jamais tableau.

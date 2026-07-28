@@ -9,3 +9,5 @@ dev-dist/
 .vercel/
 supabase/.temp/
 supabase/.branches/
+# La construction du banc d'essai (jetable)
+dist-essai
