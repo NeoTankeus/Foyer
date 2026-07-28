@@ -207,7 +207,7 @@ export function EcranGarde() {
               <PastilleMembre membre={personne.membre} taille={24} />
             ) : (
               <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-encre-2/15 text-[12px] font-[700] text-encre-2">
-                {personne.nom.charAt(0).toUpperCase()}
+                {String(personne.nom ?? '?').charAt(0).toUpperCase()}
               </span>
             )}
             <span className="min-w-0 flex-1 truncate text-corps-2 text-encre">
@@ -453,7 +453,7 @@ function FormCreneau({
                   ${qui === valeur ? 'border-transparent bg-sauge/20 text-encre shadow-carte' : 'border-trait bg-fond-eleve text-encre-2'}`}
               >
                 <span className="flex h-[26px] w-[26px] items-center justify-center rounded-full bg-encre-2/15 text-[13px] font-[700] text-encre-2">
-                  {g.charAt(0).toUpperCase()}
+                  {String(g ?? '?').charAt(0).toUpperCase()}
                 </span>
                 {g}
                 {qui === valeur && ' ✓'}

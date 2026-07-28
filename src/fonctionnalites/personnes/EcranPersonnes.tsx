@@ -47,7 +47,11 @@ export function EcranPersonnes() {
   const rafraichir = () => clientRequetes.invalidateQueries({ queryKey: ['personnes'] })
 
   const cadeauxDe = (prenom: string) =>
-    (offerts.data ?? []).filter((o) => o.nomCelebration.toLowerCase().includes(prenom.toLowerCase()))
+    (offerts.data ?? []).filter((o) =>
+      String(o.nomCelebration ?? '')
+        .toLowerCase()
+        .includes(String(prenom ?? '').toLowerCase()),
+    )
 
   if (membre?.role !== 'adult') return null
 

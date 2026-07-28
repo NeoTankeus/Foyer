@@ -3,6 +3,8 @@
 
 export const config = { runtime: 'edge' }
 
+import { demanderIa } from './_gemini.js'
+
 const CONSIGNE = `Tu extrais des réservations depuis des emails de confirmation (Booking, Airbnb, SNCF, Air France, loueurs de voiture, restaurants, activités).
 Réponds UNIQUEMENT avec un tableau JSON (éventuellement vide), sans texte autour. Chaque élément :
 {
@@ -31,24 +33,6 @@ async function lireCorps(req: Request): Promise<Record<string, unknown> | null> 
   }
 }
 
-/** JSON d'une réponse tierce : null plutôt qu'une exception. */
-async function jsonDe(reponse: Response): Promise<unknown> {
-  try {
-    return await reponse.json()
-  } catch {
-    return null
-  }
-}
-
-/** Le texte d'une réponse Gemini, sans jamais supposer la forme de l'objet. */
-function texteGemini(donnees: unknown): string | null {
-  const parts = (donnees as { candidates?: { content?: { parts?: unknown } }[] } | null)?.candidates?.[0]?.content
-    ?.parts
-  if (!Array.isArray(parts)) return null
-  const texte = parts.map((p) => (typeof (p as { text?: unknown })?.text === 'string' ? (p as { text: string }).text : '')).join('')
-  return texte.trim() ? texte : null
-}
-
 export default async function handler(req: Request): Promise<Response> {
   try {
     if (req.method !== 'POST') return repondre({ erreur: 'methode', message: 'POST uniquement' }, 405)
@@ -69,42 +53,22 @@ export default async function handler(req: Request): Promise<Response> {
     const texte = typeof corps?.['texte'] === 'string' ? (corps['texte'] as string) : ''
     if (!texte.trim()) return repondre({ reservations: [] })
 
-    const MODELES = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.0-flash']
-    let derniereRaison = ''
-    for (const modele of MODELES) {
-      const reponse = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${modele}:generateContent?key=${cleGemini}`,
-        {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          signal: AbortSignal.timeout(20000),
-          body: JSON.stringify({
-            system_instruction: { parts: [{ text: CONSIGNE }] },
-            contents: [{ role: 'user', parts: [{ text: texte.slice(0, 30000) }] }],
-            generationConfig: { maxOutputTokens: 2048, temperature: 0.1, responseMimeType: 'application/json' },
-          }),
-        },
-      ).catch((e: unknown) => {
-        derniereRaison = String(e instanceof Error ? e.message : e).slice(0, 80)
-        return null
-      })
-      if (!reponse) continue // réseau coupé ou trop lent : modèle suivant
-      if (reponse.status === 429 || reponse.status === 404) continue
-      if (!reponse.ok) return repondre({ erreur: 'analyse', message: `Gemini ${reponse.status}` }, 502)
-
-      const brut = texteGemini(await jsonDe(reponse))
-      if (!brut) return repondre({ erreur: 'analyse', message: 'Réponse vide de l’IA' }, 502)
-      try {
-        const reservations = JSON.parse(brut) as unknown
-        return repondre({ reservations: Array.isArray(reservations) ? reservations : [] })
-      } catch {
-        return repondre({ erreur: 'analyse', message: 'Réponse illisible' }, 502)
-      }
+    // Un SEUL point d'entrée pour toutes les IA de l'app : il lit ce que
+    // Google répond vraiment (quota de la minute ? du jour ?) au lieu de
+    // relancer douze fois pour rien.
+    const { texte: brut, echec } = await demanderIa(cleGemini, { systeme: CONSIGNE, parts: [{ text: texte.slice(0, 30000) }], json: true, temperature: 0.1, maxOutputTokens: 2048 })
+    if (!brut) {
+      return repondre(
+        { erreur: echec?.genre ?? 'analyse', message: echec?.message ?? 'L’IA n’a pas pu répondre.' },
+        echec?.status ?? 502,
+      )
     }
-    return repondre(
-      { erreur: 'quota', message: `Quota IA atteint, réessaie dans une minute.${derniereRaison ? ` (${derniereRaison})` : ''}` },
-      429,
-    )
+    try {
+    const reservations = JSON.parse(brut) as unknown
+    return repondre({ reservations: Array.isArray(reservations) ? reservations : [] })
+    } catch {
+      return repondre({ erreur: 'analyse', message: 'Réponse illisible' }, 502)
+    }
   } catch (erreur) {
     return repondre({ erreur: 'serveur', message: String(erreur instanceof Error ? erreur.message : erreur).slice(0, 160) }, 500)
   }

@@ -10,6 +10,8 @@
 
 export const config = { runtime: 'edge' }
 
+import { demanderIa } from './_gemini.js'
+
 const CATEGORIES_CONNUES = [
   'table', 'bistrot', 'sucre', 'marche', 'producteur', 'bar', 'spot', 'nature', 'culture', 'boutique',
 ]
@@ -57,16 +59,6 @@ async function lireCorps(req: Request): Promise<Record<string, unknown> | null> 
   }
 }
 
-/** Le texte d'une réponse Gemini, sans jamais supposer la forme de l'objet. */
-function texteGemini(donnees: unknown): string | null {
-  const parts = (donnees as { candidates?: { content?: { parts?: unknown } }[] } | null)?.candidates?.[0]?.content?.parts
-  if (!Array.isArray(parts)) return null
-  const texte = parts
-    .map((p) => (typeof (p as { text?: unknown })?.text === 'string' ? (p as { text: string }).text : ''))
-    .join('')
-  return texte.trim() ? texte : null
-}
-
 export default async function handler(req: Request): Promise<Response> {
   try {
     if (req.method !== 'POST') return repondre({ erreur: 'methode', message: 'POST uniquement' }, 405)
@@ -88,71 +80,49 @@ export default async function handler(req: Request): Promise<Response> {
     const envie = String(corps?.['envie'] ?? '').trim().slice(0, 200)
     if (!lieu) return repondre({ erreur: 'vide', message: 'Quel endroit ?' }, 400)
 
-    // Même endurance que les autres relais : 4 modèles, 3 vagues.
-    const MODELES = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.0-flash', 'gemini-2.0-flash-lite']
-    const PAUSES = [0, 2500, 5000]
-    let derniereRaison = ''
-    for (const pause of PAUSES) {
-      if (pause > 0) await new Promise((res) => setTimeout(res, pause))
-      for (const modele of MODELES) {
-        const reponse = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/${modele}:generateContent?key=${cleGemini}`,
-          {
-            method: 'POST',
-            headers: { 'content-type': 'application/json' },
-            signal: AbortSignal.timeout(25000),
-            body: JSON.stringify({
-              contents: [{ role: 'user', parts: [{ text: consigne(lieu, envie) }] }],
-              generationConfig: { maxOutputTokens: 4096, temperature: 0.6, responseMimeType: 'application/json' },
-            }),
-          },
-        ).catch((e: unknown) => {
-          derniereRaison = String(e instanceof Error ? e.message : e).slice(0, 80)
-          return null
-        })
-        if (!reponse) continue
-        if (reponse.status === 429 || reponse.status === 404 || reponse.status === 503) continue
-        if (!reponse.ok) return repondre({ erreur: 'analyse', message: `Gemini ${reponse.status}` }, 502)
-
-        const brut = texteGemini(await reponse.json().catch(() => null))
-        if (!brut) return repondre({ erreur: 'analyse', message: 'Réponse vide de l’IA' }, 502)
-        try {
-          const propose = JSON.parse(brut) as { resume?: unknown; adresses?: unknown }
-          const liste = Array.isArray(propose.adresses) ? propose.adresses : []
-          // On ne fait jamais confiance à la forme : chaque champ est remis
-          // d'équerre côté serveur, l'écran n'a plus qu'à afficher.
-          const adresses = liste
-            .map((a) => {
-              const o = (a ?? {}) as Record<string, unknown>
-              const nom = String(o['nom'] ?? '').trim()
-              if (!nom) return null
-              const categorie = String(o['categorie'] ?? 'table').trim().toLowerCase()
-              return {
-                nom: nom.slice(0, 90),
-                commune: String(o['commune'] ?? lieu).trim().slice(0, 70),
-                categorie: CATEGORIES_CONNUES.includes(categorie) ? categorie : 'table',
-                quoi: String(o['quoi'] ?? '').trim().slice(0, 220),
-                pourquoi: String(o['pourquoi'] ?? '').trim().slice(0, 500),
-                prix: ['€', '€€', '€€€', '€€€€'].includes(String(o['prix'] ?? '')) ? String(o['prix']) : '',
-                conseil: String(o['conseil'] ?? '').trim().slice(0, 220),
-              }
-            })
-            .filter((a): a is NonNullable<typeof a> => a !== null)
-            .slice(0, 20)
-          if (adresses.length === 0) return repondre({ erreur: 'analyse', message: 'Aucune adresse proposée' }, 502)
-          return repondre({ resume: String(propose.resume ?? '').slice(0, 400), adresses })
-        } catch {
-          return repondre({ erreur: 'analyse', message: 'Réponse illisible' }, 502)
-        }
-      }
+    // Un SEUL point d'entrée pour toutes les IA de l'app : il lit ce que
+    // Google répond vraiment (quota de la minute ? du jour ?) au lieu de
+    // relancer douze fois pour rien.
+    const { texte: brut, echec } = await demanderIa(cleGemini, {
+      parts: [{ text: consigne(lieu, envie) }],
+      json: true,
+      temperature: 0.6,
+      maxOutputTokens: 4096,
+    })
+    if (!brut) {
+      return repondre(
+        { erreur: echec?.genre ?? 'analyse', message: echec?.message ?? 'L’IA n’a pas pu répondre.' },
+        echec?.status ?? 502,
+      )
     }
-    return repondre(
-      {
-        erreur: 'quota',
-        message: `Les IA sont saturées à l’instant — réessaie dans une minute.${derniereRaison ? ` (${derniereRaison})` : ''}`,
-      },
-      429,
-    )
+    try {
+      const propose = JSON.parse(brut) as { resume?: unknown; adresses?: unknown }
+      const liste = Array.isArray(propose.adresses) ? propose.adresses : []
+      // On ne fait jamais confiance à la forme : chaque champ est remis
+      // d'équerre côté serveur, l'écran n'a plus qu'à afficher.
+      const adresses = liste
+        .map((a) => {
+          const o = (a ?? {}) as Record<string, unknown>
+          const nom = String(o['nom'] ?? '').trim()
+          if (!nom) return null
+          const categorie = String(o['categorie'] ?? 'table').trim().toLowerCase()
+          return {
+            nom: nom.slice(0, 90),
+            commune: String(o['commune'] ?? lieu).trim().slice(0, 70),
+            categorie: CATEGORIES_CONNUES.includes(categorie) ? categorie : 'table',
+            quoi: String(o['quoi'] ?? '').trim().slice(0, 220),
+            pourquoi: String(o['pourquoi'] ?? '').trim().slice(0, 500),
+            prix: ['€', '€€', '€€€', '€€€€'].includes(String(o['prix'] ?? '')) ? String(o['prix']) : '',
+            conseil: String(o['conseil'] ?? '').trim().slice(0, 220),
+          }
+        })
+        .filter((a): a is NonNullable<typeof a> => a !== null)
+        .slice(0, 20)
+      if (adresses.length === 0) return repondre({ erreur: 'analyse', message: 'Aucune adresse proposée' }, 502)
+      return repondre({ resume: String(propose.resume ?? '').slice(0, 400), adresses })
+    } catch {
+      return repondre({ erreur: 'analyse', message: 'Réponse illisible' }, 502)
+    }
   } catch (erreur) {
     return repondre(
       { erreur: 'serveur', message: String(erreur instanceof Error ? erreur.message : erreur).slice(0, 160) },

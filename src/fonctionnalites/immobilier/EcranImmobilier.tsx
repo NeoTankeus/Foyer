@@ -85,8 +85,8 @@ export function EcranImmobilier() {
   // DVF contient des ventes de caves ou de lots entiers qui fausseraient tout.
   const liste = ventes.data ?? []
   const fiables = liste.filter((v) => v.prixM2 >= 500 && v.prixM2 <= 20000)
-  const medianeAppart = mediane(fiables.filter((v) => v.type.toLowerCase().includes('appartement')).map((v) => v.prixM2))
-  const medianeMaison = mediane(fiables.filter((v) => v.type.toLowerCase().includes('maison')).map((v) => v.prixM2))
+  const medianeAppart = mediane(fiables.filter((v) => String(v.type ?? '').toLowerCase().includes('appartement')).map((v) => v.prixM2))
+  const medianeMaison = mediane(fiables.filter((v) => String(v.type ?? '').toLowerCase().includes('maison')).map((v) => v.prixM2))
   const dates = liste.map((v) => v.date).filter((d) => d !== '').sort()
   const premiere = dates[0]
   const derniere = dates[dates.length - 1]

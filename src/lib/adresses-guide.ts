@@ -430,7 +430,168 @@ const PAYS_BASQUE: RegionGuide = {
   ],
 }
 
-export const REGIONS: RegionGuide[] = [PAYS_BASQUE]
+
+// ————————————————————— Toulon, la rade et le Var —————————————————————
+
+const VAR: RegionGuide = {
+  cle: 'var',
+  libelle: 'Toulon, la rade et le Var',
+  resume:
+    'Une rade fermée par deux presqu’îles, des collines de calcaire blanc qui tombent dans l’eau, et une cuisine de ' +
+    'pois chiche, d’huile d’olive et de poisson de roche. La règle locale : le marché se fait le matin, la cade se ' +
+    'mange debout et brûlante, et le mistral décide du programme.',
+  communes: [
+    'Toulon', 'La Seyne-sur-Mer', 'Saint-Mandrier-sur-Mer', 'Six-Fours-les-Plages', 'Sanary-sur-Mer', 'Bandol',
+    'Ollioules', 'La Cadière-d’Azur', 'Le Castellet', 'Le Beausset', 'Hyères', 'Carqueiranne', 'Le Pradet',
+    'La Valette-du-Var', 'La Garde', 'Le Revest-les-Eaux', 'Porquerolles', 'Le Mourillon', 'Var', 'Cassis',
+  ],
+  adresses: [
+    {
+      nom: 'Le marché du cours Lafayette',
+      categorie: 'marche',
+      commune: 'Toulon',
+      quoi: 'Le marché quotidien de Toulon, sous les platanes, tous les matins sauf le lundi.',
+      pourquoi:
+        'Un des plus vivants du Sud : maraîchers du Var, olives, herbes, poissons, et l’accent qui va avec. C’est ' +
+        'là qu’on comprend ce que mangent vraiment les Toulonnais, à mille lieues de la carte postale.',
+      prix: '€',
+      conseil: 'Avant 11 h. Fermé le lundi. Finir par une cade brûlante au bout du cours.',
+    },
+    {
+      nom: 'La cade toulonnaise',
+      categorie: 'sucre',
+      commune: 'Toulon',
+      quoi: 'Galette de farine de pois chiche cuite au four à bois, servie brûlante et poivrée.',
+      pourquoi:
+        'C’est LA spécialité de Toulon, cousine de la socca niçoise mais plus épaisse et plus fondante. On la mange ' +
+        'debout, dans un papier, avec beaucoup de poivre — et on n’en trouve nulle part ailleurs.',
+      prix: '€',
+      conseil: 'Autour du cours Lafayette et au Mourillon. Toujours à la sortie du four : froide, ça n’a plus d’intérêt.',
+    },
+    {
+      nom: 'Les plages du Mourillon',
+      categorie: 'spot',
+      commune: 'Toulon',
+      quoi: 'Quatre anses de sable aménagées au pied du fort Saint-Louis, avec pinède et guinguettes.',
+      pourquoi:
+        'La plage de ville qui n’en a pas l’air : on s’y baigne, on y court, on y dîne face aux navires qui rentrent ' +
+        'dans la rade. Le quartier derrière, avec ses petites places, vaut autant que la plage.',
+      prix: '€',
+      conseil: 'Fin de journée, quand la lumière passe sur le cap Sicié.',
+    },
+    {
+      nom: 'Le téléphérique du Mont Faron',
+      categorie: 'nature',
+      commune: 'Toulon',
+      quoi: 'Montée à 580 m au-dessus de la rade en six minutes.',
+      pourquoi:
+        'De là-haut, toute la rade s’ouvre d’un coup : la presqu’île de Saint-Mandrier, les Sablettes, le cap Sicié. ' +
+        'C’est le meilleur point de vue de la région, et il se mérite en trois minutes de câble.',
+      prix: '€€',
+      conseil: 'Le matin par temps clair (le mistral l’arrête : vérifier avant de monter).',
+    },
+    {
+      nom: 'Le bateau-bus vers Saint-Mandrier',
+      categorie: 'nature',
+      commune: 'Toulon',
+      quoi: 'La navette maritime qui traverse la rade depuis le port de Toulon.',
+      pourquoi:
+        'Pour le prix d’un ticket de bus, on traverse la rade au milieu des porte-hélicoptères, et on débarque dans ' +
+        'un village de pêcheurs. C’est la plus belle balade de Toulon et presque personne n’y pense.',
+      prix: '€',
+      conseil: 'Aller-retour en fin d’après-midi ; déjeuner sur le port de Saint-Mandrier.',
+    },
+    {
+      nom: 'Le marché de Sanary-sur-Mer',
+      categorie: 'marche',
+      commune: 'Sanary-sur-Mer',
+      quoi: 'Marché du mercredi matin le long du port aux pointus colorés.',
+      pourquoi:
+        'Élu plus beau marché de France, et pour une fois c’est mérité : producteurs du coin, poissonniers du port, ' +
+        'et le port lui-même qui a gardé ses barques traditionnelles.',
+      prix: '€',
+      conseil: 'Mercredi matin, tôt. Se garer loin et finir à pied.',
+    },
+    {
+      nom: 'Les vins de Bandol',
+      categorie: 'producteur',
+      commune: 'Bandol',
+      quoi: 'L’appellation en terrasses au-dessus de la mer — mourvèdre en rouge, et des rosés de garde.',
+      pourquoi:
+        'Le bandol rouge est un des grands vins du Sud, taillé pour vieillir dix ans ; et le rosé n’a rien à voir ' +
+        'avec le rosé de piscine. Les domaines se visitent, à vingt minutes de la maison.',
+      prix: '€€€',
+      conseil: 'Prendre rendez-vous au domaine. Un rouge sur une daube, un rosé sur des poissons grillés.',
+    },
+    {
+      nom: 'Les gorges d’Ollioules et le vieux village',
+      categorie: 'nature',
+      commune: 'Ollioules',
+      quoi: 'Défilé calcaire et village médiéval, capitale historique des fleurs coupées.',
+      pourquoi:
+        'À dix minutes de Toulon on change de monde : ruelles voûtées, oliviers, falaises. Le contraste avec la ' +
+        'rade est saisissant et personne n’y pense pour une fin d’après-midi.',
+      prix: '€',
+    },
+    {
+      nom: 'La presqu’île de Giens et le sentier du littoral',
+      categorie: 'nature',
+      commune: 'Hyères',
+      quoi: 'Double tombolo, salins et sentier taillé dans la roche côté sud.',
+      pourquoi:
+        'Un des plus beaux morceaux de côte du Var : d’un côté les salins et les flamants roses, de l’autre des ' +
+        'criques transparentes. Le sentier se fait en famille par tronçons.',
+      prix: '€',
+      conseil: 'Éviter les jours de fort mistral côté sud. Partir tôt en été, le parking est vite plein.',
+    },
+    {
+      nom: 'Porquerolles',
+      categorie: 'spot',
+      commune: 'Porquerolles',
+      quoi: 'Île sans voiture à 15 minutes de bateau de Giens.',
+      pourquoi:
+        'Notre-Dame, la plage d’Argent, les vignes du milieu de l’île : de l’eau turquoise à une heure de la maison. ' +
+        'Le tour se fait à vélo, ce qui en fait une journée parfaite avec un enfant.',
+      prix: '€€€',
+      conseil: 'Réserver le bateau ET les vélos la veille en été. Premier départ du matin.',
+    },
+    {
+      nom: 'Le port de pêche de Saint-Mandrier',
+      categorie: 'bistrot',
+      commune: 'Saint-Mandrier-sur-Mer',
+      quoi: 'Petit port de l’autre côté de la rade, restaurants les pieds dans l’eau.',
+      pourquoi:
+        'Le poisson y arrive du bateau, et on déjeune face à Toulon vue de l’extérieur — une perspective que même ' +
+        'les Toulonnais connaissent mal.',
+      prix: '€€',
+      conseil: 'Y aller en bateau-bus plutôt qu’en voiture : la route fait le tour de la rade.',
+    },
+    {
+      nom: 'Le vieux village du Castellet',
+      categorie: 'culture',
+      commune: 'Le Castellet',
+      quoi: 'Village perché médiéval au milieu des vignes de Bandol.',
+      pourquoi:
+        'Remparts, ruelles, et une vue qui porte jusqu’à la mer. À enchaîner avec une dégustation dans un domaine ' +
+        'en redescendant — c’est la demi-journée type de la région.',
+      prix: '€',
+      conseil: 'Hors saison ou en début de matinée : l’été, le village sature.',
+    },
+    {
+      nom: 'La pêche au poisson de roche et la bouillabaisse',
+      categorie: 'table',
+      commune: 'Var',
+      quoi: 'Rascasse, galinette, saint-pierre — la vraie soupe de roche du littoral varois.',
+      pourquoi:
+        'Une bouillabaisse honnête se commande 24 h à l’avance et coûte cher : c’est le signe qu’elle est vraie. ' +
+        'Celles affichées à 25 € sur un port ne le sont jamais.',
+      prix: '€€€€',
+      conseil: 'Toujours commander la veille. Si on peut la servir sans prévenir, passer son chemin.',
+    },
+  ],
+}
+
+export const REGIONS: RegionGuide[] = [PAYS_BASQUE, VAR]
 
 /** La région du guide qui correspond à une destination écrite à la main. */
 export function regionPour(destination: string | null | undefined): RegionGuide | null {
@@ -440,7 +601,13 @@ export function regionPour(destination: string | null | undefined): RegionGuide 
     .replace(/[\u0300-\u036f]/g, '')
   if (!texte.trim()) return null
   for (const region of REGIONS) {
-    const cles = [region.libelle, ...region.communes, 'pays basque', 'cote basque', 'landes']
+    const cles = [
+      region.libelle,
+      ...region.communes,
+      ...(region.cle === 'pays-basque' ? ['pays basque', 'cote basque', 'landes', 'euskadi'] : []),
+      // Les codes postaux du Var : « 1267 avenue … 83100 Toulon » doit marcher.
+      ...(region.cle === 'var' ? ['83000', '83100', '83200', '83500', '83140', '83110', '83190', 'la rade'] : []),
+    ]
     if (
       cles.some((c) =>
         texte.includes(

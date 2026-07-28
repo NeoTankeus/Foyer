@@ -123,6 +123,7 @@ export function EcranAdresses() {
   const [filtre, setFiltre] = useState<CategorieAdresse | null>(null)
   const [enEdition, setEnEdition] = useState<AdresseCarnet | 'nouvelle' | null>(null)
   const [aSupprimer, setASupprimer] = useState<string | null>(null)
+  const [erreurCarnet, setErreurCarnet] = useState<string | null>(null)
 
   // ——— Le carnet du foyer, relu du serveur ———
   const carnet = useQuery({
@@ -148,14 +149,31 @@ export function EcranAdresses() {
     return liste
   }, [carnet.data])
 
-  /** Écrit le carnet après RELECTURE fraîche : rien de l'autre n'est écrasé. */
+  /** Écrit le carnet après RELECTURE fraîche : rien de l'autre n'est écrasé.
+   *  Un enregistrement qui échoue est DIT — jamais avalé en silence. */
   const ecrireCarnet = async (transformer: (actuel: AdresseCarnet[]) => AdresseCarnet[]) => {
     if (!foyer) return
-    const { data: frais } = await supabase.from('foyers').select('reglages').eq('id', foyer.id).single()
-    const base = (frais?.reglages ?? foyer.reglages ?? {}) as Record<string, unknown>
-    const suivant = transformer(carnetSur(base['adresses']))
-    await supabase.from('foyers').update({ reglages: { ...base, adresses: suivant } }).eq('id', foyer.id)
-    await clientRequetes.invalidateQueries({ queryKey: ['adresses-carnet'] })
+    setErreurCarnet(null)
+    try {
+      const { data: frais, error: erreurLecture } = await supabase
+        .from('foyers')
+        .select('reglages')
+        .eq('id', foyer.id)
+        .single()
+      if (erreurLecture) throw new Error(erreurLecture.message)
+      const base = (frais?.reglages ?? foyer.reglages ?? {}) as Record<string, unknown>
+      const suivant = transformer(carnetSur(base['adresses']))
+      const { error } = await supabase
+        .from('foyers')
+        .update({ reglages: { ...base, adresses: suivant } })
+        .eq('id', foyer.id)
+      if (error) throw new Error(error.message)
+      await clientRequetes.invalidateQueries({ queryKey: ['adresses-carnet'] })
+    } catch (e) {
+      setErreurCarnet(
+        `L’enregistrement n’a pas abouti — rien n’est perdu, réessaie. (${String(e instanceof Error ? e.message : e).slice(0, 80)})`,
+      )
+    }
   }
 
   const ajouterAuCarnet = async (f: Fiche) => {
@@ -240,7 +258,7 @@ export function EcranAdresses() {
     [region],
   )
   const fichesIa: Fiche[] = useMemo(() => {
-    const dejaLa = new Set(fichesGuide.map((f) => f.nom.toLowerCase()))
+    const dejaLa = new Set(fichesGuide.map((f) => String(f.nom ?? '').toLowerCase()))
     return (suggestions.data?.adresses ?? []).filter((f) => !dejaLa.has(f.nom.toLowerCase()))
   }, [suggestions.data, fichesGuide])
 
@@ -256,7 +274,14 @@ export function EcranAdresses() {
   }
 
   const maison = (foyer?.reglages ?? {})['maison'] as { adresse?: string; nom?: string } | undefined
-  const chezNous = String(maison?.adresse ?? maison?.nom ?? '').trim()
+  // « 1267 avenue Ortolan 83100 Toulon » → « Toulon » : on cherche des bonnes
+  // adresses à l'échelle de la VILLE, pas du numéro de rue.
+  const chezNous = (() => {
+    const brut = String(maison?.adresse ?? maison?.nom ?? '').trim()
+    if (!brut) return ''
+    const apresCodePostal = brut.match(/\b\d{5}\s+(.+)$/)
+    return (apresCodePostal?.[1] ?? brut).trim()
+  })()
 
   return (
     <div className="pb-8">
@@ -412,8 +437,11 @@ export function EcranAdresses() {
             )}
             {suggestions.isError && (
               <div className="flex flex-col items-center gap-2">
-                <p className="text-center text-corps-2 text-encre-3">
-                  {suggestions.error instanceof Error ? suggestions.error.message : 'Les propositions n’ont pas pu être chargées.'}
+                <p className={`text-center ${fichesGuide.length > 0 ? 'text-legende' : 'text-corps-2'} text-encre-3`}>
+                  {fichesGuide.length > 0 ? 'En plus de la sélection ci-dessus : ' : ''}
+                  {suggestions.error instanceof Error
+                    ? suggestions.error.message
+                    : 'Les propositions n’ont pas pu être chargées.'}
                 </p>
                 <Bouton variante="discret" onClick={() => void suggestions.refetch()}>🔄 Réessayer</Bouton>
               </div>
@@ -456,6 +484,7 @@ export function EcranAdresses() {
             <Bouton pleineLargeur variante="primaire" onClick={() => setEnEdition('nouvelle')}>
               ➕ Ajouter une adresse
             </Bouton>
+            {erreurCarnet && <p className="text-corps-2 text-urgent">{erreurCarnet}</p>}
 
             {carnet.isPending && <p className="py-4 text-center text-corps-2 text-encre-3">📔 Ouverture du carnet…</p>}
 

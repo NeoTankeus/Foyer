@@ -179,6 +179,50 @@ const LIGNE_BANCALE = {
   membre_id: null,
   fait: null,
   tags: null,
+  // Le plus large possible : chaque colonne que l'app lit quelque part doit
+  // pouvoir arriver VIDE sans faire tomber l'écran.
+  libelle: null,
+  type: null,
+  categorie: null,
+  quantite: null,
+  unite: null,
+  rayon: null,
+  note: null,
+  favori: null,
+  epingle: null,
+  magie: null,
+  naissance: null,
+  debut_a: null,
+  fin_a: null,
+  journee_entiere: null,
+  recurrence: null,
+  pris_le: null,
+  url: null,
+  photo_url: null,
+  fichier_url: null,
+  checklist_maison: null,
+  destination: null,
+  lieu: null,
+  adresse: null,
+  telephone: null,
+  site: null,
+  auteur: null,
+  reponse: null,
+  question: null,
+  score: null,
+  points: null,
+  couleur: null,
+  emoji: null,
+  icone: null,
+  etat: null,
+  priorite: null,
+  echeance: null,
+  rappel_le: null,
+  faite_le: null,
+  paye_le: null,
+  expire_le: null,
+  achete_le: null,
+  ouvert_le: null,
 }
 
 function corpsSupabase(url) {
@@ -304,9 +348,56 @@ async function principal() {
       const emmele = await page.getByText('Oups, un fil s’est emmêlé').count()
       const texte = ((await page.locator('body').innerText().catch(() => '')) ?? '').trim()
 
+      // Les affichages cassés se voient à l'œil nu : une valeur manquante
+      // laisse « undefined », « NaN » ou « [object Object] » dans la page.
+      const salissures = ['undefined', 'NaN', '[object Object]', 'Invalid Date', 'null null']
+        .filter((mot) => texte.includes(mot))
+
+      let boutonsTestes = 0
+      let champsRemplis = 0
+      // ——— Les formulaires : on écrit dedans et on valide ———
+      // C'est là que se cachent les vrais plantages : un champ vide, une date
+      // impossible, un envoi deux fois de suite.
+      if (emmele === 0) {
+        try {
+          const champs = await page.locator('input:visible, textarea:visible').all()
+          for (const champ of champs.slice(0, 6)) {
+            const type = (await champ.getAttribute('type').catch(() => '')) ?? ''
+            if (['file', 'checkbox', 'radio', 'submit', 'button', 'hidden'].includes(type)) continue
+            const genre = (await champ.getAttribute('inputmode').catch(() => '')) ?? ''
+            const valeur =
+              type === 'date' ? '2026-08-15'
+              : type === 'time' ? '10:30'
+              : type === 'number' || genre === 'numeric' || genre === 'decimal' ? '12'
+              : type === 'email' ? 'essai@stg.test'
+              : 'Essai STG'
+            await champ.fill(valeur, { timeout: 2000 })
+            champsRemplis += 1
+          }
+          if (champsRemplis > 0) {
+            const valider = page
+              .locator('button[type=submit]:visible, button:visible')
+              .filter({ hasText: /enregistr|ajouter|valider|créer|chercher|envoyer|\+$/i })
+            const combien = await valider.count()
+            for (let i = 0; i < Math.min(combien, 3); i += 1) {
+              await valider.nth(i).click({ timeout: 2500 }).catch(() => {})
+              await page.waitForTimeout(400)
+            }
+          }
+        } catch {
+          // formulaire non remplissable : ce n'est pas un défaut en soi
+        }
+      }
+
+      // Une feuille ouverte par la validation masquerait tout le reste :
+      // on referme avant d'aller appuyer sur les boutons de l'écran.
+      if (champsRemplis > 0) {
+        await page.keyboard.press('Escape').catch(() => {})
+        await page.waitForTimeout(300)
+      }
+
       // On appuie ensuite sur les boutons de l'écran : c'est là que se
       // cachent les plantages (feuilles d'ajout, formulaires, filtres).
-      let boutonsTestes = 0
       if (emmele === 0) {
         const boutons = await page.locator('button:visible').all()
         for (const bouton of boutons.slice(0, 12)) {
@@ -335,6 +426,7 @@ async function principal() {
       if (emmele > 0) problemes.push('écran en erreur dès l’ouverture')
       else if (emmeleApres > 0) problemes.push('écran en erreur après un appui sur un bouton')
       if (texte.length < 12) problemes.push('page quasiment vide (écran blanc)')
+      if (salissures.length > 0) problemes.push(`affichage abîmé : « ${salissures.join(' », « ')} » visible à l’écran`)
       if (plantages.length > 0) problemes.push(`plantage JS : ${plantages[0]}`)
       // Les erreurs de console purement réseau sont normales ici (tout est
       // simulé) : seules les vraies erreurs de code sont retenues.
@@ -347,7 +439,7 @@ async function principal() {
         defauts.push({ chemin, titre, problemes })
         console.log(`❌ ${titre.padEnd(24)} ${chemin}\n   → ${problemes.join('\n   → ')}`)
       } else {
-        console.log(`✅ ${titre.padEnd(24)} ${chemin}  (${boutonsTestes} bouton(s) testé(s))`)
+        console.log(`✅ ${titre.padEnd(24)} ${chemin}  (${boutonsTestes} bouton(s), ${champsRemplis} champ(s))`)
       }
     } catch (e) {
       defauts.push({ chemin, titre, problemes: [`ouverture impossible : ${String(e).slice(0, 160)}`] })

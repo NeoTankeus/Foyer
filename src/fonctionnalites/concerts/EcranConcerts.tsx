@@ -26,6 +26,8 @@ export function EcranConcerts() {
   const [ouvert, setOuvert] = useState<LigneConcert | null>(null)
   const [qrRegenere, setQrRegenere] = useState<string | null>(null)
   const [scanEnCours, setScanEnCours] = useState(false)
+  // La raison exacte quand la lecture d'un billet échoue — jamais de silence.
+  const [erreurScan, setErreurScan] = useState<string | null>(null)
   const [aCompleter, setACompleter] = useState<LigneConcert | null>(null)
   const champBillet = useRef<HTMLInputElement>(null)
   const champPhotos = useRef<HTMLInputElement>(null)
@@ -81,11 +83,19 @@ export function EcranConcerts() {
         },
         body: JSON.stringify({ image }),
       })
-      const donnees = (await reponse.json()) as {
+      // ⚠️ On lit la réponse MÊME en erreur : sinon un quota d'IA atteint se
+      // traduisait par « rien ne se passe », sans un mot d'explication.
+      const donnees = (await reponse.json().catch(() => null)) as {
         proposition?: { evenement: { titre: string; date: string; heure: string | null; lieu: string | null } | null; resume?: string }
+        message?: string
+      } | null
+      if (!reponse.ok || !donnees?.proposition) {
+        setErreurScan(donnees?.message ?? `Le billet n’a pas pu être lu (${reponse.status}).`)
+        return null
       }
-      return donnees.proposition ?? null
-    } catch {
+      return donnees.proposition
+    } catch (e) {
+      setErreurScan(`Connexion impossible — vérifie ton réseau. (${String(e instanceof Error ? e.message : e).slice(0, 60)})`)
       return null
     }
   }
@@ -93,6 +103,7 @@ export function EcranConcerts() {
   const scanner = async (fichiers: FileList | null) => {
     if (!fichiers?.length || !foyer) return
     setScanEnCours(true)
+    setErreurScan(null)
     try {
       // Les PDF (e-billets) deviennent une image par page ; chaque image
       // devient un billet à part entière.
@@ -180,6 +191,12 @@ export function EcranConcerts() {
         ref={champBillet} type="file" accept="image/*,application/pdf,.pdf" multiple hidden
         aria-hidden="true" onChange={(e) => { void scanner(e.target.files); e.target.value = '' }}
       />
+      {erreurScan && (
+        <div className="mb-3 flex flex-col items-start gap-2">
+          <p className="text-corps-2 text-urgent">{erreurScan}</p>
+          <Bouton variante="discret" onClick={() => champBillet.current?.click()}>🔄 Réessayer</Bouton>
+        </div>
+      )}
 
       {concerts.isError ? (
         <EtatVide

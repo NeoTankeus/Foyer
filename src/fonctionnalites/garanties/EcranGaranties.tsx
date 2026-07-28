@@ -39,6 +39,8 @@ export function EcranGaranties() {
   const clientRequetes = useQueryClient()
   const [enEdition, setEnEdition] = useState<LigneDocument | 'nouvelle' | null>(null)
   const [scanEnCours, setScanEnCours] = useState(false)
+  // La raison exacte quand la lecture du ticket échoue — jamais de silence.
+  const [erreurScan, setErreurScan] = useState<string | null>(null)
   const [brouillon, setBrouillon] = useState({ titre: '', achat: '', mois: 24 })
   const fichierRef = useRef<HTMLInputElement>(null)
 
@@ -98,6 +100,7 @@ export function EcranGaranties() {
 
   const scannerTicket = async (fichier: File) => {
     setScanEnCours(true)
+    setErreurScan(null)
     try {
       const image = await compresserImage(fichier)
       const { data: session } = await supabase.auth.getSession()
@@ -106,13 +109,24 @@ export function EcranGaranties() {
         headers: { 'content-type': 'application/json', authorization: `Bearer ${session.session?.access_token ?? ''}` },
         body: JSON.stringify({ image }),
       })
-      const donnees = (await reponse.json()) as { ticket?: { commercant?: string | null; date?: string | null } }
+      // ⚠️ On lit la réponse MÊME en erreur : sans ça, un quota d'IA atteint
+      // ouvrait un brouillon vide comme si la lecture avait réussi.
+      const donnees = (await reponse.json().catch(() => null)) as {
+        ticket?: { commercant?: string | null; date?: string | null }
+        message?: string
+      } | null
+      if (!reponse.ok || !donnees?.ticket) {
+        setErreurScan(donnees?.message ?? `Le ticket n’a pas pu être lu (${reponse.status}).`)
+        return
+      }
       setBrouillon({
         titre: donnees.ticket?.commercant ? `Achat ${String(donnees.ticket.commercant)}` : '',
         achat: typeof donnees.ticket?.date === 'string' ? donnees.ticket.date : new Date().toISOString().slice(0, 10),
         mois: 24,
       })
       setEnEdition('nouvelle')
+    } catch (e) {
+      setErreurScan(`Connexion impossible — vérifie ton réseau. (${String(e instanceof Error ? e.message : e).slice(0, 60)})`)
     } finally {
       setScanEnCours(false)
     }
@@ -143,6 +157,12 @@ export function EcranGaranties() {
           </BoutonEnvoi>
           <Bouton pleineLargeur variante="discret" onClick={ouvrirCreation}>✍️ À la main</Bouton>
         </div>
+        {erreurScan && (
+          <div className="flex flex-col items-start gap-2">
+            <p className="text-corps-2 text-urgent">{erreurScan}</p>
+            <Bouton variante="discret" onClick={() => fichierRef.current?.click()}>🔄 Réessayer</Bouton>
+          </div>
+        )}
         <input
           ref={fichierRef} type="file" accept="image/*" capture="environment" hidden aria-hidden="true"
           onChange={(e) => {

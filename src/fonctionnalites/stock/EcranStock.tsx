@@ -66,7 +66,7 @@ export function EcranStock() {
 
   const ajouter = () => {
     const propre = libelle.trim()
-    if (!propre || produits.some((p) => p.libelle.toLowerCase() === propre.toLowerCase())) return
+    if (!propre || produits.some((p) => String(p.libelle ?? '').toLowerCase() === propre.toLowerCase())) return
     void enregistrer([...produits, { libelle: propre, jours, dernier: jourIso() }])
     setLibelle('')
   }
@@ -187,7 +187,7 @@ export function EcranStock() {
               if (
                 !propre ||
                 produits.some(
-                  (p) => p.libelle !== enEdition.libelle && p.libelle.toLowerCase() === propre.toLowerCase(),
+                  (p) => p.libelle !== enEdition.libelle && String(p.libelle ?? '').toLowerCase() === propre.toLowerCase(),
                 )
               )
                 return

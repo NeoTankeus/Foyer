@@ -22,7 +22,7 @@ export function PastilleMembre({ membre, taille = 28, estompee = false, onClick 
         fontSize: taille * 0.45,
       }}
     >
-      {membre.prenom.charAt(0).toUpperCase()}
+      {String(membre.prenom ?? '?').charAt(0).toUpperCase()}
     </span>
   )
   if (!onClick) return pastille

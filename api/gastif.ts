@@ -209,7 +209,9 @@ ${contexte}`
     return repondre(
       {
         erreur: 'quota',
-        message: `Ta clé voit ${candidats.length} modèle(s) [${candidats.slice(0, 3).join(', ')}…] mais aucun n'accepte de répondre (quota à zéro sur ce projet Google). Dernier refus : « ${derniereRaison.slice(0, 180)} ». La solution qui marche : aistudio.google.com → Get API key → « Create API key in NEW project » → remplace GEMINI_API_KEY dans Vercel → Redeploy.`,
+        message: /per day|daily|PerDay/i.test(derniereRaison)
+          ? 'Le quota gratuit de l’IA est atteint pour aujourd’hui. Tout le reste de l’app fonctionne, et STG repart d’elle-même demain matin.'
+          : `L’IA est saturée à l’instant — réessaie dans une minute. (${derniereRaison.slice(0, 120)})`,
       },
       429,
     )

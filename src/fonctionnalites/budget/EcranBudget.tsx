@@ -47,6 +47,8 @@ export function EcranBudget() {
   const [mois, setMois] = useState(moisIso(new Date()))
   const [enEdition, setEnEdition] = useState<LigneDepense | 'nouvelle' | null>(null)
   const [scanEnCours, setScanEnCours] = useState(false)
+  // La raison exacte quand la lecture du ticket échoue — jamais de silence.
+  const [erreurScan, setErreurScan] = useState<string | null>(null)
   const [brouillon, setBrouillon] = useState({ libelle: '', montant: '', categorie: 'courses', date: '' })
   const fichierRef = useRef<HTMLInputElement>(null)
 
@@ -122,6 +124,7 @@ export function EcranBudget() {
 
   const scannerTicket = async (fichier: File) => {
     setScanEnCours(true)
+    setErreurScan(null)
     try {
       const image = await compresserImage(fichier)
       const { data: session } = await supabase.auth.getSession()
@@ -133,8 +136,15 @@ export function EcranBudget() {
         },
         body: JSON.stringify({ image }),
       })
-      const donnees = (await reponse.json()) as {
+      // ⚠️ On lit la réponse MÊME en erreur : sans ça, un quota d'IA atteint
+      // ouvrait un brouillon vide comme si le ticket avait été lu.
+      const donnees = (await reponse.json().catch(() => null)) as {
         ticket?: { commercant?: string | null; montant?: number | null; date?: string | null; categorie?: string | null }
+        message?: string
+      } | null
+      if (!reponse.ok || !donnees?.ticket) {
+        setErreurScan(donnees?.message ?? `Le ticket n’a pas pu être lu (${reponse.status}).`)
+        return
       }
       // La lecture du ticket est faite par STG : chaque champ peut manquer
       // ou revenir dans un autre type que celui annoncé.
@@ -147,6 +157,8 @@ export function EcranBudget() {
         date: typeof t?.date === 'string' ? t.date : '',
       })
       setEnEdition('nouvelle')
+    } catch (e) {
+      setErreurScan(`Connexion impossible — vérifie ton réseau. (${String(e instanceof Error ? e.message : e).slice(0, 60)})`)
     } finally {
       setScanEnCours(false)
     }
@@ -179,6 +191,12 @@ export function EcranBudget() {
           <Bouton pleineLargeur variante="discret" onClick={ouvrirSaisie}>
             ✍️ À la main
           </Bouton>
+          {erreurScan && (
+            <div className="flex w-full flex-col items-start gap-2">
+              <p className="text-corps-2 text-urgent">{erreurScan}</p>
+              <Bouton variante="discret" onClick={() => fichierRef.current?.click()}>🔄 Réessayer</Bouton>
+            </div>
+          )}
           <input
             ref={fichierRef}
             type="file"
