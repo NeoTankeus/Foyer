@@ -85,6 +85,8 @@ const ECRANS = [
   ['/nous/assiette', 'Mon Assiette'],
   ['/nous/plages', 'Plages'],
   ['/nous/immobilier', 'Immobilier'],
+  ['/nous/adresses', 'Bonnes Adresses'],
+  ['/nous/adresses?lieu=Pays%20basque', 'Bonnes Adresses d’un coin'],
   ['/meteo', 'Météo en détail'],
   ['/meteo?ville=Biarritz&jour=2026-07-29', 'Météo d’une ville'],
 ]

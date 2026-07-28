@@ -570,6 +570,20 @@ export function EcranVoyage() {
         </>
       )}
 
+      {/* 🍽 Les bonnes adresses de la destination — tables, producteurs,
+          rituels locaux, avec les avis à un appui. */}
+      {voyage.destination && (
+        <div className="mt-3">
+          <Bouton
+            pleineLargeur
+            variante="discret"
+            onClick={() => naviguer(`/nous/adresses?lieu=${encodeURIComponent(voyage.destination ?? '')}`)}
+          >
+            🍽 Les bonnes adresses de {voyage.destination}
+          </Bouton>
+        </div>
+      )}
+
       {/* 🛣 L'état de la route vers la destination — TOUJOURS visible tant que
           le voyage n'est pas terminé : la carte dit franchement ce qui se
           passe (relevé, trafic, ou ce qui manque pour le calculer). */}

@@ -72,6 +72,7 @@ const EcranAssiette = paresseux(() => import('@/fonctionnalites/assiette/EcranAs
 const EcranPlages = paresseux(() => import('@/fonctionnalites/plages/EcranPlages'), 'EcranPlages')
 const EcranImmobilier = paresseux(() => import('@/fonctionnalites/immobilier/EcranImmobilier'), 'EcranImmobilier')
 const EcranMeteo = paresseux(() => import('@/fonctionnalites/meteo/EcranMeteo'), 'EcranMeteo')
+const EcranAdresses = paresseux(() => import('@/fonctionnalites/adresses/EcranAdresses'), 'EcranAdresses')
 
 function IconeOnglet({ nom }: { nom: string }) {
   const traits = { fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round' as const }
@@ -355,6 +356,7 @@ function Interieur() {
             <Route path="/nous/plages" element={<EcranPlages />} />
             <Route path="/nous/immobilier" element={<EcranImmobilier />} />
             <Route path="/meteo" element={<EcranMeteo />} />
+            <Route path="/nous/adresses" element={<EcranAdresses />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
           </EcranProtege>

@@ -1,6 +1,12 @@
 // Les nouveautés de la version en cours — affichées UNE fois dans le pop-up
 // « Quoi de neuf », signé ILY. Mises à jour à chaque déploiement.
 export const NOTES_VERSION: string[] = [
+  '🍽 NOUVEAU — LES BONNES ADRESSES. Pas les attractions touristiques : les maisons dont les gens du coin parlent. Tables, bistrots à tapas, chocolatiers, producteurs, marchés, spots — avec, pour chacune, CE QUE C’EST, POURQUOI il ne faut pas la louper, le budget et un conseil concret (quoi commander, quel jour, réserver ou non).',
+  '🌊 La côte basque et le sud des Landes sont écrits à la main : Bayonne, Biarritz, Saint-Jean-de-Luz, Guéthary, Ahetze, Espelette, Sare, Irouléguy, Hossegor, Capbreton — des halles aux tables étoilées, plus les rituels (une partie de pelote au fronton un soir d’été).',
+  '⭐ Chaque fiche ouvre en un appui les AVIS CLIENTS et les horaires (Google Maps), le site, Instagram et l’itinéraire. Rien n’est inventé : l’app ne stocke aucun horaire, elle vous emmène là où l’info est à jour.',
+  '✨ Et pour N’IMPORTE OÙ : tape un coin (ou touche « Chez nous »), ajoute une envie (« poisson », « avec un enfant », « petit budget ») et STG sort ses recommandations.',
+  '📔 NOTRE CARNET : vos adresses à vous — ajout, note sur 5, coup de cœur, modification et suppression. Un bouton sur chaque fiche du guide pour l’y ranger. Partagé entre Stéphane et Tiphaine.',
+  '✈️ Depuis un voyage : « 🍽 Les bonnes adresses de … » ouvre directement la sélection de la destination.',
   '🌤 NOUVEAU — LA MÉTÉO EN DÉTAIL, façon Windfinder. Touche un jour et tu as les 24 heures : température, ressenti, pluie en mm ET son risque en %, vent en nœuds coloré selon la force, rafales, direction avec la flèche et le point cardinal, humidité, nuages, pression. Plus le lever/coucher du soleil et l’indice UV. Au bord de mer : vagues, houle et température de l’eau.',
   '🔍 Et pour N’IMPORTE QUELLE ville : « Voir une autre ville », tu tapes le nom, tu compares. 7 jours de prévisions, sans rien perdre de la ville d’origine.',
   '✈️ Dans un voyage, les petites cartes météo sont désormais CLIQUABLES : un appui sur un jour ouvre le détail complet de la destination.',
