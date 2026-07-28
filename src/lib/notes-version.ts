@@ -1,6 +1,10 @@
 // Les nouveautés de la version en cours — affichées UNE fois dans le pop-up
 // « Quoi de neuf », signé ILY. Mises à jour à chaque déploiement.
 export const NOTES_VERSION: string[] = [
+  '🌤 NOUVEAU — LA MÉTÉO EN DÉTAIL, façon Windfinder. Touche un jour et tu as les 24 heures : température, ressenti, pluie en mm ET son risque en %, vent en nœuds coloré selon la force, rafales, direction avec la flèche et le point cardinal, humidité, nuages, pression. Plus le lever/coucher du soleil et l’indice UV. Au bord de mer : vagues, houle et température de l’eau.',
+  '🔍 Et pour N’IMPORTE QUELLE ville : « Voir une autre ville », tu tapes le nom, tu compares. 7 jours de prévisions, sans rien perdre de la ville d’origine.',
+  '✈️ Dans un voyage, les petites cartes météo sont désormais CLIQUABLES : un appui sur un jour ouvre le détail complet de la destination.',
+  '🏠 Sur le tableau de bord, le bloc Météo a un bouton « Tout le détail, heure par heure » qui ouvre la même fiche.',
   '🚦 Les bouchons apparaissent ENFIN sur la carte : les portions ralenties viennent maintenant du calcul de la route lui-même, elles se superposent donc exactement au tracé bleu (orange = ça freine, rouge = ça bouchonne, noir = route coupée). Touche une portion : le retard en minutes et la vitesse réelle.',
   '🔎 Les incidents nommés (accident, travaux) étaient filtrés bien trop sévèrement : l’app comparait leur position à seulement 24 repères espacés de 30 km, et les jetait presque tous. Elle compare désormais au tracé détaillé.',
   '\ud83d\udea6 BOUCHONS EN DIRECT SUR LA CARTE, comme sur Waze : accidents, ralentissements, travaux et routes coupées sont peints sur le trajet (jaune → orange → rouge → noir), avec le retard de chacun. Un interrupteur « Bouchons » pour les masquer, et les trois pires listés en clair.',

@@ -85,6 +85,8 @@ const ECRANS = [
   ['/nous/assiette', 'Mon Assiette'],
   ['/nous/plages', 'Plages'],
   ['/nous/immobilier', 'Immobilier'],
+  ['/meteo', 'Météo en détail'],
+  ['/meteo?ville=Biarritz&jour=2026-07-29', 'Météo d’une ville'],
 ]
 
 // ————————————————————————— Le petit serveur local —————————————————————————

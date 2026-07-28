@@ -1374,6 +1374,18 @@ export function EcranAujourdhui() {
             )}
             </div>
           ))}
+          {/* La fiche COMPLÈTE : toutes les colonnes, 7 jours, et la
+              possibilité de regarder n'importe quelle autre ville. */}
+          <Bouton
+            pleineLargeur
+            variante="primaire"
+            onClick={() => {
+              setMeteoDetail(false)
+              naviguer(jourDeplie ? `/meteo?jour=${encodeURIComponent(jourDeplie)}` : '/meteo')
+            }}
+          >
+            🔎 Tout le détail, heure par heure
+          </Bouton>
           <Bouton
             pleineLargeur
             variante="discret"

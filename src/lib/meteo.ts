@@ -309,3 +309,166 @@ export function iconeMeteo(code: number): string {
   if (code >= 95) return '⛈'
   return '🌥'
 }
+
+// ——————————————————— La fiche météo DÉTAILLÉE, pour n'importe où ———————————————————
+//
+// Les fonctions ci-dessus travaillent sur LA ville mémorisée de l'appareil.
+// Celles qui suivent acceptent un lieu quelconque (destination d'un voyage,
+// ville cherchée à la volée) et rendent tout ce qu'on peut savoir : le jour
+// par jour ET l'heure par heure, façon Windfinder.
+
+export interface Lieu {
+  nom: string
+  latitude: number
+  longitude: number
+}
+
+/** Une heure, avec TOUT ce qu'Open-Meteo sait en donner. */
+export interface HeureDetaillee extends HeureMeteo {
+  ressenti: number
+  probaPluie: number
+  humidite: number
+  pression: number
+  nuages: number
+  jour: boolean
+}
+
+export interface MeteoComplete {
+  jours: JourMeteo[]
+  heures: HeureDetaillee[]
+  mer: MerHeure[]
+}
+
+/** Jusqu'à 6 communes correspondant à une saisie — sans rien mémoriser. */
+export async function chercherVilles(nom: string): Promise<Lieu[]> {
+  const requete = nom.trim()
+  if (requete.length < 2) return []
+  try {
+    const r = await fetch(
+      `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(requete)}&count=6&language=fr&format=json`,
+    )
+    if (!r.ok) return []
+    const d = (await r.json()) as {
+      results?: { name?: string; latitude?: number; longitude?: number; admin1?: string; country?: string; country_code?: string }[]
+    }
+    return (Array.isArray(d.results) ? d.results : [])
+      .filter((v) => Number.isFinite(v.latitude) && Number.isFinite(v.longitude))
+      .map((v) => ({
+        // Le nom porte la région (et le pays s'il est étranger) : deux
+        // communes homonymes ne se ressemblent plus.
+        nom: [v.name ?? requete, v.admin1, v.country_code === 'FR' ? null : v.country].filter(Boolean).join(', '),
+        latitude: v.latitude as number,
+        longitude: v.longitude as number,
+      }))
+  } catch {
+    return []
+  }
+}
+
+const CLE_CACHE_FICHE = 'stg-meteo-fiche'
+
+/** Le cache est rangé par lieu ARRONDI : deux points voisins partagent tout. */
+const cleLieu = (lieu: Lieu, jours: number) =>
+  `${lieu.latitude.toFixed(2)},${lieu.longitude.toFixed(2)},${jours}`
+
+/**
+ * TOUT ce qu'on peut prévoir pour un lieu : jour par jour et heure par heure
+ * (température, ressenti, pluie, vent, rafales, direction, humidité, nuages,
+ * pression) plus l'état de la mer quand on est près des côtes. Cache 1 h.
+ */
+export async function meteoComplete(lieu: Lieu, jours = 7): Promise<MeteoComplete> {
+  const vide: MeteoComplete = { jours: [], heures: [], mer: [] }
+  if (!Number.isFinite(lieu.latitude) || !Number.isFinite(lieu.longitude)) return vide
+  const cle = cleLieu(lieu, jours)
+  try {
+    const cache = JSON.parse(localStorage.getItem(CLE_CACHE_FICHE) ?? 'null') as
+      | Record<string, { a?: number; v?: MeteoComplete }>
+      | null
+    const connu = cache?.[cle]
+    if (connu?.v && Date.now() - Number(connu.a ?? 0) < 3600 * 1000) return connu.v
+  } catch {
+    // cache illisible : on recharge
+  }
+
+  const forecast = fetch(
+    `https://api.open-meteo.com/v1/forecast?latitude=${lieu.latitude}&longitude=${lieu.longitude}` +
+      `&daily=temperature_2m_min,temperature_2m_max,precipitation_sum,precipitation_probability_max,weather_code,uv_index_max,sunrise,sunset` +
+      `&hourly=temperature_2m,apparent_temperature,precipitation,precipitation_probability,weather_code,` +
+      `wind_speed_10m,wind_gusts_10m,wind_direction_10m,relative_humidity_2m,pressure_msl,cloud_cover,is_day` +
+      `&timezone=auto&forecast_days=${jours}`,
+  ).then((r) => (r.ok ? r.json() : null)).catch(() => null)
+
+  // La mer n'existe pas partout : son échec ne doit rien empêcher.
+  const marine = fetch(
+    `https://marine-api.open-meteo.com/v1/marine?latitude=${lieu.latitude}&longitude=${lieu.longitude}` +
+      `&hourly=wave_height,wave_period,sea_surface_temperature&timezone=auto&forecast_days=${jours}`,
+  ).then((r) => (r.ok ? r.json() : null)).catch(() => null)
+
+  const [brutForecast, brutMarine] = await Promise.all([forecast, marine])
+
+  const nb = (v: unknown, defaut = 0): number => {
+    const n = Number(v)
+    return Number.isFinite(n) ? n : defaut
+  }
+  const serie = (source: unknown, nom: string): unknown[] => {
+    const bloc = (source as Record<string, unknown> | null)?.[nom]
+    return Array.isArray(bloc) ? bloc : []
+  }
+
+  const q = (brutForecast as { daily?: unknown; hourly?: unknown } | null) ?? {}
+  const dates = serie(q.daily, 'time') as string[]
+  const joursLus: JourMeteo[] = dates.map((date, i) => ({
+    date: String(date ?? ''),
+    tMin: Math.round(nb(serie(q.daily, 'temperature_2m_min')[i])),
+    tMax: Math.round(nb(serie(q.daily, 'temperature_2m_max')[i])),
+    pluieMm: nb(serie(q.daily, 'precipitation_sum')[i]),
+    probaPluie: Math.round(nb(serie(q.daily, 'precipitation_probability_max')[i])),
+    code: Math.round(nb(serie(q.daily, 'weather_code')[i])),
+    uvMax: Math.round(nb(serie(q.daily, 'uv_index_max')[i])),
+    lever: String(serie(q.daily, 'sunrise')[i] ?? '').slice(11, 16),
+    coucher: String(serie(q.daily, 'sunset')[i] ?? '').slice(11, 16),
+  }))
+
+  const quands = serie(q.hourly, 'time') as string[]
+  const heuresLues: HeureDetaillee[] = quands.map((quand, i) => ({
+    quand: String(quand ?? ''),
+    t: Math.round(nb(serie(q.hourly, 'temperature_2m')[i])),
+    ressenti: Math.round(nb(serie(q.hourly, 'apparent_temperature')[i])),
+    pluie: nb(serie(q.hourly, 'precipitation')[i]),
+    probaPluie: Math.round(nb(serie(q.hourly, 'precipitation_probability')[i])),
+    code: Math.round(nb(serie(q.hourly, 'weather_code')[i])),
+    vent: Math.round(nb(serie(q.hourly, 'wind_speed_10m')[i])),
+    rafales: Math.round(nb(serie(q.hourly, 'wind_gusts_10m')[i])),
+    direction: Math.round(nb(serie(q.hourly, 'wind_direction_10m')[i])),
+    humidite: Math.round(nb(serie(q.hourly, 'relative_humidity_2m')[i])),
+    pression: Math.round(nb(serie(q.hourly, 'pressure_msl')[i])),
+    nuages: Math.round(nb(serie(q.hourly, 'cloud_cover')[i])),
+    jour: nb(serie(q.hourly, 'is_day')[i], 1) === 1,
+  }))
+
+  const m = (brutMarine as { hourly?: unknown } | null) ?? {}
+  const quandsMer = serie(m.hourly, 'time') as string[]
+  const merLue: MerHeure[] = quandsMer.map((quand, i) => {
+    const h = serie(m.hourly, 'wave_height')[i]
+    const p = serie(m.hourly, 'wave_period')[i]
+    const e = serie(m.hourly, 'sea_surface_temperature')[i]
+    return {
+      quand: String(quand ?? ''),
+      vagues: h === null || h === undefined ? null : nb(h),
+      periode: p === null || p === undefined ? null : nb(p),
+      eau: e === null || e === undefined ? null : nb(e),
+    }
+  })
+
+  const resultat: MeteoComplete = { jours: joursLus, heures: heuresLues, mer: merLue }
+  if (joursLus.length === 0 && heuresLues.length === 0) return vide
+  try {
+    const cache = JSON.parse(localStorage.getItem(CLE_CACHE_FICHE) ?? '{}') as Record<string, unknown>
+    // On ne garde que les 6 derniers lieux consultés : le stockage est petit.
+    const entrees = Object.entries(cache).slice(-5)
+    localStorage.setItem(CLE_CACHE_FICHE, JSON.stringify({ ...Object.fromEntries(entrees), [cle]: { a: Date.now(), v: resultat } }))
+  } catch {
+    // stockage plein : tant pis, on rechargera
+  }
+  return resultat
+}

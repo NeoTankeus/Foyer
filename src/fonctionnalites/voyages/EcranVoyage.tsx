@@ -533,19 +533,41 @@ export function EcranVoyage() {
       )}
 
       {meteo && meteo.length > 0 && (
-        <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
-          {meteo.map((j) => (
-            <div key={j.date} className="min-w-[72px] rounded-md bg-fond-eleve p-2 text-center shadow-carte">
-              <p className="text-legende text-encre-3">
-                {new Date(j.date).toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric' })}
-              </p>
-              <p className="chiffres text-corps-2 text-encre">
-                {Math.round(j.tMin)}–{Math.round(j.tMax)}°
-              </p>
-              {j.pluieMm > 1 && <p className="text-legende text-ardoise">pluie</p>}
-            </div>
-          ))}
-        </div>
+        <>
+          {/* Chaque jour est CLIQUABLE : il ouvre la fiche météo complète de
+              la destination, heure par heure, façon Windfinder. */}
+          <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
+            {meteo.map((j) => (
+              <button
+                key={j.date}
+                onClick={() => {
+                  navigator.vibrate?.(4)
+                  naviguer(
+                    `/meteo?ville=${encodeURIComponent(voyage.destination ?? '')}&jour=${encodeURIComponent(j.date)}`,
+                  )
+                }}
+                className="min-w-[72px] rounded-md bg-fond-eleve p-2 text-center shadow-carte active:bg-fond-sourd"
+              >
+                <span className="block text-legende text-encre-3">
+                  {new Date(j.date).toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric' })}
+                </span>
+                <span className="chiffres block text-corps-2 text-encre">
+                  {Math.round(j.tMin)}–{Math.round(j.tMax)}°
+                </span>
+                {j.pluieMm > 1 && <span className="block text-legende text-ardoise">pluie</span>}
+              </button>
+            ))}
+          </div>
+          <button
+            onClick={() => {
+              navigator.vibrate?.(4)
+              naviguer(`/meteo?ville=${encodeURIComponent(voyage.destination ?? '')}`)
+            }}
+            className="text-legende text-ardoise underline"
+          >
+            🌤 Voir la météo en détail (et d’autres villes)
+          </button>
+        </>
       )}
 
       {/* 🛣 L'état de la route vers la destination — TOUJOURS visible tant que

@@ -162,6 +162,7 @@ export function EcranNous() {
     { chemin: '/nous/colis', libelle: 'Colis', detail: 'suivis, invisibles pour Gabriel', icone: '📦', couleur: 'var(--ambre)', secteur: 'maison', adulte: true },
     { chemin: '/nous/administration', libelle: 'Administration', detail: 'membres, rôles, journal d’audit', icone: '🛠️', couleur: 'var(--encre-2)', secteur: 'maison', adulte: true },
     { chemin: '/nous/plages', libelle: 'Les Plages', detail: 'qualité des eaux de baignade', icone: '🏖', couleur: 'var(--ardoise)', secteur: 'sorties' },
+    { chemin: '/meteo', libelle: 'La météo en détail', detail: 'jour par jour, heure par heure, n’importe quelle ville', icone: '🌤', couleur: 'var(--ardoise)', secteur: 'transports' },
     { chemin: '/nous/immobilier', libelle: 'Autour de chez nous', detail: 'les vraies ventes immobilières du quartier', icone: '🏠', couleur: 'var(--or)', secteur: 'argent', adulte: true },
   ]
 
