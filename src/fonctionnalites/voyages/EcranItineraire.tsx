@@ -25,6 +25,15 @@ interface Point {
   lon: number
 }
 
+/** Une portion ralentie, découpée sur le tracé de NOTRE route. */
+interface BouchonRoute {
+  categorie: string
+  gravite: number
+  retardMin: number
+  vitesseKmh: number
+  ligne: [number, number][]
+}
+
 interface Itineraire {
   minutes: number
   minutesSansTrafic: number
@@ -32,6 +41,7 @@ interface Itineraire {
   km: number
   kmPeage: number
   geometrie: [number, number][]
+  bouchons: BouchonRoute[]
 }
 
 /** Un incident de circulation en direct, tel que le relais nous le donne. */
@@ -164,6 +174,29 @@ const itineraireSur = (brut: unknown): Itineraire | null => {
     km: nombreOuZero(i['km']),
     kmPeage: nombreOuZero(i['kmPeage']),
     geometrie,
+    bouchons: (Array.isArray(i['bouchons']) ? (i['bouchons'] as unknown[]) : [])
+      .map(bouchonSur)
+      .filter((b): b is BouchonRoute => b !== null),
+  }
+}
+
+/** Un tronçon ralenti n'est retenu que s'il est réellement traçable. */
+const bouchonSur = (brut: unknown): BouchonRoute | null => {
+  if (!brut || typeof brut !== 'object') return null
+  const b = brut as Record<string, unknown>
+  const ligne: [number, number][] = []
+  for (const paire of Array.isArray(b['ligne']) ? (b['ligne'] as unknown[]) : []) {
+    if (!Array.isArray(paire)) continue
+    const p = pointSur(paire[0], paire[1])
+    if (p) ligne.push([p.lat, p.lon])
+  }
+  if (ligne.length < 2) return null
+  return {
+    categorie: String(b['categorie'] ?? 'JAM'),
+    gravite: nombreOuZero(b['gravite']),
+    retardMin: nombreOuZero(b['retardMin']),
+    vitesseKmh: nombreOuZero(b['vitesseKmh']),
+    ligne,
   }
 }
 
@@ -327,7 +360,7 @@ export function EcranItineraire() {
     staleTime: 3 * 60 * 1000, // un bouchon bouge vite : 3 minutes
     refetchInterval: 5 * 60 * 1000,
     queryFn: async (): Promise<IncidentTrafic[]> => {
-      const donnees = await appelerRelais({ mode: 'incidents', trace: echantillonner(trace, 24) })
+      const donnees = await appelerRelais({ mode: 'incidents', trace: echantillonner(trace, 200) })
       if (donnees['erreur']) throw new Error(String(donnees['erreur']))
       return (Array.isArray(donnees['incidents']) ? (donnees['incidents'] as unknown[]) : [])
         .map(incidentSur)
@@ -335,6 +368,10 @@ export function EcranItineraire() {
     },
   })
   const incidents = useMemo(() => trafic.data ?? [], [trafic.data])
+  // Les portions ralenties viennent du CALCUL DE ROUTE lui-même : elles sont
+  // toujours là, même quand le relevé des incidents ne donne rien, et elles
+  // se superposent exactement au tracé bleu.
+  const troncons = useMemo(() => choisi?.bouchons ?? [], [choisi])
   const incidentsVisibles = useMemo(() => (trafficAffiche ? incidents : []), [trafficAffiche, incidents])
   const retardTotal = useMemo(() => incidents.reduce((t, i) => t + i.retardMin, 0), [incidents])
 
@@ -435,6 +472,31 @@ export function EcranItineraire() {
     const calque = refTrafic.current
     if (!cartePrete || !L || !calque) return
     calque.clearLayers()
+
+    // a) Les portions ralenties de NOTRE route, peintes par-dessus le tracé.
+    for (const t of (trafficAffiche ? troncons : [])) {
+      try {
+        const couleur =
+          COULEUR_GRAVITE[t.gravite] ?? (t.categorie === 'ROAD_CLOSURE' ? '#111827' : COULEUR_GRAVITE[2]) ?? '#f97316'
+        const nom =
+          t.categorie === 'ROAD_CLOSURE'
+            ? '⛔ Route coupée'
+            : t.categorie === 'ROAD_WORK'
+              ? '🚧 Travaux'
+              : '🚗 Ralentissement'
+        L.polyline(t.ligne, { color: couleur, weight: 11, opacity: 0.9, lineCap: 'round' })
+          .addTo(calque)
+          .bindPopup(
+            `<strong>${nom}</strong>` +
+              (t.retardMin > 0 ? `<br>⏱ +${t.retardMin} min` : '') +
+              (t.vitesseKmh > 0 ? `<br>🐌 ${t.vitesseKmh} km/h sur cette portion` : ''),
+          )
+      } catch {
+        // Un tronçon illisible est ignoré : la carte continue.
+      }
+    }
+
+    // b) Les incidents nommés (accident, travaux…) et leur pictogramme.
     for (const incident of incidentsVisibles) {
       try {
         const couleur = COULEUR_GRAVITE[incident.gravite] ?? COULEUR_GRAVITE[0] ?? '#9aa0a6'
@@ -473,7 +535,7 @@ export function EcranItineraire() {
         // Un incident illisible est simplement ignoré : la carte continue.
       }
     }
-  }, [cartePrete, incidentsVisibles])
+  }, [cartePrete, incidentsVisibles, troncons, trafficAffiche])
 
   // Les arrêts : recalqués seuls quand on touche aux filtres — la vue de la
   // carte ne bouge pas, on ne perd pas son zoom.
@@ -617,16 +679,16 @@ export function EcranItineraire() {
                 className={`min-h-sur-tactile shrink-0 rounded-full px-3 text-note font-[590]
                   ${trafficAffiche ? 'bg-encre text-fond' : 'bg-fond-sourd text-encre-3'}`}
               >
-                🚦 Bouchons{incidents.length > 0 ? ` (${incidents.length})` : ''}
+                🚦 Bouchons{troncons.length + incidents.length > 0 ? ` (${troncons.length + incidents.length})` : ''}
               </button>
               <p className="min-w-0 flex-1 text-legende text-encre-3">
-                {trafic.isPending
-                  ? 'Relevé du trafic en direct…'
-                  : trafic.isError
-                    ? 'Trafic indisponible — la route reste juste.'
-                    : incidents.length === 0
-                      ? 'Aucune perturbation signalée sur ce trajet.'
-                      : `${incidents.length} perturbation${incidents.length > 1 ? 's' : ''}${retardTotal > 0 ? ` · +${retardTotal} min au total` : ''}`}
+                {troncons.length > 0
+                  ? `${troncons.length} portion${troncons.length > 1 ? 's' : ''} ralentie${troncons.length > 1 ? 's' : ''} sur la route${incidents.length > 0 ? ` · ${incidents.length} incident${incidents.length > 1 ? 's' : ''}` : ''}${retardTotal > 0 ? ` · +${retardTotal} min` : ''}`
+                  : trafic.isPending
+                    ? 'Relevé du trafic en direct…'
+                    : incidents.length > 0
+                      ? `${incidents.length} perturbation${incidents.length > 1 ? 's' : ''}${retardTotal > 0 ? ` · +${retardTotal} min au total` : ''}`
+                      : 'Aucun ralentissement en ce moment sur ce trajet — ça roule.'}
               </p>
             </div>
 

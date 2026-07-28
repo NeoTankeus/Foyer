@@ -610,6 +610,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         km: number | null
         kmPeage: number
         geometrie: [number, number][]
+        // Les portions ralenties, découpées SUR notre propre tracé : elles se
+        // superposent donc parfaitement à la route dessinée.
+        bouchons: {
+          categorie: string
+          gravite: number
+          retardMin: number
+          vitesseKmh: number
+          ligne: [number, number][]
+        }[]
       }
 
       const analyser = (route: {
@@ -658,7 +667,34 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           startPointIndex?: unknown
           endPointIndex?: unknown
           lengthInMeters?: unknown
+          simpleCategory?: unknown
+          magnitudeOfDelay?: unknown
+          delayInSeconds?: unknown
+          effectiveSpeedInKmh?: unknown
         }[]
+
+        // 🚦 Les BOUCHONS, tronçon par tronçon. TomTom les repère par des
+        // indices de points de NOTRE tracé : la portion ralentie se superpose
+        // donc exactement à la route dessinée sur la carte. Aucun appel
+        // supplémentaire, aucun risque de décalage.
+        const bouchons: Trajet['bouchons'] = []
+        for (const s of sections) {
+          const genre = String(s?.sectionType ?? '').toUpperCase().replace(/[^A-Z]/g, '')
+          if (genre !== 'TRAFFIC') continue
+          const debutIdx = Number(s?.startPointIndex)
+          const finIdx = Number(s?.endPointIndex)
+          if (!Number.isFinite(debutIdx) || !Number.isFinite(finIdx)) continue
+          const morceau = bruts.slice(Math.max(0, debutIdx), Math.min(finIdx + 1, bruts.length))
+          if (morceau.length < 2) continue
+          bouchons.push({
+            categorie: String(s?.simpleCategory ?? 'JAM').toUpperCase(),
+            gravite: Number(s?.magnitudeOfDelay) || 0,
+            retardMin: Math.round((Number(s?.delayInSeconds) || 0) / 60),
+            vitesseKmh: Math.round(Number(s?.effectiveSpeedInKmh) || 0),
+            ligne: alleger(morceau, 60),
+          })
+        }
+
         let metresPeage = 0
         for (const s of sections) {
           const genre = String(s?.sectionType ?? '').toUpperCase().replace(/[^A-Z]/g, '')
@@ -688,6 +724,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           km: Number.isFinite(metres) ? Math.round(metres / 1000) : null,
           kmPeage: Math.round(metresPeage / 1000),
           geometrie: alleger(bruts, 400),
+          bouchons,
         }
       }
 
@@ -705,9 +742,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         avecAlternatives: boolean,
       ): Promise<{ trajets: Trajet[]; raison: string }> => {
         const echelons = [
-          `traffic=true&computeTravelTimeFor=all&travelMode=car&sectionType=tollRoad&routeRepresentation=polyline${avecAlternatives ? '&maxAlternatives=2' : ''}`,
-          'traffic=true&computeTravelTimeFor=all&travelMode=car&sectionType=tollRoad&routeRepresentation=polyline',
-          'traffic=true&travelMode=car&sectionType=tollRoad&routeRepresentation=polyline',
+          `traffic=true&computeTravelTimeFor=all&travelMode=car&sectionType=tollRoad&sectionType=traffic&routeRepresentation=polyline${avecAlternatives ? '&maxAlternatives=2' : ''}`,
+          'traffic=true&computeTravelTimeFor=all&travelMode=car&sectionType=tollRoad&sectionType=traffic&routeRepresentation=polyline',
+          'traffic=true&travelMode=car&sectionType=tollRoad&sectionType=traffic&routeRepresentation=polyline',
           'traffic=true&travelMode=car&routeRepresentation=polyline',
           'travelMode=car&routeRepresentation=polyline',
         ]
@@ -868,6 +905,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 km: Math.round(somme((m) => m.km ?? 0)),
                 kmPeage: Math.round(somme((m) => m.kmPeage)),
                 geometrie: alleger(geometrie, 400),
+                bouchons: morceaux.flatMap((m) => m.bouchons),
               },
             ],
             ...(fautives.length > 0
@@ -907,7 +945,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // Le trajet est découpé en tronçons : une seule grande boîte couvrirait
       // des centaines de kilomètres hors route et remonterait des bouchons qui
       // ne nous concernent pas.
-      const reperes = alleger(brutTrace, 24)
+      //
+      // ⚠️ DEUX découpages différents, et c'est essentiel : les BOÎTES de
+      // recherche se contentent d'une poignée de repères, mais le filtre
+      // « est-ce bien sur MA route ? » a besoin du tracé DÉTAILLÉ. Avec 24
+      // points sur 700 km (un tous les 30 km), presque tous les incidents
+      // réels tombaient entre deux repères et étaient jetés — c'est pour ça
+      // que la carte restait désespérément vide.
+      const detail = alleger(brutTrace, 300)
+      const reperes = alleger(detail, 24)
       const tronçons: { lat: number; lon: number }[][] = []
       const parPaquet = Math.max(2, Math.ceil(reperes.length / 4))
       for (let i = 0; i < reperes.length; i += parPaquet - 1) {
@@ -958,9 +1004,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           }),
         )
 
-        /** Un point est-il vraiment SUR notre route (moins d'1,5 km) ? */
+        /** Un point est-il vraiment SUR notre route (moins de 2 km) ? */
         const surNotreRoute = (la: number, lo: number): boolean =>
-          reperes.some((p) => metresEntre(p.lat, p.lon, la, lo) < 1500)
+          detail.some((p) => metresEntre(p.lat, p.lon, la, lo) < 2000)
 
         const incidents: {
           categorie: number
@@ -1020,7 +1066,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
         // Les plus gênants d'abord : c'est ce qu'on lit en premier.
         incidents.sort((a, b) => b.retardMin - a.retardMin || b.gravite - a.gravite)
-        res.status(200).json({ incidents })
+        res.status(200).json({
+          incidents,
+          // De quoi comprendre en un coup d'œil si la recherche a ramené
+          // quelque chose et si le filtre « sur ma route » a été trop sévère.
+          journal: `${paquets.flat().length} reçus · ${incidents.length} sur la route · ${tronçons.length} zones`,
+        })
       } catch (e) {
         res.status(200).json({
           incidents: [],

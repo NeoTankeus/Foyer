@@ -1,6 +1,8 @@
 // Les nouveautés de la version en cours — affichées UNE fois dans le pop-up
 // « Quoi de neuf », signé ILY. Mises à jour à chaque déploiement.
 export const NOTES_VERSION: string[] = [
+  '🚦 Les bouchons apparaissent ENFIN sur la carte : les portions ralenties viennent maintenant du calcul de la route lui-même, elles se superposent donc exactement au tracé bleu (orange = ça freine, rouge = ça bouchonne, noir = route coupée). Touche une portion : le retard en minutes et la vitesse réelle.',
+  '🔎 Les incidents nommés (accident, travaux) étaient filtrés bien trop sévèrement : l’app comparait leur position à seulement 24 repères espacés de 30 km, et les jetait presque tous. Elle compare désormais au tracé détaillé.',
   '\ud83d\udea6 BOUCHONS EN DIRECT SUR LA CARTE, comme sur Waze : accidents, ralentissements, travaux et routes coupées sont peints sur le trajet (jaune → orange → rouge → noir), avec le retard de chacun. Un interrupteur « Bouchons » pour les masquer, et les trois pires listés en clair.',
   '\ud83e\uddea NOUVEAU : un banc d’essai automatique ouvre les 58 écrans de l’app dans un vrai navigateur et appuie sur leurs boutons avant chaque mise à jour — d’abord avec des données normales, puis avec des données volontairement abîmées et des serveurs en panne. Plus rien ne part sans être passé par là.',
   '\ud83d\udee1\ufe0f 16 plantages trouvés et corrigés par ce banc d’essai — dont un gros : si les réglages du foyer étaient vides, QUINZE écrans tombaient d’un coup (Voyages, Plages, Pharmacies, Carburant, Cours d’eau, Radar…). Réparé à la source.',
