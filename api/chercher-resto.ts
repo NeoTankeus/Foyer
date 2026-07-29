@@ -922,6 +922,127 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return
     }
 
+    // 🚨 Les incidents de circulation AUTOUR D'UN POINT (là où l'on est).
+    // Même source que le trajet — le flux temps réel de TomTom, qui agrège les
+    // remontées des exploitants routiers, des forces de l'ordre et des
+    // véhicules connectés. C'est ce que lisent les applis de navigation.
+    if (mode === 'incidents_autour') {
+      const cleTrafic = process.env.TOMTOM_KEY
+      const la = Number(lat)
+      const lo = Number(lon)
+      // Rayon en kilomètres, borné : au-delà de 50 km ce n'est plus « autour ».
+      const km = Math.min(Math.max(Number(rayon) || 20, 5), 50)
+      if (!cleTrafic) {
+        res.status(200).json({ incidents: [], erreur: 'cle_absente' })
+        return
+      }
+      if (!Number.isFinite(la) || !Number.isFinite(lo) || Math.abs(la) > 90 || Math.abs(lo) > 180) {
+        res.status(200).json({ incidents: [], erreur: 'position invalide' })
+        return
+      }
+      // Un degré de latitude ≈ 111 km ; en longitude ça rétrécit avec la latitude.
+      const dLat = km / 111
+      const dLon = km / (111 * Math.max(0.2, Math.cos((la * Math.PI) / 180)))
+      const boite = [lo - dLon, la - dLat, lo + dLon, la + dLat].join(',')
+      const champs =
+        '{incidents{type,geometry{type,coordinates},properties{iconCategory,magnitudeOfDelay,' +
+        'events{description,code,iconCategory},startTime,endTime,from,to,length,delay,roadNumbers}}}'
+      try {
+        const r = await fetch(
+          `https://api.tomtom.com/traffic/services/5/incidentDetails?key=${cleTrafic}` +
+            `&bbox=${boite}&fields=${encodeURIComponent(champs)}&language=fr-FR&timeValidityFilter=present`,
+          { headers: { accept: 'application/json', 'user-agent': UA }, signal: AbortSignal.timeout(12000) },
+        )
+        if (!r.ok) {
+          res.status(200).json({ incidents: [], erreur: `tomtom ${r.status}` })
+          return
+        }
+        const d = (await r.json().catch(() => null)) as { incidents?: unknown } | null
+        const bruts = (Array.isArray(d?.incidents) ? d.incidents : []) as {
+          geometry?: { coordinates?: unknown }
+          properties?: {
+            iconCategory?: unknown
+            magnitudeOfDelay?: unknown
+            events?: { description?: unknown }[]
+            from?: unknown
+            to?: unknown
+            length?: unknown
+            delay?: unknown
+            roadNumbers?: unknown
+          }
+        }[]
+        const incidents: {
+          cle: string
+          categorie: number
+          gravite: number
+          retardMin: number
+          description: string
+          de: string
+          vers: string
+          route: string
+          km: number
+          distanceKm: number
+          lat: number
+          lon: number
+        }[] = []
+        for (const brut of bruts) {
+          const coords = brut?.geometry?.coordinates
+          // Un point de référence suffit : celui du début de l'incident.
+          let pLa = NaN
+          let pLo = NaN
+          if (Array.isArray(coords)) {
+            if (typeof coords[0] === 'number' && typeof coords[1] === 'number') {
+              pLo = Number(coords[0])
+              pLa = Number(coords[1])
+            } else {
+              const premier = (coords as unknown[]).find((c) => Array.isArray(c)) as unknown[] | undefined
+              if (Array.isArray(premier)) {
+                pLo = Number(premier[0])
+                pLa = Number(premier[1])
+              }
+            }
+          }
+          if (!Number.isFinite(pLa) || !Number.isFinite(pLo)) continue
+          const distanceKm = metresEntre(la, lo, pLa, pLo) / 1000
+          // La boîte est un carré : on retaille en cercle, sinon les coins
+          // ramènent des incidents à 28 km pour un rayon demandé de 20.
+          if (distanceKm > km) continue
+          const props = brut?.properties ?? {}
+          const evenements = Array.isArray(props.events) ? props.events : []
+          const description = evenements
+            .map((e) => (typeof e?.description === 'string' ? e.description : ''))
+            .filter(Boolean)
+            .join(' · ')
+          const routes = Array.isArray(props.roadNumbers) ? props.roadNumbers.filter((x) => typeof x === 'string') : []
+          incidents.push({
+            // Une clé stable : elle sert à ne PAS prévenir deux fois du même.
+            cle: `${Math.round(pLa * 1000)}:${Math.round(pLo * 1000)}:${Number(props.iconCategory) || 0}`,
+            categorie: Number(props.iconCategory) || 0,
+            gravite: Number(props.magnitudeOfDelay) || 0,
+            retardMin: Math.round((Number(props.delay) || 0) / 60),
+            description: description || 'Perturbation',
+            de: typeof props.from === 'string' ? props.from : '',
+            vers: typeof props.to === 'string' ? props.to : '',
+            route: routes.join(', '),
+            km: Math.round(((Number(props.length) || 0) / 1000) * 10) / 10,
+            distanceKm: Math.round(distanceKm * 10) / 10,
+            lat: pLa,
+            lon: pLo,
+          })
+          if (incidents.length >= 120) break
+        }
+        // Les plus gênants d'abord, puis les plus proches.
+        incidents.sort((a, b) => b.retardMin - a.retardMin || b.gravite - a.gravite || a.distanceKm - b.distanceKm)
+        res.status(200).json({ incidents, rayonKm: km })
+      } catch (e) {
+        res.status(200).json({
+          incidents: [],
+          erreur: `trafic ${String(e instanceof Error ? e.message : e).slice(0, 60)}`,
+        })
+      }
+      return
+    }
+
     // 🚦 Les incidents de circulation EN DIRECT le long d'un trajet (TomTom
     // Traffic Incidents) : bouchons, accidents, travaux, routes coupées — avec
     // leur tracé exact, pour les peindre par-dessus la route comme sur Waze.

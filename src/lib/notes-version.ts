@@ -1,6 +1,10 @@
 // Les nouveautés de la version en cours — affichées UNE fois dans le pop-up
 // « Quoi de neuf », signé ILY. Mises à jour à chaque déploiement.
 export const NOTES_VERSION: string[] = [
+  '🚨 NOUVEAU — LE TRAFIC AUTOUR DE MOI. Tu autorises la position une fois, tu choisis un rayon (10, 20, 30 ou 50 km) et l’app liste ce qui bloque vraiment : accidents, routes coupées, gros bouchons, travaux — avec la distance, le retard en minutes et un lien vers la carte.',
+  '🔔 Alertes automatiques : tant que l’app est ouverte, elle re-vérifie toutes les 4 minutes et te prévient dès qu’un accident, une route coupée ou un bouchon au-dessus de ton seuil apparaît. Chaque incident ne prévient qu’UNE fois.',
+  '📻 À savoir : la radio FM (107.7 et les décrochages locaux) ne diffuse aucun flux de données exploitable — elle ne peut pas être branchée. La source utilisée est le flux temps réel de TomTom, celui des applis de navigation, alimenté par les exploitants routiers, les forces de l’ordre et les véhicules connectés.',
+  '🧪 Le banc d’essai voit enfin les écrans en entier : le pop-up « Quoi de neuf » les masquait pendant les tests, ce qui divisait par six le nombre de boutons réellement essayés.',
   '🧠 LA CAUSE DES « QUOTA IA ATTEINT » EST RÉPARÉE. Chaque fonction IA lançait jusqu’à DOUZE appels à Google pour une seule demande : quand le quota du jour était atteint, l’app le brûlait encore plus vite et faisait attendre 8 secondes pour rien. Il y a maintenant UN seul point d’entrée, qui lit ce que Google répond vraiment et s’arrête au bon moment (6 appels maximum).',
   '💬 Et le message dit enfin la vérité : « quota du jour atteint, ça repart demain matin » ou « très demandée à l’instant, réessaie dans 40 secondes » — au lieu d’un « réessaie dans une minute » qui ne marchait pas.',
   '🛠 TROIS BUGS SILENCIEUX corrigés : sur les Concerts, les Garanties et le Budget, un refus de l’IA ouvrait un brouillon VIDE comme si le scan avait réussi (ou ne faisait rien du tout). Ces trois écrans disent maintenant ce qui s’est passé, avec un bouton Réessayer.',

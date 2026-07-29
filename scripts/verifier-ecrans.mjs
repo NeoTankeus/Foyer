@@ -85,6 +85,7 @@ const ECRANS = [
   ['/nous/assiette', 'Mon Assiette'],
   ['/nous/plages', 'Plages'],
   ['/nous/immobilier', 'Immobilier'],
+  ['/nous/trafic', 'Trafic autour de moi'],
   ['/nous/adresses', 'Bonnes Adresses'],
   ['/nous/adresses?lieu=Pays%20basque', 'Bonnes Adresses d’un coin'],
   ['/meteo', 'Météo en détail'],
@@ -252,6 +253,16 @@ function pannePourRelais() {
 
 // ————————————————————————————— Le parcours —————————————————————————————
 
+/** La version compilée — le pop-up « Quoi de neuf » la compare pour s'afficher. */
+async function versionConstruite() {
+  try {
+    const brut = await readFile(join(DOSSIER, 'version.json'), 'utf8')
+    return String((JSON.parse(brut) ?? {}).version ?? 'vu')
+  } catch {
+    return 'vu'
+  }
+}
+
 async function principal() {
   if (!NAVIGATEUR) {
     console.error('Chromium introuvable dans /opt/pw-browsers.')
@@ -261,6 +272,7 @@ async function principal() {
   const aVerifier = demandes.length > 0 ? ECRANS.filter(([c]) => demandes.some((d) => c.startsWith(d))) : ECRANS
 
   const port = 4173
+  const version = await versionConstruite()
   const serveur = await servir(port)
   const base = `http://127.0.0.1:${port}`
   const navigateur = await chromium.launch({ executablePath: NAVIGATEUR, args: ['--no-sandbox'] })
@@ -276,7 +288,7 @@ async function principal() {
 
   // Une session déjà ouverte, pour arriver directement dans l'app.
   await contexte.addInitScript(
-    ({ supabase, membre, foyer }) => {
+    ({ supabase, membre, foyer, version }) => {
       const ref = new URL(supabase).hostname.split('.')[0]
       const expiration = Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 365
       const session = {
@@ -301,13 +313,15 @@ async function principal() {
       try {
         localStorage.setItem(`sb-${ref}-auth-token`, JSON.stringify(session))
         localStorage.setItem('stg-profil', JSON.stringify({ membre, membres: [membre], foyer }))
-        // Le pop-up « Quoi de neuf » ne doit pas masquer les écrans testés.
-        localStorage.setItem('stg-notes-vues', 'essai')
+        // Le pop-up « Quoi de neuf » ne doit masquer aucun écran testé — et
+        // son texte fausserait la détection des affichages abîmés. On note la
+        // version comme DÉJÀ VUE, quelle qu'elle soit.
+        localStorage.setItem('foyer-version-vue', version)
       } catch {
         // document sans stockage : rien à préparer ici
       }
     },
-    { supabase: SUPABASE, membre: MEMBRE, foyer: FOYER },
+    { supabase: SUPABASE, membre: MEMBRE, foyer: FOYER, version },
   )
 
   // Tout ce qui sort de l'app est intercepté : rien ne part sur Internet.
@@ -350,8 +364,14 @@ async function principal() {
 
       // Les affichages cassés se voient à l'œil nu : une valeur manquante
       // laisse « undefined », « NaN » ou « [object Object] » dans la page.
+      // On garde le CONTEXTE autour du mot : sans lui, « NaN quelque part »
+      // est introuvable dans une page de 3 000 caractères.
       const salissures = ['undefined', 'NaN', '[object Object]', 'Invalid Date', 'null null']
         .filter((mot) => texte.includes(mot))
+        .map((mot) => {
+          const i = texte.indexOf(mot)
+          return `${mot} → …${texte.slice(Math.max(0, i - 40), i + mot.length + 40).replace(/\s+/g, ' ')}…`
+        })
 
       let boutonsTestes = 0
       let champsRemplis = 0
@@ -431,7 +451,7 @@ async function principal() {
       // Les erreurs de console purement réseau sont normales ici (tout est
       // simulé) : seules les vraies erreurs de code sont retenues.
       const vraiesErreurs = erreursConsole.filter(
-        (e) => !/Failed to load resource|net::ERR|manifest|favicon|Service Worker|sw\.js/i.test(e),
+        (e) => !/Failed to load resource|net::ERR|manifest|favicon|Service Worker|sw\.js|WebSocket|wss:|realtime|tunnel via proxy/i.test(e),
       )
       if (vraiesErreurs.length > 0) problemes.push(`console : ${vraiesErreurs[0]}`)
 
