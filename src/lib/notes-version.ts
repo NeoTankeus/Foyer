@@ -1,6 +1,8 @@
 // Les nouveautés de la version en cours — affichées UNE fois dans le pop-up
 // « Quoi de neuf », signé ILY. Mises à jour à chaque déploiement.
 export const NOTES_VERSION: string[] = [
+  '🎯 LA LOUPE CLASSE MAINTENANT PAR PERTINENCE. Tape « voy » → « Voyages » apparaît SEUL en haut. Ce qui correspond au TITRE passe devant, et tout ce qui n’est lié que par la description est rangé plus bas, sous « Aussi liées à … ». L’article ne compte pas : « met » sort « La météo en détail » seule.',
+  '🗂 Et chaque fonction a désormais ses MOTS-CLÉS : « resto » trouve les Restaurants et les Bonnes Adresses, « essence » trouve Plein malin, « frigo » trouve Placards & congélo, « bouchon » trouve Trafic autour de moi, « anniv » trouve Célébrations, « gabriel » trouve La Garde de Gabriel.',
   '🔍 UNE LOUPE DANS LE MENU. Avec une soixantaine de fonctions, dérouler les secteurs était pénible : touche la loupe en haut à droite, tape deux lettres, et la fonction apparaît. La recherche regarde le nom, la description ET le secteur — « bonne adr » trouve « Les Bonnes Adresses », « bouchon » trouve « Trafic autour de moi ». Les accents ne comptent pas.',
   '↩️ Et en refermant la recherche (✕), le menu rend EXACTEMENT la place où tu étais — même chose au retour d’une fonction ouverte depuis les résultats.',
   '☀️ L’icône « Aujourd’hui » de la barre du bas devient un SOLEIL : les deux vaguelettes d’avant ne voulaient rien dire.',
