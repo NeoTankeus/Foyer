@@ -1,5 +1,5 @@
 // Nous : la famille, et la porte d'entrée des modules du foyer.
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { utiliserSession } from '@/etat/session'
 import { baseLocale } from '@/lib/dexie'
@@ -174,6 +174,61 @@ export function EcranNous() {
     [...liste].sort((a, b) => cleTri(a.libelle).localeCompare(cleTri(b.libelle), 'fr', { sensitivity: 'base' }))
 
   const visibles = MODULES.filter((m) => !m.adulte || estAdulte)
+
+  // 🔍 La recherche : avec une soixantaine de fonctions, retrouver la bonne
+  // en déroulant est pénible. On tape deux lettres, on l'a.
+  const [recherche, setRecherche] = useState('')
+  // La place où l'on était AVANT d'ouvrir la recherche : on y revient exactement
+  // en fermant, au lieu de repartir du haut.
+  const placeAvantRecherche = useRef<number | null>(null)
+
+  const sansAccent = (t: string) =>
+    t
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+
+  const requete = sansAccent(recherche.trim())
+  const resultats =
+    requete.length < 1
+      ? []
+      : trier(
+          visibles.filter((m) => {
+            const foin = sansAccent(
+              [m.libelle, m.detail, SECTEURS[m.secteur]?.libelle ?? '', m.chemin.replace(/[/-]/g, ' ')].join(' '),
+            )
+            // Chaque mot tapé doit se retrouver : « bonne adr » trouve
+            // « Les Bonnes Adresses ».
+            return requete.split(/\s+/).every((mot) => foin.includes(mot))
+          }),
+        )
+
+  const ouvrirRecherche = () => {
+    navigator.vibrate?.(4)
+    const zone = document.getElementById('defilement-app')
+    placeAvantRecherche.current = zone ? zone.scrollTop : 0
+    setRecherche(' ')
+    // Le champ apparaît : on remonte pour le voir, puis le focus vient seul.
+    if (zone) zone.scrollTop = 0
+  }
+
+  const fermerRecherche = () => {
+    navigator.vibrate?.(4)
+    setRecherche('')
+    // On rend la place exactement : c'est ce qui manquait le plus.
+    const voulu = placeAvantRecherche.current
+    placeAvantRecherche.current = null
+    if (voulu === null) return
+    const zone = document.getElementById('defilement-app')
+    if (!zone) return
+    let essais = 0
+    const restaurer = () => {
+      zone.scrollTop = voulu
+      essais += 1
+      if (essais < 6 && Math.abs(zone.scrollTop - voulu) > 4) window.setTimeout(restaurer, 60)
+    }
+    restaurer()
+  }
   const enFavori = (chemin: string) => favoris.includes(chemin)
   const basculerFavori = (chemin: string) => {
     navigator.vibrate?.(4)
@@ -203,10 +258,73 @@ export function EcranNous() {
   return (
     <div className="pb-4">
       <header className="verre verre-clair safe-haut sticky top-0 z-10 px-5 pb-2 pt-3">
-        <h1 className="text-titre-2 text-encre">Menu</h1>
+        <div className="flex items-center justify-between gap-3">
+          <h1 className="text-titre-2 text-encre">Menu</h1>
+          <button
+            onClick={() => (recherche === '' ? ouvrirRecherche() : fermerRecherche())}
+            aria-label={recherche === '' ? 'Chercher une fonction' : 'Fermer la recherche'}
+            aria-expanded={recherche !== ''}
+            className="flex min-h-sur-tactile min-w-sur-tactile items-center justify-center rounded-full bg-fond-sourd px-3 text-[20px] active:bg-trait"
+          >
+            {recherche === '' ? '🔍' : '✕'}
+          </button>
+        </div>
+        {recherche !== '' && (
+          <input
+            autoFocus
+            value={recherche.trimStart()}
+            onChange={(e) => setRecherche(e.target.value || ' ')}
+            placeholder="Chercher une fonction… (voyage, météo, resto)"
+            aria-label="Chercher une fonction"
+            enterKeyHint="search"
+            onKeyDown={(e) => {
+              // Échap referme la recherche et rend la place — pratique au
+              // clavier, et ça évite de rester coincé dans les résultats.
+              if (e.key === 'Escape') fermerRecherche()
+            }}
+            className="mt-2 min-h-sur-tactile w-full rounded-lg bg-fond-sourd px-3 text-corps text-encre placeholder:text-encre-3"
+          />
+        )}
       </header>
 
-      <div className="flex flex-col gap-3 px-5 pt-3">
+      {/* 🔍 En recherche, on ne montre QUE les résultats : c'est plus rapide
+          à lire, et refermer rend la place d'avant. */}
+      {recherche !== '' && (
+        <div className="flex flex-col gap-3 px-5 pt-3">
+          {requete.length === 0 ? (
+            <p className="text-corps-2 text-encre-3">Tape le début du nom d’une fonction.</p>
+          ) : resultats.length === 0 ? (
+            <p className="text-corps-2 text-encre-3">
+              Rien ne correspond à « {recherche.trim()} ». Essaie un mot plus court.
+            </p>
+          ) : (
+            <>
+              <p className="text-legende text-encre-3">
+                {resultats.length} fonction{resultats.length > 1 ? 's' : ''} trouvée{resultats.length > 1 ? 's' : ''}
+              </p>
+              <nav aria-label="Résultats de la recherche" className="overflow-hidden rounded-lg bg-fond-eleve shadow-carte">
+                {resultats.map((module) => (
+                  <LigneModule
+                    key={`rech-${module.chemin}`}
+                    module={module}
+                    favori={enFavori(module.chemin)}
+                    surOuverture={() => {
+                      // On quitte la recherche AVANT de partir : au retour, le
+                      // menu se retrouve tel qu'on l'avait laissé.
+                      setRecherche('')
+                      placeAvantRecherche.current = null
+                      naviguer(module.chemin)
+                    }}
+                    surEtoile={() => basculerFavori(module.chemin)}
+                  />
+                ))}
+              </nav>
+            </>
+          )}
+        </div>
+      )}
+
+      <div className={recherche !== '' ? 'hidden' : 'flex flex-col gap-3 px-5 pt-3'}>
         <Carte>
           <h2 className="mb-2 text-note font-[590] uppercase tracking-wide text-encre-3">
             {foyer?.nom ?? 'Le foyer'}

@@ -1,6 +1,9 @@
 // Les nouveautés de la version en cours — affichées UNE fois dans le pop-up
 // « Quoi de neuf », signé ILY. Mises à jour à chaque déploiement.
 export const NOTES_VERSION: string[] = [
+  '🔍 UNE LOUPE DANS LE MENU. Avec une soixantaine de fonctions, dérouler les secteurs était pénible : touche la loupe en haut à droite, tape deux lettres, et la fonction apparaît. La recherche regarde le nom, la description ET le secteur — « bonne adr » trouve « Les Bonnes Adresses », « bouchon » trouve « Trafic autour de moi ». Les accents ne comptent pas.',
+  '↩️ Et en refermant la recherche (✕), le menu rend EXACTEMENT la place où tu étais — même chose au retour d’une fonction ouverte depuis les résultats.',
+  '☀️ L’icône « Aujourd’hui » de la barre du bas devient un SOLEIL : les deux vaguelettes d’avant ne voulaient rien dire.',
   '🗺 LA CAUSE DES VOYAGES QUI NE CALCULENT PAS EST TROUVÉE. L’app demandait au géocodeur « le lieu le plus PEUPLÉ du monde portant ce nom » : « Marcellus » devenait donc Marcellus dans l’État de New York, et TomTom refusait la route (départ et arrivée sur deux continents). Un seul géocodeur partagé désormais, qui privilégie la France puis le plus proche de la maison.',
   '📍 Et à la CRÉATION du voyage, la destination est vérifiée sur la carte tout de suite : « Trouvé : Marcellus (Nouvelle-Aquitaine) », avec la liste des homonymes si tu veux en choisir un autre. Les coordonnées exactes sont enregistrées avec le voyage — plus aucun géocodage au hasard derrière.',
   '🔎 Le même correctif s’applique partout où l’on tape un nom de ville : destination, étapes, météo, ville des pharmacies.',
