@@ -1,3 +1,5 @@
+import { candidatsLieu, trouverLieu } from './geo'
+
 // Météo du foyer — Open-Meteo (données des modèles nationaux dont
 // Météo-France AROME/ARPEGE, gratuit, sans clé). Ville mémorisée par appareil.
 
@@ -59,16 +61,11 @@ export function villeMeteo(): VilleMeteo | null {
 }
 
 export async function choisirVille(nom: string): Promise<VilleMeteo | null> {
-  const reponse = await fetch(
-    `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(nom)}&count=1&language=fr&format=json`,
-  )
-  if (!reponse.ok) return null
-  const donnees = (await reponse.json()) as {
-    results?: { name: string; latitude: number; longitude: number }[]
-  }
-  const premier = Array.isArray(donnees.results) ? donnees.results[0] : undefined
-  if (!premier || !Number.isFinite(premier.latitude) || !Number.isFinite(premier.longitude)) return null
-  const ville = { nom: String(premier.name ?? nom), latitude: premier.latitude, longitude: premier.longitude }
+  // Le géocodeur partagé : il privilégie la France, sinon « Saint-Denis »
+  // renvoyait La Réunion et « Marcellus » les États-Unis.
+  const trouve = await trouverLieu(nom)
+  if (!trouve) return null
+  const ville = { nom: trouve.commune, latitude: trouve.lat, longitude: trouve.lon }
   localStorage.setItem(CLE_VILLE, JSON.stringify(ville))
   localStorage.removeItem(CLE_CACHE)
   return ville
@@ -341,28 +338,12 @@ export interface MeteoComplete {
 
 /** Jusqu'à 6 communes correspondant à une saisie — sans rien mémoriser. */
 export async function chercherVilles(nom: string): Promise<Lieu[]> {
-  const requete = nom.trim()
-  if (requete.length < 2) return []
-  try {
-    const r = await fetch(
-      `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(requete)}&count=6&language=fr&format=json`,
-    )
-    if (!r.ok) return []
-    const d = (await r.json()) as {
-      results?: { name?: string; latitude?: number; longitude?: number; admin1?: string; country?: string; country_code?: string }[]
-    }
-    return (Array.isArray(d.results) ? d.results : [])
-      .filter((v) => Number.isFinite(v.latitude) && Number.isFinite(v.longitude))
-      .map((v) => ({
-        // Le nom porte la région (et le pays s'il est étranger) : deux
-        // communes homonymes ne se ressemblent plus.
-        nom: [v.name ?? requete, v.admin1, v.country_code === 'FR' ? null : v.country].filter(Boolean).join(', '),
-        latitude: v.latitude as number,
-        longitude: v.longitude as number,
-      }))
-  } catch {
-    return []
-  }
+  // Les candidats du géocodeur partagé, en gardant l'ordre : les français
+  // d'abord, puis les autres — deux homonymes ne se ressemblent plus.
+  const candidats = await candidatsLieu(nom, 8)
+  const francais = candidats.filter((c) => c.paysCode === 'FR')
+  const autres = candidats.filter((c) => c.paysCode !== 'FR')
+  return [...francais, ...autres].map((c) => ({ nom: c.nom, latitude: c.lat, longitude: c.lon }))
 }
 
 const CLE_CACHE_FICHE = 'stg-meteo-fiche'

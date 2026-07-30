@@ -104,6 +104,8 @@ const TYPES = {
   '.webmanifest': 'application/manifest+json',
 }
 
+// Le port est choisi par le système : deux essais lancés coup sur coup ne se
+// disputent plus le 4173 (« EADDRINUSE » qui faisait tout échouer).
 function servir(port) {
   const serveur = createServer(async (requete, reponse) => {
     const chemin = decodeURIComponent((requete.url ?? '/').split('?')[0])
@@ -120,7 +122,7 @@ function servir(port) {
     }
     reponse.writeHead(404).end('introuvable')
   })
-  return new Promise((resoudre) => serveur.listen(port, () => resoudre(serveur)))
+  return new Promise((resoudre) => serveur.listen(port ?? 0, () => resoudre(serveur)))
 }
 
 // ——————————————————— Les réponses factices (Supabase + API) ———————————————————
@@ -271,9 +273,9 @@ async function principal() {
   const demandes = process.argv.slice(2).filter((a) => !a.startsWith('--'))
   const aVerifier = demandes.length > 0 ? ECRANS.filter(([c]) => demandes.some((d) => c.startsWith(d))) : ECRANS
 
-  const port = 4173
   const version = await versionConstruite()
-  const serveur = await servir(port)
+  const serveur = await servir(0)
+  const port = serveur.address().port
   const base = `http://127.0.0.1:${port}`
   const navigateur = await chromium.launch({ executablePath: NAVIGATEUR, args: ['--no-sandbox'] })
   const contexte = await navigateur.newContext({
@@ -358,6 +360,19 @@ async function principal() {
     try {
       await page.goto(`${base}${chemin}`, { waitUntil: 'domcontentloaded', timeout: 20000 })
       await page.waitForTimeout(1800)
+
+      // Le pop-up « Quoi de neuf » masque l'écran et son texte fausse la
+      // détection des affichages abîmés : on le referme s'il est là, quelle
+      // que soit la version (une reconstruction pendant un essai le rouvre).
+      const popup = page.locator('[role=dialog]')
+      if ((await popup.count()) > 0) {
+        await popup
+          .locator('button')
+          .last()
+          .click({ timeout: 2000 })
+          .catch(() => {})
+        await page.waitForTimeout(400)
+      }
 
       const emmele = await page.getByText('Oups, un fil s’est emmêlé').count()
       const texte = ((await page.locator('body').innerText().catch(() => '')) ?? '').trim()

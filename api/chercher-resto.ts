@@ -772,7 +772,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 }
               })
               .catch(() => '')
-            raison = `${r.status}${detail ? ` — ${String(detail).slice(0, 110)}` : ''}`
+            // Les messages de TomTom sont en anglais et cryptiques : les deux
+            // seuls qui arrivent vraiment en production sont traduits, sinon
+            // personne ne peut deviner quoi corriger.
+            const brut = String(detail)
+            const clair = /different ProductId/i.test(brut)
+              ? 'le départ et l’arrivée ne sont pas sur le même continent — la destination a été trouvée à l’étranger, précise-la'
+              : /NO_ROUTE_FOUND/i.test(brut)
+                ? 'aucune route ne relie ces points (un lieu est probablement mal situé sur la carte)'
+                : brut
+            raison = `${r.status}${detail ? ` — ${clair.slice(0, 140)}` : ''}`
             // Une clé refusée ou un quota dépassé ne se soigne pas en enlevant
             // des options : inutile de descendre l'échelle.
             if (r.status !== 400) break

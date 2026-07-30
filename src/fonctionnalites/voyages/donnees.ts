@@ -3,6 +3,7 @@ import { supabase } from '@/lib/supabase'
 import { muter } from '@/lib/sync'
 import { lireAvecRepli } from '@/lib/lecture'
 import type { LigneMembre, LigneReservation, LigneValise, LigneVoyage } from '@/lib/basedonnees.types'
+import { trouverLieu } from '@/lib/geo'
 
 export function utiliserVoyages() {
   return useQuery({
@@ -86,7 +87,16 @@ const CHECKLIST_MAISON = [
 export async function creerVoyage(
   foyerId: string,
   membres: LigneMembre[],
-  brouillon: { titre: string; destination: string | null; debut: string | null; fin: string | null },
+  brouillon: {
+    titre: string
+    destination: string | null
+    debut: string | null
+    fin: string | null
+    // Les coordonnées VÉRIFIÉES de la destination, quand on les a : elles
+    // évitent tout géocodage approximatif plus tard.
+    lat?: number | null
+    lng?: number | null
+  },
 ): Promise<string> {
   const id = crypto.randomUUID()
   await muter({
@@ -133,13 +143,12 @@ export interface MeteoJour {
 /** Météo de la destination via Open-Meteo (gratuit, sans clé) — depuis le navigateur. */
 export async function chargerMeteo(destination: string, debut: string, fin: string): Promise<MeteoJour[] | null> {
   try {
-    const geo = await fetch(
-      `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(destination)}&count=1&language=fr`,
-    ).then((r) => r.json() as Promise<{ results?: { latitude: number; longitude: number }[] }>)
-    const lieu = geo.results?.[0]
+    // Le MÊME géocodeur que la route : sinon la météo affichait le temps de
+    // Marcellus (New York) pendant que la route visait la France.
+    const lieu = await trouverLieu(destination)
     if (!lieu) return null
     const meteo = await fetch(
-      `https://api.open-meteo.com/v1/forecast?latitude=${lieu.latitude}&longitude=${lieu.longitude}` +
+      `https://api.open-meteo.com/v1/forecast?latitude=${lieu.lat}&longitude=${lieu.lon}` +
         `&daily=temperature_2m_min,temperature_2m_max,precipitation_sum&timezone=Europe%2FParis` +
         `&start_date=${debut}&end_date=${fin}`,
     ).then((r) => r.json() as Promise<{

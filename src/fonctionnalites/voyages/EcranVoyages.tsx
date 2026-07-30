@@ -6,6 +6,7 @@ import { utiliserSession } from '@/etat/session'
 import { muter } from '@/lib/sync'
 import type { LigneVoyage } from '@/lib/basedonnees.types'
 import { creerVoyage, utiliserVoyages } from './donnees'
+import { candidatsLieu, type LieuTrouve } from '@/lib/geo'
 import { differenceInCalendarDays, maintenantLocal } from '@/lib/dates'
 import { Bouton } from '@/design/composants/Bouton'
 import { Feuille } from '@/design/composants/Feuille'
@@ -108,9 +109,14 @@ export function EcranVoyages() {
               // Une destination retouchée invalide les coordonnées mémorisées :
               // la route et la météo se recalculeront sur la nouvelle ville.
               const destinationChangee = brouillon.destination !== enEdition.destination
+              const coordonneesVerifiees = brouillon.lat != null && brouillon.lng != null
               await muter({
                 table: 'voyages', type: 'update', cible_id: enEdition.id,
-                charge: destinationChangee ? { ...brouillon, lat: null, lng: null } : brouillon,
+                charge: coordonneesVerifiees
+                  ? brouillon
+                  : destinationChangee
+                    ? { ...brouillon, lat: null, lng: null }
+                    : brouillon,
               })
               await clientRequetes.invalidateQueries({ queryKey: ['voyages'] })
               setEnEdition(null)
@@ -137,7 +143,14 @@ function FormVoyage({
   surSuppression,
 }: {
   initial: LigneVoyage | null
-  surEnregistrement: (b: { titre: string; destination: string | null; debut: string | null; fin: string | null }) => Promise<void>
+  surEnregistrement: (b: {
+    titre: string
+    destination: string | null
+    debut: string | null
+    fin: string | null
+    lat?: number | null
+    lng?: number | null
+  }) => Promise<void>
   surSuppression?: () => Promise<void>
 }) {
   const [titre, setTitre] = useState(initial?.titre ?? '')
@@ -146,10 +159,76 @@ function FormVoyage({
   const [fin, setFin] = useState(initial?.fin ?? '')
   const [enCours, setEnCours] = useState(false)
   const [confirme, setConfirme] = useState(false)
+  // 📍 La destination est VÉRIFIÉE sur la carte avant d'enregistrer. C'est ce
+  // qui évitait « Marcellus » géocodé aux États-Unis, et une route impossible
+  // à calculer sans qu'on comprenne pourquoi.
+  const [candidats, setCandidats] = useState<LieuTrouve[]>([])
+  const [choisi, setChoisi] = useState<LieuTrouve | null>(null)
+  const [verifEnCours, setVerifEnCours] = useState(false)
+  const [messageLieu, setMessageLieu] = useState<string | null>(null)
+
+  const verifier = async (nom: string) => {
+    const propre = nom.trim()
+    setChoisi(null)
+    setCandidats([])
+    setMessageLieu(null)
+    if (propre.length < 2) return
+    setVerifEnCours(true)
+    try {
+      const liste = await candidatsLieu(propre, 8)
+      const francais = liste.filter((c) => c.paysCode === 'FR')
+      const ordonnes = [...francais, ...liste.filter((c) => c.paysCode !== 'FR')]
+      if (ordonnes.length === 0) {
+        setMessageLieu(`« ${propre} » est introuvable sur la carte. La route ne pourra pas être calculée.`)
+        return
+      }
+      setChoisi(ordonnes[0] ?? null)
+      setCandidats(ordonnes.slice(0, 6))
+    } finally {
+      setVerifEnCours(false)
+    }
+  }
+
   return (
     <div className="flex flex-col gap-3">
       <ChampTexte etiquette="Titre" value={titre} onChange={(e) => setTitre(e.target.value)} placeholder="Pays basque en août" />
-      <ChampTexte etiquette="Destination (ville)" value={destination} onChange={(e) => setDestination(e.target.value)} placeholder="Biarritz" />
+      <ChampTexte
+        etiquette="Destination (ville)"
+        value={destination}
+        onChange={(e) => {
+          setDestination(e.target.value)
+          setChoisi(null)
+          setCandidats([])
+        }}
+        onBlur={() => void verifier(destination)}
+        placeholder="Biarritz"
+      />
+      {verifEnCours && <p className="text-legende text-encre-3">📍 Recherche sur la carte…</p>}
+      {messageLieu && <p className="text-corps-2 text-urgent">{messageLieu}</p>}
+      {choisi && (
+        <div className="rounded-lg bg-fond-sourd p-2">
+          <p className="text-corps-2 text-encre">📍 Trouvé : <strong>{choisi.nom}</strong></p>
+          {candidats.length > 1 && (
+            <>
+              <p className="mt-1 text-legende text-encre-3">Ce n’est pas le bon endroit ? Choisis :</p>
+              <div className="mt-1 flex flex-wrap gap-2">
+                {candidats.map((c) => (
+                  <button
+                    key={`${c.lat},${c.lon}`}
+                    type="button"
+                    onClick={() => setChoisi(c)}
+                    aria-pressed={choisi.lat === c.lat && choisi.lon === c.lon}
+                    className={`min-h-sur-tactile rounded-full px-3 text-note font-[590]
+                      ${choisi.lat === c.lat && choisi.lon === c.lon ? 'bg-encre text-fond' : 'bg-fond-eleve text-encre-2'}`}
+                  >
+                    {c.nom}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      )}
       <div className="flex gap-3">
         <ChampTexte etiquette="Départ" type="date" value={debut} onChange={(e) => setDebut(e.target.value)} />
         <ChampTexte etiquette="Retour" type="date" value={fin} onChange={(e) => setFin(e.target.value)} />
@@ -166,6 +245,9 @@ function FormVoyage({
             destination: destination.trim() || null,
             debut: debut || null,
             fin: fin || null,
+            // Les coordonnées vérifiées partent avec le voyage : plus aucun
+            // géocodage « au hasard » derrière.
+            ...(choisi ? { lat: choisi.lat, lng: choisi.lon } : {}),
           }).finally(() => setEnCours(false))
         }}
       >

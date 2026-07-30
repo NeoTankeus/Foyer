@@ -4,6 +4,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { utiliserSession } from '@/etat/session'
 import { supabase } from '@/lib/supabase'
+import { alerteLieuLointain, trouverLieu } from '@/lib/geo'
 import { muter } from '@/lib/sync'
 import {
   chargerMeteo,
@@ -63,6 +64,9 @@ interface ReponseItineraire {
   etapesIgnorees?: number[]
   // La raison brute renvoyée par TomTom quand une étape est écartée.
   diagnostic?: string
+  // « la destination a été trouvée à 6 800 km » — la cause la plus fréquente
+  // d'un calcul impossible, dite en clair.
+  alerteDestination?: string
   erreur?: string
 }
 
@@ -144,13 +148,23 @@ export function EcranVoyage() {
     queryFn: async (): Promise<ReponseItineraire> => {
       let aLat = voyagePourRoute?.lat ?? null
       let aLon = voyagePourRoute?.lng ?? null
+      let alerte: string | null = null
       if ((aLat === null || aLon === null) && voyagePourRoute?.destination) {
-        const g = await fetch(
-          `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(voyagePourRoute.destination)}&count=1&language=fr`,
+        // ⚠️ On ne demande PLUS « le lieu le plus peuplé du monde » : c'est
+        // comme ça que « Marcellus » (Lot-et-Garonne) devenait Marcellus dans
+        // l'État de New York, et que TomTom refusait tout le calcul.
+        const trouve = await trouverLieu(
+          voyagePourRoute.destination,
+          maison?.lat !== undefined && maison?.lon !== undefined ? { lat: maison.lat, lon: maison.lon } : null,
         )
-        const d = (await g.json().catch(() => null)) as { results?: { latitude: number; longitude: number }[] } | null
-        aLat = d?.results?.[0]?.latitude ?? null
-        aLon = d?.results?.[0]?.longitude ?? null
+        if (trouve) {
+          aLat = trouve.lat
+          aLon = trouve.lon
+          alerte = alerteLieuLointain(
+            trouve,
+            maison?.lat !== undefined && maison?.lon !== undefined ? { lat: maison.lat, lon: maison.lon } : null,
+          )
+        }
       }
       if (aLat === null || aLon === null) throw new Error('destination introuvable sur la carte')
       // Départ, puis chaque étape dans l'ordre, puis l'arrivée.
@@ -169,7 +183,10 @@ export function EcranVoyage() {
         body: JSON.stringify({ mode: 'itineraire', points }),
       })
       if (!r.ok) throw new Error(`relais ${r.status}`)
-      return (await r.json()) as ReponseItineraire
+      const reponse = (await r.json()) as ReponseItineraire
+      // L'avertissement « destination trouvée à l'étranger » voyage avec la
+      // réponse : c'est LUI qui explique un calcul impossible.
+      return alerte ? { ...reponse, alerteDestination: alerte } : reponse
     },
   })
   // Le meilleur itinéraire du moment (le relais les trie du plus rapide au plus lent).
@@ -693,6 +710,9 @@ export function EcranVoyage() {
             </>
           ) : (
             <div className="mt-1 flex flex-col gap-2">
+              {route.data?.alerteDestination && (
+                <p className="rounded-lg bg-fond-sourd p-2 text-corps-2 text-ambre">{route.data.alerteDestination}</p>
+              )}
               <p className="text-corps-2 text-encre-2">
                 La route n'a pas pu être calculée.
                 <br />
@@ -1286,36 +1306,15 @@ function FormEtapes({
     const ville = nouvelle.trim()
     if (!ville) return
     setErreur(null)
-    // On retrouve l'arrêt sur la carte : sans coordonnées, pas d'itinéraire.
-    // On demande PLUSIEURS résultats et on privilégie la France : sinon une
-    // commune homonyme à l'autre bout du monde est choisie sans prévenir, et
-    // le calcul de la route échoue ensuite sans qu'on comprenne pourquoi.
-    const r = await fetch(
-      `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(ville)}&count=8&language=fr`,
-    ).catch(() => null)
-    const d = r?.ok
-      ? ((await r.json().catch(() => null)) as {
-          results?: { name?: string; latitude?: number; longitude?: number; country_code?: string; admin1?: string; country?: string }[]
-        } | null)
-      : null
-    const valides = (d?.results ?? []).filter((x) => Number.isFinite(x.latitude) && Number.isFinite(x.longitude))
-    const trouve = valides.find((x) => x.country_code === 'FR') ?? valides[0]
+    // On retrouve l'arrêt sur la carte avec le géocodeur partagé de l'app :
+    // il privilégie la France et le plus proche, ce qui évite l'homonyme à
+    // l'autre bout du monde qui faisait échouer tout le calcul.
+    const trouve = await trouverLieu(ville)
     if (!trouve) {
       setErreur(`« ${ville} » est introuvable sur la carte — essaie le nom d'une commune.`)
       return
     }
-    // Le nom garde la région (et le pays s'il est étranger) : d'un coup d'œil
-    // on voit si l'endroit retenu est bien celui qu'on avait en tête.
-    const precision =
-      trouve.country_code === 'FR' ? (trouve.admin1 ?? '') : [trouve.admin1, trouve.country].filter(Boolean).join(', ')
-    await surEtapes([
-      ...etapes,
-      {
-        nom: precision ? `${trouve.name ?? ville} (${precision})` : (trouve.name ?? ville),
-        lat: trouve.latitude as number,
-        lon: trouve.longitude as number,
-      },
-    ])
+    await surEtapes([...etapes, { nom: trouve.nom, lat: trouve.lat, lon: trouve.lon }])
     setNouvelle('')
   }
 

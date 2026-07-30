@@ -1,6 +1,10 @@
 // Les nouveautés de la version en cours — affichées UNE fois dans le pop-up
 // « Quoi de neuf », signé ILY. Mises à jour à chaque déploiement.
 export const NOTES_VERSION: string[] = [
+  '🗺 LA CAUSE DES VOYAGES QUI NE CALCULENT PAS EST TROUVÉE. L’app demandait au géocodeur « le lieu le plus PEUPLÉ du monde portant ce nom » : « Marcellus » devenait donc Marcellus dans l’État de New York, et TomTom refusait la route (départ et arrivée sur deux continents). Un seul géocodeur partagé désormais, qui privilégie la France puis le plus proche de la maison.',
+  '📍 Et à la CRÉATION du voyage, la destination est vérifiée sur la carte tout de suite : « Trouvé : Marcellus (Nouvelle-Aquitaine) », avec la liste des homonymes si tu veux en choisir un autre. Les coordonnées exactes sont enregistrées avec le voyage — plus aucun géocodage au hasard derrière.',
+  '🔎 Le même correctif s’applique partout où l’on tape un nom de ville : destination, étapes, météo, ville des pharmacies.',
+  '💬 Les messages de TomTom sont traduits : « Origin and destination have different ProductId’s » devient « le départ et l’arrivée ne sont pas sur le même continent — la destination a été trouvée à l’étranger, précise-la ».',
   '🚨 NOUVEAU — LE TRAFIC AUTOUR DE MOI. Tu autorises la position une fois, tu choisis un rayon (10, 20, 30 ou 50 km) et l’app liste ce qui bloque vraiment : accidents, routes coupées, gros bouchons, travaux — avec la distance, le retard en minutes et un lien vers la carte.',
   '🔔 Alertes automatiques : tant que l’app est ouverte, elle re-vérifie toutes les 4 minutes et te prévient dès qu’un accident, une route coupée ou un bouchon au-dessus de ton seuil apparaît. Chaque incident ne prévient qu’UNE fois.',
   '📻 À savoir : la radio FM (107.7 et les décrochages locaux) ne diffuse aucun flux de données exploitable — elle ne peut pas être branchée. La source utilisée est le flux temps réel de TomTom, celui des applis de navigation, alimenté par les exploitants routiers, les forces de l’ordre et les véhicules connectés.',

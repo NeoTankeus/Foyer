@@ -3,6 +3,7 @@
 // la maison (instantané), le GPS précis, ou une ville mémorisée.
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import { trouverLieu } from '@/lib/geo'
 import { utiliserSession } from '@/etat/session'
 import { chercherLieux, type LieuAutour } from '@/lib/lieux'
 import { compresserImage } from '@/fonctionnalites/souvenirs/donnees'
@@ -35,17 +36,10 @@ function villeValide(v: unknown): PointVille | null {
 }
 
 async function geocoderVille(nom: string): Promise<PointVille | null> {
-  try {
-    const r = await fetch(
-      `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(nom)}&count=1&language=fr&format=json`,
-    )
-    if (!r.ok) return null
-    const d = (await r.json()) as { results?: { name?: string; latitude?: number; longitude?: number }[] }
-    const premier = Array.isArray(d.results) ? d.results[0] : undefined
-    return premier ? villeValide({ nom: premier.name ?? nom, lat: premier.latitude, lon: premier.longitude }) : null
-  } catch {
-    return null
-  }
+  // Le géocodeur partagé de l'app : il privilégie la France, sinon une
+  // pharmacie « à Saint-Denis » pouvait être cherchée à La Réunion.
+  const trouve = await trouverLieu(nom)
+  return trouve ? villeValide({ nom: trouve.commune, lat: trouve.lat, lon: trouve.lon }) : null
 }
 
 // La fiche vient d'une lecture d'image par le relais : chaque champ peut
