@@ -4,6 +4,7 @@ import { useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
+import { appelerIa } from '@/lib/ia'
 import { muter } from '@/lib/sync'
 import { lireAvecRepli } from '@/lib/lecture'
 import { utiliserSession } from '@/etat/session'
@@ -74,23 +75,13 @@ export function EcranConcerts() {
 
   const lireInfos = async (image: string) => {
     try {
-      const { data: session } = await supabase.auth.getSession()
-      const reponse = await fetch('/api/analyser-photo', {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          authorization: `Bearer ${session.session?.access_token ?? ''}`,
-        },
-        body: JSON.stringify({ image }),
-      })
-      // ⚠️ On lit la réponse MÊME en erreur : sinon un quota d'IA atteint se
-      // traduisait par « rien ne se passe », sans un mot d'explication.
-      const donnees = (await reponse.json().catch(() => null)) as {
+      // 🔁 Réessai AUTOMATIQUE si l'IA est momentanément saturée. Et si
+      // vraiment rien ne passe, on le DIT : avant, il ne se passait rien.
+      const { donnees, echec } = await appelerIa<{
         proposition?: { evenement: { titre: string; date: string; heure: string | null; lieu: string | null } | null; resume?: string }
-        message?: string
-      } | null
-      if (!reponse.ok || !donnees?.proposition) {
-        setErreurScan(donnees?.message ?? `Le billet n’a pas pu être lu (${reponse.status}).`)
+      }>('/api/analyser-photo', { image })
+      if (!donnees?.proposition) {
+        setErreurScan(echec?.message ?? 'Le billet n’a pas pu être lu.')
         return null
       }
       return donnees.proposition

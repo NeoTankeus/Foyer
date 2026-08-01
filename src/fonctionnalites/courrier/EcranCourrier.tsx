@@ -3,7 +3,7 @@
 // bon endroit : colis suivi, agenda, Coffre, courses, mur. Zéro saisie.
 import { useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { supabase } from '@/lib/supabase'
+import { appelerIa } from '@/lib/ia'
 import { muter } from '@/lib/sync'
 import { utiliserSession } from '@/etat/session'
 import { ajouterArticle, creerEvenement, utiliserListeCourses } from '@/lib/requetes'
@@ -162,21 +162,13 @@ export function EcranCourrier() {
     setErreur(null)
     setTri(null)
     try {
-      const { data: session } = await supabase.auth.getSession()
-      const reponse = await fetch('/api/trier-courrier', {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          authorization: `Bearer ${session.session?.access_token ?? ''}`,
-        },
-        body: JSON.stringify({
-          texte,
-          aujourdhui: new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }),
-        }),
+      // 🔁 Réessai AUTOMATIQUE si l'IA est momentanément saturée.
+      const { donnees, echec } = await appelerIa<{ proposition?: Tri }>('/api/trier-courrier', {
+        texte,
+        aujourdhui: new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }),
       })
-      const donnees = (await reponse.json()) as { proposition?: Tri; message?: string }
-      if (donnees.proposition) setTri(donnees.proposition)
-      else setErreur(donnees.message ?? 'STG n’a pas compris ce courrier — réessaie.')
+      if (donnees?.proposition) setTri(donnees.proposition)
+      else setErreur(echec?.message ?? 'STG n’a pas compris ce courrier — réessaie.')
     } catch {
       setErreur('Pas de réseau — réessaie.')
     } finally {

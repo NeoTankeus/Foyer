@@ -69,7 +69,12 @@ export default async function handler(req: Request): Promise<Response> {
     return repondre({ erreur: 'methode', message: 'POST uniquement' }, 405)
   }
 
-  const cleGemini = process.env.GEMINI_API_KEY
+  // Les clés en secours (créées dans d'AUTRES projets Google) multiplient le
+  // quota gratuit : on prend la première qui accepte encore de répondre.
+  const clesDisponibles = [process.env.GEMINI_API_KEY, process.env.GEMINI_API_KEY_2, process.env.GEMINI_API_KEY_3]
+    .map((c) => String(c ?? '').trim())
+    .filter((c, i, tout) => c !== '' && tout.indexOf(c) === i)
+  const cleGemini = clesDisponibles[0]
   if (!cleGemini) {
     return repondre(
       { erreur: 'cle_absente', message: 'La clé GEMINI_API_KEY n’est pas configurée dans Vercel.' },
@@ -119,7 +124,7 @@ ${contexte}`
     parts: [{ text: m.texte }],
   }))
 
-  const appeler = (modele: string) => {
+  const appeler = (modele: string, cleUtilisee: string = cleGemini as string) => {
     // Les modèles Gemma n'acceptent pas de system_instruction : on la fusionne
     // dans le premier message utilisateur.
     const estGemma = modele.startsWith('gemma')
@@ -131,7 +136,7 @@ ${contexte}`
         )
       : contenus
     return fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${modele}:generateContent?key=${cleGemini}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/${modele}:generateContent?key=${cleUtilisee}`,
       {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -188,30 +193,37 @@ ${contexte}`
   let reponseGemini: Response | null = null
   let derniereRaison = ''
   let modeleUtilise = ''
+  // Chaque modèle est essayé avec CHAQUE clé : les quotas gratuits étant
+  // comptés par projet, une 2ᵉ clé double simplement la capacité.
   for (const modele of candidats) {
-    const tentative = await appeler(modele)
-    if (!tentative) {
-      // Délai dépassé ou réseau coupé : on tente le modèle suivant.
-      derniereRaison = `${modele} → pas de réponse (délai dépassé)`
-      continue
+    for (const cleEssai of clesDisponibles) {
+      const tentative = await appeler(modele, cleEssai)
+      if (!tentative) {
+        // Délai dépassé ou réseau coupé : on tente le suivant.
+        derniereRaison = `${modele} → pas de réponse (délai dépassé)`
+        continue
+      }
+      if (tentative.ok) {
+        reponseGemini = tentative
+        modeleUtilise = modele
+        break
+      }
+      const detail = (await jsonDe(tentative)) as { error?: { message?: unknown } } | null
+      const message = typeof detail?.error?.message === 'string' ? detail.error.message : String(tentative.status)
+      derniereRaison = `${modele} → ${message}`
     }
-    if (tentative.ok) {
-      reponseGemini = tentative
-      modeleUtilise = modele
-      break
-    }
-    const detail = (await jsonDe(tentative)) as { error?: { message?: unknown } } | null
-    const message = typeof detail?.error?.message === 'string' ? detail.error.message : String(tentative.status)
-    derniereRaison = `${modele} → ${message}`
+    if (reponseGemini) break
   }
 
   if (!reponseGemini) {
     return repondre(
       {
-        erreur: 'quota',
+        erreur: /per day|daily|PerDay/i.test(derniereRaison) ? 'quota_jour' : 'quota_minute',
+        // Le téléphone s'en sert pour retenter tout seul (sauf quota du jour).
+        secondes: 20,
         message: /per day|daily|PerDay/i.test(derniereRaison)
           ? 'Le quota gratuit de l’IA est atteint pour aujourd’hui. Tout le reste de l’app fonctionne, et STG repart d’elle-même demain matin.'
-          : `L’IA est saturée à l’instant — réessaie dans une minute. (${derniereRaison.slice(0, 120)})`,
+          : 'L’IA est très demandée à l’instant — nouvelle tentative dans quelques secondes.',
       },
       429,
     )

@@ -5,6 +5,7 @@
 import { useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
+import { appelerIa } from '@/lib/ia'
 import { utiliserSession } from '@/etat/session'
 import { compresserImage } from '@/fonctionnalites/souvenirs/donnees'
 import { BarreRetour } from '@/design/composants/BarreRetour'
@@ -120,18 +121,14 @@ export function EcranAssiette() {
     if (!membre || (!texte.trim() && !photo)) return
     setErreur(null)
     setResultat(null)
-    const { data: session } = await supabase.auth.getSession()
-    const reponse = await fetch('/api/analyser-repas', {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        authorization: `Bearer ${session.session?.access_token ?? ''}`,
-      },
-      body: JSON.stringify({ repas: texte, regime: regimeAffiche, image: photo ?? undefined }),
+    // 🔁 Réessai AUTOMATIQUE si l'IA est momentanément saturée.
+    const { donnees: corps, echec } = await appelerIa<{ proposition?: Analyse }>('/api/analyser-repas', {
+      repas: texte,
+      regime: regimeAffiche,
+      image: photo ?? undefined,
     })
-    const corps = (await reponse.json()) as { proposition?: Analyse; message?: string }
-    if (!corps.proposition || typeof corps.proposition.score !== 'number') {
-      setErreur(corps.message ?? 'STG n’a pas réussi à analyser — réessaie.')
+    if (!corps?.proposition || typeof corps.proposition.score !== 'number') {
+      setErreur(echec?.message ?? 'STG n’a pas réussi à analyser — réessaie.')
       return
     }
     const analyse: Analyse = analyseSure(corps.proposition)

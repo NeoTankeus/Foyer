@@ -4,6 +4,7 @@
 import { useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
+import { appelerIa } from '@/lib/ia'
 import { muter } from '@/lib/sync'
 import { utiliserSession } from '@/etat/session'
 import { compresserImage } from '@/fonctionnalites/souvenirs/donnees'
@@ -127,34 +128,24 @@ export function EcranBudget() {
     setErreurScan(null)
     try {
       const image = await compresserImage(fichier)
-      const { data: session } = await supabase.auth.getSession()
-      const reponse = await fetch('/api/analyser-ticket', {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          authorization: `Bearer ${session.session?.access_token ?? ''}`,
-        },
-        body: JSON.stringify({ image }),
-      })
-      // ⚠️ On lit la réponse MÊME en erreur : sans ça, un quota d'IA atteint
-      // ouvrait un brouillon vide comme si le ticket avait été lu.
-      const donnees = (await reponse.json().catch(() => null)) as {
+      // 🔁 Réessai AUTOMATIQUE si l'IA est momentanément saturée, et jamais
+      // de brouillon vide : on n'ouvre la saisie que si le ticket a été lu.
+      const { donnees, echec } = await appelerIa<{
         ticket?: { commercant?: string | null; montant?: number | null; date?: string | null; categorie?: string | null }
-        message?: string
-      } | null
-      if (!reponse.ok || !donnees?.ticket) {
-        setErreurScan(donnees?.message ?? `Le ticket n’a pas pu être lu (${reponse.status}).`)
+      }>('/api/analyser-ticket', { image })
+      const t = donnees?.ticket && typeof donnees.ticket === 'object' ? donnees.ticket : null
+      if (!t) {
+        setErreurScan(echec?.message ?? 'Le ticket n’a pas pu être lu.')
         return
       }
       // La lecture du ticket est faite par STG : chaque champ peut manquer
       // ou revenir dans un autre type que celui annoncé.
-      const t = donnees.ticket && typeof donnees.ticket === 'object' ? donnees.ticket : null
-      const categorie = typeof t?.categorie === 'string' ? t.categorie : null
+      const categorie = typeof t.categorie === 'string' ? t.categorie : null
       setBrouillon({
-        libelle: String(t?.commercant ?? 'Ticket') || 'Ticket',
-        montant: t?.montant != null ? String(t.montant) : '',
+        libelle: String(t.commercant ?? 'Ticket') || 'Ticket',
+        montant: t.montant != null ? String(t.montant) : '',
         categorie: categorie && CATEGORIES.some((c) => c.cle === categorie) ? categorie : 'autre',
-        date: typeof t?.date === 'string' ? t.date : '',
+        date: typeof t.date === 'string' ? t.date : '',
       })
       setEnEdition('nouvelle')
     } catch (e) {

@@ -59,7 +59,12 @@ export default async function handler(req: Request): Promise<Response> {
     const { texte: brut, echec } = await demanderIa(cleGemini, { systeme: CONSIGNE, parts: [{ text: texte.slice(0, 30000) }], json: true, temperature: 0.1, maxOutputTokens: 2048 })
     if (!brut) {
       return repondre(
-        { erreur: echec?.genre ?? 'analyse', message: echec?.message ?? 'L’IA n’a pas pu répondre.' },
+        {
+          erreur: echec?.genre ?? 'analyse',
+          message: echec?.message ?? 'L’IA n’a pas pu répondre.',
+          // Le téléphone s'en sert pour réessayer TOUT SEUL.
+          ...(echec?.secondes ? { secondes: echec.secondes } : {}),
+        },
         echec?.status ?? 502,
       )
     }

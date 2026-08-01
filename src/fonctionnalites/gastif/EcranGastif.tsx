@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
 import { supabase } from '@/lib/supabase'
+import { appelerIa } from '@/lib/ia'
 import { muter } from '@/lib/sync'
 import { utiliserSession } from '@/etat/session'
 import { assemblerContexte } from './contexte'
@@ -41,6 +42,8 @@ export function EcranGastif() {
   const [messages, setMessages] = useState<MessageGastif[]>([])
   const [saisie, setSaisie] = useState('')
   const [reflechit, setReflechit] = useState(false)
+  // Le compte à rebours affiché quand l'IA est saturée et qu'on retente seul.
+  const [attente, setAttente] = useState(0)
   const [conversationId, setConversationId] = useState<string | null>(null)
   const [erreurConfig, setErreurConfig] = useState<string | null>(null)
   const [historiqueOuvert, setHistoriqueOuvert] = useState(false)
@@ -119,39 +122,35 @@ export function EcranGastif() {
     setReflechit(true)
 
     try {
-      const [{ data: session }, contexte] = await Promise.all([
-        supabase.auth.getSession(),
-        assemblerContexte(membres, foyer),
-      ])
-      const reponse = await fetch('/api/gastif', {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          authorization: `Bearer ${session.session?.access_token ?? ''}`,
-        },
-        body: JSON.stringify({
+      const contexte = await assemblerContexte(membres, foyer)
+      // 🔁 Réessai AUTOMATIQUE : quand l'IA est momentanément saturée, le
+      // téléphone patiente le délai indiqué et relance seul. On n'affiche une
+      // erreur qu'en tout dernier recours.
+      const { donnees, echec } = await appelerIa<{ reponse?: string }>(
+        '/api/gastif',
+        {
           messages: aJour.map((m) => ({ role: m.role, texte: m.texte })),
           contexte,
           role_membre: membre.role,
-        }),
-      })
-      const donnees = (await reponse.json()) as { reponse?: string; erreur?: string; message?: string }
+        },
+        { surAttente: (secondes) => setAttente(secondes) },
+      )
+      setAttente(0)
 
-      if (!reponse.ok) {
-        if (donnees.erreur === 'cle_absente') {
-          setErreurConfig(
-            'Le cerveau de STG n’est pas encore branché : ajoute la variable GEMINI_API_KEY dans Vercel (clé gratuite sur aistudio.google.com), puis redéploie.',
-          )
-        } else {
-          setErreurConfig(donnees.message ?? 'STG n’a pas pu répondre. Réessaie.')
-        }
+      const texte = typeof donnees?.reponse === 'string' ? donnees.reponse.trim() : ''
+      if (!texte) {
+        setErreurConfig(
+          echec?.genre === 'cle_absente'
+            ? 'Le cerveau de STG n’est pas encore branché : ajoute la variable GEMINI_API_KEY dans Vercel (clé gratuite sur aistudio.google.com), puis redéploie.'
+            : (echec?.message ?? 'STG n’a pas pu répondre. Réessaie.'),
+        )
         setMessages(messages)
         return
       }
 
       const final: MessageGastif[] = [
         ...aJour,
-        { role: 'gastif', texte: donnees.reponse ?? '…', a: new Date().toISOString() },
+        { role: 'gastif', texte, a: new Date().toISOString() },
       ]
       setMessages(final)
 
@@ -170,6 +169,7 @@ export function EcranGastif() {
         })
       }
     } catch {
+      setAttente(0)
       setErreurConfig('Pas de réseau — STG a besoin d’internet pour réfléchir.')
       setMessages(messages)
     } finally {
@@ -199,7 +199,7 @@ export function EcranGastif() {
         <div className="min-w-0 flex-1">
           <h1 className="text-titre-3 text-encre">STG</h1>
           <p className="truncate text-legende text-encre-3">
-            {reflechit ? 'réfléchit…' : 'l’intendant du foyer'}
+            {attente > 0 ? `IA saturée — nouvelle tentative dans ${attente} s…` : reflechit ? 'réfléchit…' : 'l’intendant du foyer'}
           </p>
         </div>
         <button

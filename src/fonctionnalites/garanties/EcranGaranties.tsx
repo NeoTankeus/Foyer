@@ -4,6 +4,7 @@
 import { useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
+import { appelerIa } from '@/lib/ia'
 import { muter } from '@/lib/sync'
 import { utiliserSession } from '@/etat/session'
 import { compresserImage } from '@/fonctionnalites/souvenirs/donnees'
@@ -103,25 +104,19 @@ export function EcranGaranties() {
     setErreurScan(null)
     try {
       const image = await compresserImage(fichier)
-      const { data: session } = await supabase.auth.getSession()
-      const reponse = await fetch('/api/analyser-ticket', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', authorization: `Bearer ${session.session?.access_token ?? ''}` },
-        body: JSON.stringify({ image }),
-      })
-      // ⚠️ On lit la réponse MÊME en erreur : sans ça, un quota d'IA atteint
-      // ouvrait un brouillon vide comme si la lecture avait réussi.
-      const donnees = (await reponse.json().catch(() => null)) as {
-        ticket?: { commercant?: string | null; date?: string | null }
-        message?: string
-      } | null
-      if (!reponse.ok || !donnees?.ticket) {
-        setErreurScan(donnees?.message ?? `Le ticket n’a pas pu être lu (${reponse.status}).`)
+      // 🔁 Réessai AUTOMATIQUE si l'IA est momentanément saturée, et jamais
+      // de brouillon vide : on n'ouvre la fiche que si le ticket a été lu.
+      const { donnees, echec } = await appelerIa<{ ticket?: { commercant?: string | null; date?: string | null } }>(
+        '/api/analyser-ticket',
+        { image },
+      )
+      if (!donnees?.ticket) {
+        setErreurScan(echec?.message ?? 'Le ticket n’a pas pu être lu.')
         return
       }
       setBrouillon({
-        titre: donnees.ticket?.commercant ? `Achat ${String(donnees.ticket.commercant)}` : '',
-        achat: typeof donnees.ticket?.date === 'string' ? donnees.ticket.date : new Date().toISOString().slice(0, 10),
+        titre: donnees.ticket.commercant ? `Achat ${String(donnees.ticket.commercant)}` : '',
+        achat: typeof donnees.ticket.date === 'string' ? donnees.ticket.date : new Date().toISOString().slice(0, 10),
         mois: 24,
       })
       setEnEdition('nouvelle')

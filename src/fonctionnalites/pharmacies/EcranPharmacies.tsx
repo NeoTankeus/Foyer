@@ -2,7 +2,7 @@
 // et le réflexe officiel « de garde » (3237). Trois façons de se situer :
 // la maison (instantané), le GPS précis, ou une ville mémorisée.
 import { useEffect, useRef, useState } from 'react'
-import { supabase } from '@/lib/supabase'
+import { appelerIa } from '@/lib/ia'
 import { trouverLieu } from '@/lib/geo'
 import { utiliserSession } from '@/etat/session'
 import { chercherLieux, type LieuAutour } from '@/lib/lieux'
@@ -82,42 +82,20 @@ export function EcranPharmacies() {
     setFiche(null)
     try {
       const image = await compresserImage(fichier)
-      const { data: session } = await supabase.auth.getSession()
-      const r = await fetch('/api/analyser-medicament', {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          authorization: `Bearer ${session.session?.access_token ?? ''}`,
-        },
-        body: JSON.stringify({ image }),
-      })
-      // ⚠️ On lit le corps de la réponse MÊME en cas d'erreur : le serveur y
-      // met la vraie raison. Un simple « serveur 429 » ferait croire à une
-      // mauvaise photo alors que c'est l'IA qui est saturée.
-      const d = (await r.json().catch(() => null)) as {
-        proposition?: FicheMedicament
-        message?: string
-        erreur?: string
-      } | null
-      const propre = ficheSure(d?.proposition)
+      // 🔁 Réessai AUTOMATIQUE : si l'IA est momentanément saturée, le
+      // téléphone patiente le délai indiqué et relance seul. On n'affiche une
+      // erreur qu'en dernier recours, avec la vraie raison.
+      const { donnees, echec } = await appelerIa<{ proposition?: FicheMedicament }>(
+        '/api/analyser-medicament',
+        { image },
+      )
+      const propre = ficheSure(donnees?.proposition)
       if (propre) {
         setFiche(propre)
         return
       }
-      if (d?.message) {
-        setErreurFiche(d.message)
-        return
-      }
       setErreurFiche(
-        r.status === 429
-          ? 'Les IA sont saturées à l’instant — réessaie dans une minute, ta photo est très bien.'
-          : r.status === 401
-            ? 'Ta session a expiré — rouvre l’app et réessaie.'
-            : r.status === 503
-              ? 'Le service de lecture n’est pas configuré (clé IA absente).'
-              : r.ok
-                ? 'La boîte n’a pas pu être lue — retente avec une photo nette du recto.'
-                : `Le serveur n’a pas répondu correctement (${r.status}).`,
+        echec?.message ?? 'La boîte n’a pas pu être lue — retente avec une photo nette du recto.',
       )
     } catch (e) {
       // Ici, c'est le réseau : le téléphone n'a pas pu joindre le serveur.

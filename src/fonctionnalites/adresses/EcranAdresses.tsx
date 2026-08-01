@@ -12,6 +12,7 @@ import { useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
+import { appelerIa } from '@/lib/ia'
 import { utiliserSession } from '@/etat/session'
 import { BarreRetour } from '@/design/composants/BarreRetour'
 import { Bouton } from '@/design/composants/Bouton'
@@ -216,30 +217,16 @@ export function EcranAdresses() {
     staleTime: 24 * 60 * 60 * 1000,
     retry: false,
     queryFn: async (): Promise<{ resume: string; adresses: Fiche[] }> => {
-      const { data: session } = await supabase.auth.getSession()
-      const r = await fetch('/api/bonnes-adresses', {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          authorization: `Bearer ${session.session?.access_token ?? ''}`,
-        },
-        body: JSON.stringify({ lieu, envie }),
-      })
-      // On lit le corps MÊME en erreur : le serveur y met la vraie raison.
-      const d = (await r.json().catch(() => null)) as {
-        resume?: string
-        adresses?: Fiche[]
-        message?: string
-      } | null
-      if (!r.ok || !Array.isArray(d?.adresses)) {
-        throw new Error(
-          d?.message ??
-            (r.status === 429
-              ? 'Les IA sont saturées à l’instant — réessaie dans une minute.'
-              : `Le serveur n’a pas répondu correctement (${r.status}).`),
-        )
+      // 🔁 Réessai AUTOMATIQUE quand l'IA est momentanément saturée : le
+      // téléphone patiente le délai indiqué et relance seul.
+      const { donnees, echec } = await appelerIa<{ resume?: string; adresses?: Fiche[] }>(
+        '/api/bonnes-adresses',
+        { lieu, envie },
+      )
+      if (!donnees || !Array.isArray(donnees.adresses)) {
+        throw new Error(echec?.message ?? 'Les propositions n’ont pas pu être chargées.')
       }
-      return { resume: String(d.resume ?? ''), adresses: d.adresses }
+      return { resume: String(donnees.resume ?? ''), adresses: donnees.adresses }
     },
   })
 
